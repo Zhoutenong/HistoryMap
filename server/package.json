@@ -1,0 +1,16 @@
+{
+  "name": "history-map-server",
+  "version": "0.1.0",
+  "description": "HistoryMap 后端：Express + sql.js，提供地图与事件 JSON API",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.0",
+    "sql.js": "^1.12.0"
+  }
+}

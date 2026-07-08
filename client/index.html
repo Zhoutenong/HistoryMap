@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>中国历史地图 · 宋朝</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="scene-container">
+        <div id="legend" class="hidden"></div>
+      </div>
+      <div id="loading">正在加载历史数据…</div>
+      <div id="detail-panel" class="hidden"></div>
+      <div id="settings-panel" class="hidden"></div>
+      <div id="event-log">
+        <div class="log-header">历史事件</div>
+        <div class="log-list"></div>
+      </div>
+      <div id="timeline">
+        <div class="tl-header">
+          <span id="tl-year">960</span>
+          <div class="tl-controls">
+            <button id="tl-play">⏸ 暂停</button>
+            <button id="settings-btn">⚙ 设置</button>
+            <span class="tl-range">960 — 1279</span>
+          </div>
+        </div>
+        <div id="tl-track">
+          <div id="tl-progress"></div>
+          <div id="tl-thumb"></div>
+          <div id="tl-ticks"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

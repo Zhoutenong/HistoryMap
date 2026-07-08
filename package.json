@@ -1,0 +1,16 @@
+{
+  "name": "history-map",
+  "version": "0.1.0",
+  "description": "中国历史地图 · 前后端解耦版（Express + SQLite 后端 + three.js 前端）",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "history-map-client",
+  "version": "0.1.0",
+  "description": "HistoryMap 前端：three.js 渲染中国历史地图",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

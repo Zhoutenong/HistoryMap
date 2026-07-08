@@ -1,0 +1,6 @@
+node_modules/
+server/history.db
+server/server.log
+dist/
+*.log
+.playwright-mcp/
