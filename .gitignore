@@ -4,3 +4,9 @@ server/server.log
 dist/
 *.log
 .playwright-mcp/
+
+# Python cache
+**/__pycache__/
+*.pyc
+server/server/
+*.png
