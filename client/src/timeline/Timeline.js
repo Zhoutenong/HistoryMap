@@ -42,6 +42,7 @@ export class Timeline {
     this.yearLabel = document.getElementById('tl-year');
     this.playBtn = document.getElementById('tl-play');
     this.ticksEl = document.getElementById('tl-ticks');
+    this.markersEl = document.getElementById('tl-markers');
   }
 
   _renderTicks() {
@@ -68,7 +69,11 @@ export class Timeline {
   }
 
   _bind() {
-    this.playBtn.addEventListener('click', () => this.toggle());
+    this.playBtn.addEventListener('click', () => {
+      this.toggle();
+      // 松开焦点：否则按钮保持聚焦后，空格快捷键会被「输入/按钮聚焦时不响应」逻辑屏蔽
+      this.playBtn.blur();
+    });
 
     const onPointerDown = (e) => {
       this._dragging = true;
@@ -84,6 +89,25 @@ export class Timeline {
       window.addEventListener('pointerup', up);
     };
     this.track.addEventListener('pointerdown', onPointerDown);
+
+    // 键盘快捷键：空格播放/暂停，←/→ 逐年步进
+    // 输入框/按钮聚焦时不响应（避免与输入、按钮触发的空格冲突）
+    window.addEventListener('keydown', (e) => this._onKeydown(e));
+  }
+
+  _onKeydown(e) {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+    if (e.code === 'Space') {
+      e.preventDefault(); // 防页面滚动
+      this.toggle();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      this.setYear(this.year - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      this.setYear(this.year + 1);
+    }
   }
 
   _updateFromPointer(e) {
@@ -145,5 +169,43 @@ export class Timeline {
     this.thumb.style.left = `${pct}%`;
     this.progress.style.width = `${pct}%`;
     this.yearLabel.textContent = `${this.year} 年`;
+  }
+
+  /**
+   * 渲染事件刻度点：每个事件在轨道上对应一个小圆点，点击跳到该年并回调。
+   * 刻度点按分类着色（cat-xxx 与泡泡共用 CSS 变量 --cat）。
+   * @param {object[]} events 事件数据数组
+   * @param {(ev:object)=>void} [onMarkerClick] 点击刻度点回调
+   */
+  setEvents(events, onMarkerClick = () => {}) {
+    this.markersEl.innerHTML = '';
+    this._markers = [];
+    events.slice().sort((a, b) => a.year - b.year).forEach((ev) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = `tl-marker cat-${ev.category || 'era'}`;
+      dot.style.left = `${this._yearToPct(ev.year)}%`;
+      dot.title = `${ev.year}年 · ${ev.short}`;
+      // stopPropagation：不触发轨道拖拽，也不让 pointerdown 抢走点击
+      dot.addEventListener('pointerdown', (e) => e.stopPropagation());
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setYear(ev.year);
+        onMarkerClick(ev);
+      });
+      this.markersEl.appendChild(dot);
+      this._markers.push({ dot, ev });
+    });
+  }
+
+  /**
+   * 按启用的分类过滤刻度点显隐（分类关闭时对应刻度点变淡）。
+   * @param {string[]} categories
+   */
+  filterMarkers(categories) {
+    if (!this._markers) return;
+    this._markers.forEach(({ dot, ev }) => {
+      dot.classList.toggle('off', !categories.includes(ev.category));
+    });
   }
 }

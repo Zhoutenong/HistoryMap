@@ -10,3 +10,9 @@ dist/
 *.pyc
 server/server/
 *.png
+
+# 可再生成的历史疆域原始全球文件（重跑脚本自动重新下载）
+server/data/geo/historical/source/
+
+# ZCode 工具本地工作目录
+.zcode/

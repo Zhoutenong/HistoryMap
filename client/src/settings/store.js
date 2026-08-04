@@ -7,13 +7,14 @@ const KEY = 'historymap.settings.v1';
 /**
  * 事件分类定义（顺序即设置面板里的展示顺序，color 给泡泡 dot 用）。
  * id 与后端 events.category 取值一一对应。
+ * 颜色为古典色系（与 styles.css 的 .cat-xxx 对应）。
  */
 export const CATEGORIES = [
-  { id: 'era', label: '时代格局', color: '#ff2a6d' },
-  { id: 'figure', label: '名人轨迹', color: '#b14aff' },
-  { id: 'military', label: '军事·领土', color: '#ff8c42' },
-  { id: 'economy', label: '经济变革', color: '#3ddc97' },
-  { id: 'invention', label: '重要发明', color: '#00f0ff' }
+  { id: 'era', label: '时代格局', color: '#b03a2e' },      // 朱砂
+  { id: 'figure', label: '名人轨迹', color: '#6e5a7e' },   // 紫檀
+  { id: 'military', label: '军事·领土', color: '#a0622d' },// 赭石
+  { id: 'economy', label: '经济变革', color: '#5f7d4f' },  // 竹绿
+  { id: 'invention', label: '重要发明', color: '#46647f' } // 黛蓝
 ];
 
 /** 播放速度档位 → tickMs 映射。 */

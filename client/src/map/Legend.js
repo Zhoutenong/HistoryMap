@@ -42,7 +42,7 @@ export class Legend {
     // 渲染
     this.el.innerHTML = this._entries.map(e => `
       <div class="legend-row">
-        <span class="legend-swatch" style="background:${e.color};box-shadow:0 0 6px ${e.color}"></span>
+        <span class="legend-swatch" style="background:${e.color}"></span>
         <span>${e.entity}</span>
       </div>
     `).join('');

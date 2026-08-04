@@ -85,8 +85,11 @@ export class SettingsMenu {
   }
 
   _bind() {
-    // 齿轮按钮：切换面板显隐
-    this.btn.addEventListener('click', () => this.toggle());
+    // 齿轮按钮：切换面板显隐；松开焦点，避免屏蔽空格等全局快捷键
+    this.btn.addEventListener('click', () => {
+      this.btn.blur();
+      this.toggle();
+    });
 
     // 面板内交互统一在面板上委托
     this.panel.addEventListener('change', (e) => this._onChange(e));

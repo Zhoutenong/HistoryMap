@@ -12,18 +12,6 @@ const __dirname = path.dirname(__filename);
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
 
 /**
- * 时期对应表：年份 → period id
- */
-function getPeriodForYear(year) {
-  if (year < 960) return null;
-  if (year < 979) return 'song-960';
-  if (year < 1127) return 'song-1111';   // 北宋稳定期
-  if (year < 1234) return 'song-1142';   // 南宋·绍兴和议
-  if (year < 1276) return 'song-1142';   // 继续宋金对峙（蒙古崛起中）
-  return 'song-1142';                     // 最后阶段
-}
-
-/**
  * 读取 JSON 文件
  */
 function readJSON(filePath) {
@@ -69,28 +57,31 @@ router.get('/', (req, res) => {
     });
   }
 
+  // entities 配色表：按中文名（entity）兜底查色，统一管理政权颜色
+  // （fillOpacity 不在此表——feature 自带，缺省走下方统一默认值）
+  const entityStyle = {};
+  (periodsIndex.entities || []).forEach((e) => {
+    entityStyle[e.name] = { color: e.color };
+  });
+
   // 读取所有文件并合并 features
   const allFeatures = [];
-  
+
   periodDef.files.forEach(filename => {
     const filePath = path.join(HISTORICAL_DIR, filename);
     const data = readJSON(filePath);
     if (!data || !data.features) return;
 
-    // 从文件的 properties 获取颜色/不透明度
-    const fcProps = data.properties || {};
-    const defaultColor = fcProps.color || '#ffffff';
-    const defaultOpacity = fcProps.fillOpacity !== undefined ? fcProps.fillOpacity : 0.3;
-    const entityName = fcProps.name || filename;
-
     data.features.forEach(feat => {
-      // 给每个 feature 注入渲染属性
+      const props = feat.properties || {};
+      // 优先用 feature 自带值，其次查 entities 配色表，最后用中性灰兜底
+      const fallback = entityStyle[props.entity] || {};
       feat.properties = {
-        ...feat.properties,
-        entity: entityName,
-        color: feat.properties.color || defaultColor,
-        fillOpacity: feat.properties.fillOpacity !== undefined 
-          ? feat.properties.fillOpacity : defaultOpacity,
+        ...props,
+        // 回退用通用名而不是文件名：避免图例里出现 "regimes-1100.json"
+        entity: props.entity || '未知政权',
+        color: props.color || fallback.color || '#888888',
+        fillOpacity: props.fillOpacity !== undefined ? props.fillOpacity : 0.35,
       };
       allFeatures.push(feat);
     });

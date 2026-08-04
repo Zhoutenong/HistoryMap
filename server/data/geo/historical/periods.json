@@ -2,51 +2,45 @@
   "periods": [
     {
       "id": "song-1111",
-      "year": 1111,
+      "year": 1100,
+      "start": 960,
+      "end": 1126,
       "label": "北宋极盛",
-      "files": [
-        "northern-song-1111.json",
-        "liao-1111.json",
-        "western-xia-1111.json"
-      ]
+      "files": ["regimes-1100.json"]
     },
     {
       "id": "song-1142",
-      "year": 1142,
+      "year": 1200,
+      "start": 1127,
+      "end": 1270,
       "label": "南宋·绍兴和议",
-      "files": [
-        "southern-song-1142.json",
-        "jin-1142.json",
-        "western-xia-1111.json"
-      ]
+      "files": ["regimes-1200.json"]
+    },
+    {
+      "id": "song-1279",
+      "year": 1279,
+      "start": 1271,
+      "end": 1279,
+      "label": "崖山·元朝建立",
+      "files": ["regimes-1279.json"]
     }
   ],
   "entities": [
-    {
-      "id": "song",
-      "name": "宋",
-      "color": "#E53935"
-    },
-    {
-      "id": "liao",
-      "name": "辽",
-      "color": "#1E88E5"
-    },
-    {
-      "id": "xia",
-      "name": "西夏",
-      "color": "#43A047"
-    },
-    {
-      "id": "jin",
-      "name": "金",
-      "color": "#8E24AA"
-    },
-    {
-      "id": "dali",
-      "name": "大理",
-      "color": "#FB8C00"
-    }
+    { "id": "song",    "name": "宋",   "color": "#b03a2e" },
+    { "id": "liao",    "name": "辽",   "color": "#4a6a8a" },
+    { "id": "hainan",  "name": "海南", "color": "#b03a2e" },
+    { "id": "jin",     "name": "金",   "color": "#a8873a" },
+    { "id": "xia",     "name": "西夏", "color": "#b08d4f" },
+    { "id": "tibet",   "name": "吐蕃", "color": "#8a6a4a" },
+    { "id": "dali",    "name": "大理", "color": "#6a8a5f" },
+    { "id": "mongol",  "name": "蒙古", "color": "#6a4a3a" },
+    { "id": "yuan",    "name": "元",   "color": "#6a4a3a" },
+    { "id": "korea",   "name": "高丽", "color": "#5a7a9a" },
+    { "id": "vietnam", "name": "大越", "color": "#7a8a5a" },
+    { "id": "khmer",   "name": "高棉", "color": "#9a7a5a" },
+    { "id": "champa",  "name": "占婆", "color": "#b85a6a" },
+    { "id": "pagan",   "name": "蒲甘", "color": "#6a8a5f" },
+    { "id": "qarakhan","name": "西辽", "color": "#7a6a8a" }
   ],
   "default": "song-1111"
 }

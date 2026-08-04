@@ -74,7 +74,7 @@ npm run build          # 输出到 client/dist/
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/map` | 基础中国地图 GeoJSON（FeatureCollection）|
-| GET | `/api/map/overlay?dynasty=song` | 朝代疆域叠加层（首期返回空 features，预留扩展）|
+| GET | `/api/map/overlay?dynasty=song&period=1111` | 朝代疆域叠加层（按时期返回政权 FeatureCollection，`period` 取 `1111/1142/1279`）|
 | GET | `/api/events?dynasty=song` | 朝代全部事件数组 |
 | GET | `/api/meta?dynasty=song` | 朝代元信息（起止年）|
 
@@ -121,7 +121,8 @@ npm run build          # 输出到 client/dist/
 ## 数据存储
 
 - **事件/朝代**：SQLite（首期用 `sql.js` 纯 WASM 实现，零编译跨平台；详见「已知坑」）。
-- **地图 GeoJSON**：静态文件 `server/data/geo/china.json`，由后端路由直接读出返回。**不进数据库**——大 JSON 进库查询慢，且 GeoJSON 走文件更易替换。
+- **基础底图 GeoJSON**：静态文件 `server/data/geo/china.json`（现代中国省界），由 `/api/map` 路由直接读出返回。**不进数据库**——大 JSON 进库查询慢，且 GeoJSON 走文件更易替换。默认隐藏，作"现代对比层"用。
+- **历史疆域 GeoJSON**：`server/data/geo/historical/regimes-{1100,1200,1279}.json`，由 `/api/map/overlay` 路由按 `periods.json` 索引读取。**数据源**：[aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps) (GPL-3.0)，含宋/辽/西夏/金/吐蕃/大理/蒙古/高丽/大越/高棉/占婆/蒲甘等政权的真实历史轮廓。重新生成：`node server/scripts/fetch_historical_basemaps.js`。详见 `server/data/geo/historical/README.md`。
 - **seed**：`server/data/seed/*.sql`，按文件名排序执行。换朝代加新 SQL 文件即可。
 
 ## 已知坑 / 平台注意

@@ -7,31 +7,63 @@
   </head>
   <body>
     <div id="app">
+      <!-- 极简顶栏：品牌 + 右上操作 -->
+      <header id="topbar">
+        <div class="brand">
+          <span class="brand-title">历史地图</span>
+          <span class="brand-seal">宋</span>
+        </div>
+        <div class="top-actions">
+          <button id="log-toggle" class="top-btn" title="历史事件流">☰ 事件<span id="log-badge" class="hidden"></span></button>
+          <button id="settings-btn" class="top-btn" title="设置">⚙ 设置</button>
+        </div>
+      </header>
+
+      <!-- 全屏 3D 场景 -->
       <div id="scene-container">
+        <div id="year-watermark"></div>
         <div id="legend" class="hidden"></div>
       </div>
-      <div id="loading">正在加载历史数据…</div>
-      <div id="detail-panel" class="hidden"></div>
-      <div id="settings-panel" class="hidden"></div>
-      <div id="event-log">
-        <div class="log-header">历史事件</div>
+
+      <!-- 右侧事件流抽屉（默认收起） -->
+      <div id="event-log" class="collapsed">
+        <div class="log-header">
+          <span>历史事件</span>
+          <button id="log-close" title="收起">×</button>
+        </div>
         <div class="log-list"></div>
       </div>
-      <div id="timeline">
-        <div class="tl-header">
-          <span id="tl-year">960</span>
-          <div class="tl-controls">
-            <button id="tl-play">⏸ 暂停</button>
-            <button id="settings-btn">⚙ 设置</button>
-            <span class="tl-range">960 — 1279</span>
-          </div>
-        </div>
-        <div id="tl-track">
-          <div id="tl-progress"></div>
-          <div id="tl-thumb"></div>
-          <div id="tl-ticks"></div>
+
+      <!-- 详情 / 设置面板 -->
+      <div id="detail-panel" class="hidden"></div>
+      <div id="settings-panel" class="hidden"></div>
+
+      <!-- 朝代更替全屏转场横幅（跨时期边界时显示，如 1127 靖康） -->
+      <div id="era-banner">
+        <div class="era-banner-inner">
+          <div class="era-banner-year"></div>
+          <div class="era-banner-text"></div>
         </div>
       </div>
+
+      <!-- 底部居中悬浮时间轴控制条 -->
+      <div id="timeline">
+        <button id="tl-play">▶ 播放</button>
+        <div class="tl-main">
+          <div class="tl-year-wrap">
+            <span id="tl-year">960</span>
+            <span class="tl-range">960 — 1279</span>
+          </div>
+          <div id="tl-track">
+            <div id="tl-progress"></div>
+            <div id="tl-markers"></div>
+            <div id="tl-thumb"></div>
+            <div id="tl-ticks"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="loading">正在加载历史数据…</div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -25,7 +25,12 @@ export function project(lngLat) {
 
 /**
  * 用 GeoJSON 的整体范围拟合投影，并记录居中中心。
- * 必须在渲染地图 mesh 之前调用一次。
+ * 首次调用者标定投影（单例语义）；后续调用不覆盖。
+ *
+ * 设计要点：标定数据与渲染层解耦——历史疆域、现代底图、事件层
+ * 共用同一个已标定投影。即使现代底图隐藏，投影仍然有效。
+ * 推荐用历史疆域 GeoJSON（覆盖中国及周边）作为标定基准，
+ * main.js 在装配任何图层前先显式调用一次。
  * @param {object} geojson FeatureCollection
  */
 export function fitProjection(geojson) {
@@ -64,14 +69,6 @@ export function buildChinaMap(geojson) {
     color: theme.mapEdge,
     transparent: true,
     opacity: 0.6
-  });
-  const oceanMaterial = new THREE.MeshStandardMaterial({
-    color: theme.mapOcean,
-    metalness: 0.2,
-    roughness: 0.5,
-    transparent: true,
-    opacity: 0.25,
-    side: THREE.DoubleSide
   });
 
   geojson.features.forEach((feature, idx) => {

@@ -75,8 +75,9 @@ export function buildTerritoryOverlay(geojson) {
 
   geojson.features.forEach((feature) => {
     const props = feature.properties || {};
-    const fillColor = new THREE.Color(props.color || '#00f0ff');
-    const borderColor = new THREE.Color(props.borderColor || props.color || '#00f0ff');
+    // 兜底中性灰：避免数据异常时出现刺眼的赛博蓝
+    const fillColor = new THREE.Color(props.color || '#888888');
+    const borderColor = new THREE.Color(props.borderColor || props.color || '#888888');
     const opacity = props.fillOpacity !== undefined ? props.fillOpacity : 0.35;
 
     const polygons = normalizePolygons(feature.geometry);
