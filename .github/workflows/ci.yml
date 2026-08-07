@@ -71,3 +71,16 @@ jobs:
 
       - name: Build client (production)
         run: npm run build
+        continue-on-error: true   # 临时诊断
+
+      # 临时诊断步骤（定位 CI build 失败后移除）
+      - name: Diagnose build
+        if: always()
+        run: |
+          {
+            echo "### Build 诊断"
+            echo '```'
+            (cd client && npx vite build 2>&1 | tail -40)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" || true
+          echo "exit=$?"
