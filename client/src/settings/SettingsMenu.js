@@ -46,36 +46,33 @@ export class SettingsMenu {
       </div>
 
       <div class="settings-section">
-        <div class="settings-section-title">播放速度</div>
-        <label class="settings-row">
-          <input type="radio" name="speed" value="slow" ${speed === 'slow' ? 'checked' : ''}>
-          <span class="settings-label">慢</span>
-        </label>
-        <label class="settings-row">
-          <input type="radio" name="speed" value="normal" ${speed === 'normal' ? 'checked' : ''}>
-          <span class="settings-label">中</span>
-        </label>
-        <label class="settings-row">
-          <input type="radio" name="speed" value="fast" ${speed === 'fast' ? 'checked' : ''}>
-          <span class="settings-label">快</span>
-        </label>
-      </div>
-
-      <div class="settings-section">
+        <div class="settings-section-title">播放</div>
         <label class="settings-row">
           <input type="checkbox" id="settings-autoplay" ${autoplay ? 'checked' : ''}>
           <span class="settings-label">开机自动播放</span>
         </label>
+        <div class="settings-speed">
+          <label class="speed-option">
+            <input type="radio" name="speed" value="slow" ${speed === 'slow' ? 'checked' : ''}>
+            <span>慢</span>
+          </label>
+          <label class="speed-option">
+            <input type="radio" name="speed" value="normal" ${speed === 'normal' ? 'checked' : ''}>
+            <span>中</span>
+          </label>
+          <label class="speed-option">
+            <input type="radio" name="speed" value="fast" ${speed === 'fast' ? 'checked' : ''}>
+            <span>快</span>
+          </label>
+        </div>
       </div>
 
       <div class="settings-section">
+        <div class="settings-section-title">显示</div>
         <label class="settings-row">
           <input type="checkbox" id="settings-overlay" ${showOverlay ? 'checked' : ''}>
           <span class="settings-label">历史疆域</span>
         </label>
-      </div>
-
-      <div class="settings-section">
         <label class="settings-row">
           <input type="checkbox" id="settings-basemap" ${showBaseMap ? 'checked' : ''}>
           <span class="settings-label">现代底图</span>

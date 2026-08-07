@@ -121,7 +121,10 @@ router.get('/', (req, res) => {
     properties: {
       period: periodDef.label,
       year: periodDef.year,
-      _periodId: periodDef.id
+      _periodId: periodDef.id,
+      // 淡墨辅助元素（示意路径/点位，供前端水彩层叠加绘制）
+      rivers: periodsIndex.rivers || [],
+      mountains: periodsIndex.mountains || [],
     }
   });
 });

@@ -98,7 +98,11 @@ function buildWatercolorCanvas(geojson) {
   xmin -= padX; xmax += padX;
   ymin -= padY; ymax += padY;
 
-  const W = 2048;
+  // 动态纹理尺寸：按视口 × dpr 决定（上限 2048），低端机（核数 ≤4）减半省内存
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const viewW = Math.max(800, window.innerWidth || 1280);
+  const lowEnd = (navigator.hardwareConcurrency || 8) <= 4;
+  const W = Math.max(1024, Math.min(2048, Math.round(viewW * dpr * (lowEnd ? 0.6 : 1.2))));
   const H = Math.max(256, Math.round((W * (ymax - ymin)) / (xmax - xmin)));
 
   const canvas = document.createElement('canvas');
@@ -148,7 +152,8 @@ function buildWatercolorCanvas(geojson) {
       }));
       ctx.save();
       ctx.clip('evenodd');
-      const blobCount = 90 + Math.round(rng2() * 40);
+      // 低端机跳过斑驳层（省渲染时间）
+      const blobCount = lowEnd ? 0 : 90 + Math.round(rng2() * 40);
       for (let k = 0; k < blobCount; k++) {
         const cx = bx0 + rng2() * (bx1 - bx0);
         const cy = by0 + rng2() * (by1 - by0);
@@ -183,6 +188,54 @@ function buildWatercolorCanvas(geojson) {
       ctx.stroke();
       ctx.restore();
     });
+  });
+
+  // 2f. 淡墨河流（示意路径）：宽而淡的墨晕底 + 细实墨线，古地图水脉感。
+  //     数据源 periods.json 的 rivers（黄河/长江简化路径，示意用）。
+  const rivers = geojson.properties?.rivers || [];
+  rivers.forEach((river) => {
+    const pts = (river.path || []).map(([lng, lat]) => toPx(lng, lat));
+    if (pts.length < 2) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.filter = 'blur(2px)';
+    ctx.strokeStyle = 'rgba(58, 52, 40, 0.16)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.filter = 'none';
+    ctx.strokeStyle = 'rgba(58, 52, 40, 0.38)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // 2g. 山脉符号：古地图「三峰」式淡墨小三角（示意点位）
+  const mountains = geojson.properties?.mountains || [];
+  mountains.forEach((m) => {
+    const coord = m.coord || [];
+    if (coord.length < 2) return;
+    const [x, y] = toPx(coord[0], coord[1]);
+    const s = 8; // 单峰半宽（px，画布尺度；2048 画布缩到屏幕后约 3-4px）
+    ctx.save();
+    ctx.fillStyle = 'rgba(58, 52, 40, 0.5)';
+    // 三峰并列：中间高、两侧低
+    [
+      { dx: -s * 1.6, dh: s * 0.9 },
+      { dx: 0, dh: s * 1.4 },
+      { dx: s * 1.6, dh: s * 0.9 },
+    ].forEach(({ dx, dh }) => {
+      ctx.beginPath();
+      ctx.moveTo(x + dx - s * 0.6, y + s * 0.8);
+      ctx.lineTo(x + dx, y - dh);
+      ctx.lineTo(x + dx + s * 0.6, y + s * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.restore();
   });
 
   // 2e. 暖色罩：低透明暖褐罩层（soft-light），让色块与宣纸更融合

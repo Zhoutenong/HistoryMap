@@ -43,12 +43,13 @@ export class Legend {
     this.el.innerHTML = `
       <div class="legend-title">政权</div>
       ${this._entries.map(e => `
-        <div class="legend-row${e.major ? ' major' : ''}">
+        <div class="legend-row${e.major ? ' major' : ''}" data-entity="${e.entity}">
           <span class="legend-swatch" style="background:${e.color}"></span>
           <span>${e.entity}</span>
         </div>
       `).join('')}
     `;
+    this._bindHover();
 
     this.el.classList.remove('hidden');
   }
@@ -63,5 +64,32 @@ export class Legend {
     if (this._entries.length > 0) {
       this.el.classList.remove('hidden');
     }
+  }
+
+  /**
+   * 行 hover 联动地图上的政权标签：
+   * 命中的 .regime-label 加 hover-focus，其余加 hover-dim。
+   * 注意：政权标签是 CSS2DObject 元素，CSS2DRenderer 每帧覆盖其 transform，
+   * 联动只能改颜色/背景/透明度，不能写 transform 动画。
+   */
+  _bindHover() {
+    // 每次 update 重渲染后重建委托（图例在时期切换时会整体 innerHTML 重建）
+    const labels = () => [...document.querySelectorAll('.regime-label')];
+    const clear = () => {
+      labels().forEach((el) => {
+        el.classList.remove('hover-focus', 'hover-dim');
+      });
+    };
+    this.el.querySelectorAll('.legend-row').forEach((row) => {
+      row.addEventListener('mouseenter', () => {
+        const entity = row.dataset.entity;
+        clear();
+        labels().forEach((el) => {
+          if (el.textContent === entity) el.classList.add('hover-focus');
+          else el.classList.add('hover-dim');
+        });
+      });
+      row.addEventListener('mouseleave', clear);
+    });
   }
 }

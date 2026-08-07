@@ -2,7 +2,7 @@
 
 /* 古典水墨·宣纸主题变量兜底，避免 JS 加载前出现无样式闪烁 */
 :root {
-  --bg: #e6d8b5;
+  --bg: #e5d6a8;
   --text: #3a3428;
   --panelBg: rgba(244,240,228,0.96);
   --panelBorder: rgba(58,52,40,0.28);
@@ -56,12 +56,12 @@ body {
   background:
     /* 暗角：中心透明，边缘压暗偏棕褐 */
     radial-gradient(ellipse at 50% 50%,
-      rgba(230, 216, 181, 0) 0%,
-      rgba(230, 216, 181, 0) 55%,
+      rgba(229, 214, 168, 0) 0%,
+      rgba(229, 214, 168, 0) 55%,
       rgba(68, 58, 46, 0.22) 100%
     ),
     /* 暖色罩层，调低透明度让纹理透出 */
-    linear-gradient(rgba(230, 216, 181, 0.70), rgba(230, 216, 181, 0.70)),
+    linear-gradient(rgba(229, 214, 168, 0.70), rgba(229, 214, 168, 0.70)),
     url('/paper-texture.jpg') center / cover fixed,
     var(--bg);
   background-color: var(--bg);
@@ -75,7 +75,7 @@ body::before {
   inset: 0;
   background: url('/paper-grain.png') center / 400px repeat;
   mix-blend-mode: overlay;
-  opacity: 0.75;
+  opacity: 0.62;
   pointer-events: none;
   z-index: 0;
 }
@@ -109,9 +109,9 @@ body::before {
 }
 .brand-title {
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
-  letter-spacing: 3px;
+  letter-spacing: 4px;
 }
 /* 朱砂印章「宋」 */
 .brand-seal {
@@ -137,12 +137,12 @@ body::before {
   font-family: var(--font-serif);
   font-size: 13px;
   color: var(--text);
-  background: rgba(250, 246, 235, 0.82);
+  background: rgba(250, 246, 235, 0.75);
   border: 1px solid var(--panelBorder);
   border-radius: 999px;
   padding: 6px 15px;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(46, 42, 36, 0.1);
+  box-shadow: 0 1px 3px rgba(46, 42, 36, 0.08);
   transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .top-btn-icon {
@@ -170,6 +170,25 @@ body::before {
   box-shadow: 0 0 0 2px rgba(176, 58, 46, 0.18);
 }
 #log-badge.hidden { display: none; }
+
+/* 顶栏朝代下拉（与顶栏按钮同风格） */
+#dynasty-select {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(250, 246, 235, 0.75);
+  border: 1px solid var(--panelBorder);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(46, 42, 36, 0.08);
+  transition: border-color 0.15s, color 0.15s;
+}
+#dynasty-select:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* —— 场景（全屏）—— */
 #scene-container {
@@ -205,8 +224,8 @@ body::before {
   font-size: clamp(160px, 28vw, 380px);
   font-weight: 800;
   line-height: 1;
-  color: rgba(58, 52, 40, 0.07);
-  letter-spacing: 6px;
+  color: rgba(58, 52, 40, 0.09);
+  letter-spacing: 8px;
   text-align: right;
   pointer-events: none;
   user-select: none;
@@ -269,7 +288,8 @@ body::before {
   border-radius: 2px 10px 10px 2px;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(46, 42, 36, 0.18);
+  /* 纸卡感：外投影 + 内层纸白描边（古风） */
+  box-shadow: 0 2px 10px rgba(46, 42, 36, 0.18), inset 0 0 0 1px rgba(253, 248, 236, 0.55);
   transform-origin: left center;
   transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
   user-select: none;
@@ -321,6 +341,19 @@ body::before {
 }
 /* hover 某泡泡时，其他泡泡降低透明度 */
 .event-bubble.dimmed { opacity: 0.28; }
+
+/* 同屏折叠聚合泡泡：「+N 个事件」，朱砂底醒目，点击展开 */
+.fold-bubble .bubble-inner {
+  background: rgba(176, 58, 46, 0.92);
+  color: var(--accentText);
+  border-color: #8a2c22;
+  box-shadow: 0 2px 10px rgba(176, 58, 46, 0.4);
+}
+.fold-bubble .bubble-seal,
+.fold-bubble .bubble-seal::after {
+  background: var(--accentText);
+  box-shadow: none;
+}
 
 /* 出现脉冲：作用在 inner，绝不碰 .event-bubble 的 transform */
 .bubble-inner.pulse { animation: bubblePulse 0.7s ease-out; }
@@ -396,11 +429,13 @@ body::before {
 }
 #tl-year {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 1px;
+  letter-spacing: 3px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  /* 「年」字由 Timeline._render 写入 textContent（"960 年"），勿再加伪元素 */
 }
 .tl-range { font-size: 11px; color: var(--timelineTickText); }
 
@@ -506,6 +541,17 @@ body::before {
   opacity: 1;
   transition: transform 0.28s ease, opacity 0.28s ease, visibility 0s;
 }
+/* 左缘朱砂渐变装饰线，增强书签/卷轴感 */
+#detail-panel::before {
+  content: '';
+  position: absolute;
+  top: 28px;
+  bottom: 28px;
+  left: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, var(--accent) 0%, rgba(176, 58, 46, 0.15) 100%);
+  border-radius: 0 2px 2px 0;
+}
 #detail-panel.hidden {
   transform: translateX(calc(100% + 40px));
   opacity: 0;
@@ -556,6 +602,21 @@ body::before {
   line-height: 1.9;
   color: var(--text);
   opacity: 0.92;
+}
+/* 事件地点（由数据 place 字段驱动，详情头部徽章下的一行小字） */
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--timelineTickText);
+  margin: -4px 0 14px;
+  letter-spacing: 1px;
+}
+.detail-meta::before {
+  content: '◆ 地点';
+  color: var(--accent);
+  letter-spacing: 2px;
 }
 .detail-impact {
   margin-top: 18px;
@@ -615,7 +676,7 @@ body::before {
 .detail-ink-art {
   width: 100%;
   margin-top: 22px;
-  border-radius: 6px;
+  border-radius: 8px 8px 4px 4px;
   border: 1px solid rgba(46, 42, 36, 0.12);
   opacity: 0.95;
   display: block;
@@ -708,6 +769,43 @@ body::before {
   background: var(--cat);
 }
 
+/* 播放速度：三档紧凑横排胶囊（选中态朱砂反色） */
+.settings-speed {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.speed-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 0;
+  font-size: 12px;
+  font-family: var(--font-serif);
+  color: var(--text);
+  background: rgba(250, 246, 235, 0.72);
+  border: 1px solid var(--panelBorder);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.speed-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.speed-option:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.speed-option:has(input:checked) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accentText);
+  box-shadow: 0 2px 8px rgba(176, 58, 46, 0.28);
+}
+
 /* —— 左侧事件流抽屉 ——
    设计图风格：从左侧滑出，覆盖图例（图例 z-index 18 < 抽屉 19）。 */
 #event-log {
@@ -767,6 +865,33 @@ body::before {
   cursor: pointer;
 }
 #log-close:hover { color: var(--accent); opacity: 1; }
+/* 事件流搜索框 */
+.log-search {
+  flex-shrink: 0;
+  padding: 8px 14px 0;
+}
+.log-search input {
+  width: 100%;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: rgba(250, 246, 235, 0.8);
+  border: 1px solid var(--panelBorder);
+  border-radius: 999px;
+  padding: 5px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.log-search input:focus {
+  border-color: var(--accent);
+}
+.log-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--timelineTickText);
+  letter-spacing: 1px;
+}
 .log-list {
   flex: 1;
   overflow-y: auto;
@@ -820,23 +945,25 @@ body::before {
   max-height: calc(100vh - 180px);
   overflow-y: auto;
   z-index: 18;
-  background: rgba(244, 240, 228, 0.84);
-  border: 1px solid rgba(58, 52, 40, 0.22);
+  /* 更通透：底色降不透明度、边框与阴影更柔，避免「硬卡片」感 */
+  background: rgba(244, 240, 228, 0.72);
+  border: 1px solid rgba(58, 52, 40, 0.16);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 12px;
   font-family: var(--font-serif);
   line-height: 1.65;
-  box-shadow: 0 4px 16px rgba(58, 52, 40, 0.14);
+  box-shadow: 0 3px 14px rgba(58, 52, 40, 0.10);
   backdrop-filter: blur(4px);
-  pointer-events: none;
+  pointer-events: auto;   /* 行 hover 联动地图政权标签 */
+  cursor: default;
 }
 #legend.hidden { display: none; }
 .legend-title {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--accent);
-  letter-spacing: 3px;
+  letter-spacing: 4px;
   border-bottom: 1px solid var(--logHeaderBorder);
   padding-bottom: 5px;
   margin-bottom: 6px;
@@ -923,19 +1050,20 @@ body::before {
   border-radius: 3px;
 }
 
-/* —— 政权名标注（A1：地图上的政权标签，随疆域层显隐）—— */
+/* —— 政权名标注（A1：地图上的政权标签，随疆域层显隐）——
+   普通政权弱化：更透的底、更淡的墨色，避免抢地图主体；.major 保持突出 */
 .regime-label {
   font-family: var(--font-serif);
   font-size: 13px;
   letter-spacing: 2px;
-  color: rgba(46, 42, 36, 0.72);
-  background: rgba(247, 242, 230, 0.72);
+  color: rgba(46, 42, 36, 0.6);
+  background: rgba(247, 242, 230, 0.4);
   border-radius: 3px;
   padding: 1px 6px 2px;
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
-  box-shadow: 0 1px 4px rgba(46, 42, 36, 0.12);
+  box-shadow: none;
 }
 /* 主叙事政权（宋/辽/西夏/金/吐蕃/大理）：字号更大、墨色更重 */
 .regime-label.major {
@@ -945,6 +1073,15 @@ body::before {
   background: rgba(247, 242, 230, 0.82);
   letter-spacing: 3px;
   box-shadow: 0 1px 6px rgba(46, 42, 36, 0.18);
+}
+/* 图例 hover 联动（注意：不能写 transform——CSS2DRenderer 会覆盖定位） */
+.regime-label.hover-focus {
+  background: rgba(176, 58, 46, 0.16);
+  color: var(--accent);
+  font-weight: 600;
+}
+.regime-label.hover-dim {
+  opacity: 0.32;
 }
 
 /* —— 详情遮罩（B3：详情打开时压暗并锁死地图交互）—— */
@@ -1023,5 +1160,50 @@ body::before {
     left: 14px;
     bottom: -16px;
     font-size: 10px;
+  }
+
+  /* 顶栏：更紧凑 */
+  #topbar {
+    padding: 0 12px;
+  }
+  .brand-title {
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+  .top-btn {
+    padding: 5px 10px;
+  }
+  #dynasty-select {
+    max-width: 96px;
+  }
+
+  /* 详情面板：底部抽屉（全宽、上圆角、最大 60vh 滚动） */
+  #detail-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 14px 14px 0 0;
+    padding: 18px 18px 24px;
+  }
+  #detail-panel.hidden {
+    transform: translateY(calc(100% + 40px));
+  }
+
+  /* 设置面板：全屏化 */
+  #settings-panel {
+    top: 0;
+    right: 0;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    overflow-y: auto;
+  }
+
+  /* 年份大字在手机上略收 */
+  #tl-year {
+    font-size: 20px;
   }
 }

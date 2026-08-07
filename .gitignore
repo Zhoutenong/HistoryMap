@@ -18,3 +18,5 @@ server/data/geo/historical/source/
 
 # ZCode 工具本地工作目录
 .zcode/
+server/history.db-shm
+server/history.db-wal

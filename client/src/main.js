@@ -8,14 +8,15 @@ import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
 import { buildTerritoryOverlay, fadeIn } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
-import { getMap, getEvents, getMeta, getOverlay } from './api.js';
+import { getMap, getEvents, getMeta, getOverlay, getDynasties } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
 import { loadSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
 import { SettingsMenu } from './settings/SettingsMenu.js';
 import './styles.css';
 
 // 默认朝代。未来切换朝代只改这个常量 + 后端数据，地图/泡泡层无需改（AGENTS.md 扩展点）。
-const DYNASTY = 'song';
+const DYNASTY_DEFAULT = 'song';
+let currentDynasty = DYNASTY_DEFAULT;
 
 const container = document.getElementById('scene-container');
 const loadingEl = document.getElementById('loading');
@@ -73,7 +74,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 let camTween = null;
 
-// 事件泡泡实例（IIFE 内创建），供 animate 循环同步指向线
+// 事件泡泡实例（loadDynasty 内创建），供 animate 循环同步指向线
 let bubblesRef = null;
 
 // 世界坐标 → 屏幕 CSS 像素（事件泡泡指向线用；与 CSS2DRenderer 同款换算）
@@ -106,13 +107,13 @@ function focusOn(coord, zoom = 0.62) {
 
 /**
  * 取景构图：以疆域包围球为准重设相机距离与视野中心。
- * - scale：距离倍率（越大地图越小、留白越多）。默认 1.12 是全图构图；
+ * - scale：距离倍率（越大地图越小、留白越多）。默认 0.98 是全图构图；
  *   详情面板打开时用 1.28（地图缩小给右侧面板让位）。
  * - shiftX：水平偏移比例（占视口宽度），正数右移、负数左移；详情打开时 -0.16。
  * 相机相对视角方向不变（正俯 + 前倾），保证地图永远是「北朝上」平面视图。
  */
 let frameBase = null; // { center, dist } 首次标定后固定，供缩放/平移后回归
-function frameMap({ scale = 1.12, shiftX = 0 } = {}) {
+function frameMap({ scale = 0.98, shiftX = 0 } = {}) {
   if (!frameBase) return;
   const { center, dist } = frameBase;
   const d = dist * scale;
@@ -170,64 +171,56 @@ animate();
 (async () => {
   try {
     const settings = loadSettings();
+    const detailMask = document.getElementById('detail-mask');
+    const eraBanner = document.getElementById('era-banner');
+    const logBadge = document.getElementById('log-badge');
+    const tlRange = document.querySelector('.tl-range');
 
-    // 先加载 meta 确定初始年份，再决定时期
-    const meta = await getMeta(DYNASTY);
+    // —— 跨朝代状态（loadDynasty 反复更新）——
+    let periodMeta = null;    // /api/meta 返回（含 periods）
+    let currentEvents = [];   // 当前朝代事件
+    let timeline = null;
+    let bubbles = null;
+    let legend = null;
+    let eventLog = null;
+    let mapGroup = null;
+    let territoryOverlay = null;
+    let prevYear = 0;
+    let currentPeriod = '';
 
     // 按年份确定显示哪个时期的疆域：边界由后端 meta.periods 给出，前端不写死
     function getPeriodForYear(year) {
-      if (!meta.periods || meta.periods.length === 0) return null;
-      const p = meta.periods.find((x) => year >= x.start && year <= x.end);
+      if (!periodMeta || !periodMeta.periods || periodMeta.periods.length === 0) return null;
+      const p = periodMeta.periods.find((x) => year >= x.start && year <= x.end);
       return p ? p.id : null;
     }
     function periodLabel(id) {
-      const p = meta.periods && meta.periods.find((x) => x.id === id);
+      const p = periodMeta && periodMeta.periods && periodMeta.periods.find((x) => x.id === id);
       return p ? p.label : id;
     }
 
-    // 初始时期：由 meta 数据驱动；periods 缺失时退到第一个时期（最后防线）
-    const initialPeriod = getPeriodForYear(meta.startYear) || meta.periods?.[0]?.id || '1111';
-
-    const [geojson, overlayGeojson, events] = await Promise.all([
-      getMap(),
-      getOverlay(DYNASTY, initialPeriod),
-      getEvents(DYNASTY),
-    ]);
-
-    // 标定投影：用历史疆域（覆盖中国及周边）做 fitSize，
-    // 保证现代底图即使隐藏，投影仍然有效。必须在任何 project() 调用前完成。
-    fitProjection(overlayGeojson);
-
-    const mapGroup = buildChinaMap(geojson);
-    mapGroup.visible = settings.showBaseMap;  // 现代底图默认隐藏
-    scene.add(mapGroup);
-
-    // 宋代疆域叠加层（设置菜单可开关）
-    const territoryOverlay = buildTerritoryOverlay(overlayGeojson);
-    territoryOverlay.group.visible = settings.showOverlay;
-    scene.add(territoryOverlay.group);
-
-    // 地图图例
-    const legend = new Legend();
-    legend.update(overlayGeojson);
-
-    // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景。
-    // frameMap 以包围球为基准做构图（scale 越大留白越多），后续详情面板开关也复用它。
-    const focusGroup = territoryOverlay.group.children.length
-      ? territoryOverlay.group
-      : mapGroup;
-    const box = new THREE.Box3().setFromObject(focusGroup);
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const baseDist = sphere.radius / Math.sin((camera.fov * Math.PI) / 180 / 2);
-    frameBase = { center: sphere.center, dist: baseDist };
-    // 构图：scale 0.98 让地图主体占画面约六成（参考图比例），微右移平衡左侧图例
-    frameMap({ scale: 0.98, shiftX: 0.02 });
-    controls.update();
+    /** 清空 overlay group 并释放资源（时期切换/朝代切换共用） */
+    function clearOverlayGroup(group) {
+      while (group.children.length > 0) {
+        const child = group.children[0];
+        child.traverse((node) => {
+          // CSS2DRenderer 缓存不会自动清理已从 scene 移除的对象的 DOM 元素，
+          // 需手动摘除，否则旧时期政权名标签会残留在页面上
+          if (node.isCSS2DObject && node.element && node.element.parentNode) {
+            node.element.parentNode.removeChild(node.element);
+          }
+          // 水墨纹理随材质一起释放（CanvasTexture 不自动跟随 material.dispose）
+          if (node.material && node.material.map) node.material.map.dispose();
+          if (node.geometry) node.geometry.dispose();
+          if (node.material) node.material.dispose();
+        });
+        group.remove(child);
+      }
+    }
 
     // 详情面板逻辑：打开详情时暂停播放（避免读详情时年份继续跑、聚焦的泡泡过期），
-    // 关闭时恢复打开前的播放状态。timeline/bubbles 在下方创建，闭包内运行时访问，安全。
+    // 关闭时恢复打开前的播放状态。timeline/bubbles 在 loadDynasty 中创建，闭包内运行时访问。
     // 详情打开时加半透明遮罩并锁死地图交互（读详情时防止误触旋转/拾取）。
-    const detailMask = document.getElementById('detail-mask');
     let resumePlayback = false;
     function showDetail(ev) {
       resumePlayback = timeline.playing;
@@ -237,7 +230,7 @@ animate();
       // 时期名（如「北宋极盛」）：由 meta.periods 数据驱动，补充事件的时代背景
       const periodName = periodLabel(getPeriodForYear(ev.year));
       // 相关事件：按年份排序后取当前事件前后各一条（排除自身）
-      const sorted = events.slice().sort((a, b) => a.year - b.year);
+      const sorted = currentEvents.slice().sort((a, b) => a.year - b.year);
       const idx = sorted.findIndex((e) => e.id === ev.id);
       const related = [];
       if (idx > 0) related.push(sorted[idx - 1]);
@@ -250,6 +243,7 @@ animate();
           ${periodName ? `<span class="detail-cat">${periodName}</span>` : ''}
         </div>
         <h2>${ev.title}</h2>
+        ${ev.place ? `<div class="detail-meta">${ev.place}</div>` : ''}
         <div class="detail-divider"></div>
         <p class="detail-text">${ev.detail}</p>
         ${ev.impact ? `
@@ -272,7 +266,7 @@ animate();
       detailPanel.querySelectorAll('.detail-related-item').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          const target = events.find((x) => x.id === Number(btn.dataset.id));
+          const target = currentEvents.find((x) => x.id === Number(btn.dataset.id));
           if (target) jumpToEvent(target);
         });
       });
@@ -308,7 +302,6 @@ animate();
     };
 
     // 朝代更替全屏转场横幅（跨过时期边界时短暂压暗 + 时期名），约 2.6s 后自动消失
-    const eraBanner = document.getElementById('era-banner');
     let bannerTimer = null;
     function showEraBanner(year, prevLabel, nextLabel) {
       eraBanner.querySelector('.era-banner-year').textContent = `${year} 年`;
@@ -320,8 +313,7 @@ animate();
     }
 
     // 右侧历史事件流抽屉（顶栏 ☰ 按钮开关，徽标显示收起期间的新事件数）
-    const logBadge = document.getElementById('log-badge');
-    const eventLog = new EventLog({
+    eventLog = new EventLog({
       container: '#event-log',
       onPick: jumpToEvent,
       onUnread: (n) => {
@@ -335,19 +327,14 @@ animate();
     });
     document.getElementById('log-close').addEventListener('click', () => eventLog.hide());
 
-    // 事件泡泡层
-    const bubbles = new EventBubbles({
-      scene,
-      events,
-      categories: settings.categories,
-      onPick: jumpToEvent,
-      onAppear: (ev) => eventLog.add(ev),
-      toScreen: worldToScreen,
-      leadersHost: labelRenderer.domElement,
-    });
-    bubblesRef = bubbles;
     // 窗口尺寸变化时重排泡泡碰撞（锚点随布局变化）
-    window.addEventListener('resize', () => bubbles.resolve());
+    window.addEventListener('resize', () => bubbles && bubbles.resolve());
+    // 相机拖动/缩放结束（debounce 150ms）后重排碰撞，避免拖动期间泡泡瞬时重叠
+    let dragResizeTimer = null;
+    controls.addEventListener('change', () => {
+      clearTimeout(dragResizeTimer);
+      dragResizeTimer = setTimeout(() => bubbles && bubbles.resolve(), 150);
+    });
 
     // 点击空白处关闭详情（并恢复播放）；拖拽相机时取消聚焦补间（避免运镜与用户操作打架）
     renderer.domElement.addEventListener('click', () => {
@@ -363,73 +350,158 @@ animate();
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       closeDetail();
-      settingsMenu.hide();
+      settingsMenu && settingsMenu.hide();
     });
 
-    // 时间轴：当前年份的唯一状态源，起止年由后端 meta 给出
-    let prevYear = meta.startYear;
-    let currentPeriod = getPeriodForYear(meta.startYear) || '1111';
-    const timeline = new Timeline({
-      start: meta.startYear,
-      end: meta.endYear,
-      tickMs: SPEED_MAP[settings.speed] || SPEED_MAP.normal,
-      autoplay: settings.autoplay,
-      onChange: async (y) => {
-        watermark.textContent = y;
-        bubbles.update(y, prevYear);
-        territoryOverlay.update(y);
-        // 跨过时期边界时，重载疆域叠加层
-        const newPeriod = getPeriodForYear(y);
-        if (newPeriod && newPeriod !== currentPeriod) {
-          // 政权更替转场横幅（如 1127 靖康：北宋 → 南宋）
-          showEraBanner(y, periodLabel(currentPeriod), periodLabel(newPeriod));
-          currentPeriod = newPeriod;
-          try {
-            const freshOverlay = await getOverlay(DYNASTY, newPeriod);
-            // 移除旧 overlay
-            while (territoryOverlay.group.children.length > 0) {
-              const child = territoryOverlay.group.children[0];
-              child.traverse((node) => {
-                // CSS2DRenderer 缓存不会自动清理已从 scene 移除的对象的 DOM 元素，
-                // 需手动摘除，否则旧时期政权名标签会残留在页面上
-                if (node.isCSS2DObject && node.element && node.element.parentNode) {
-                  node.element.parentNode.removeChild(node.element);
-                }
-                // 水墨纹理随材质一起释放（CanvasTexture 不自动跟随 material.dispose）
-                if (node.material && node.material.map) node.material.map.dispose();
-                if (node.geometry) node.geometry.dispose();
-                if (node.material) node.material.dispose();
-              });
-              territoryOverlay.group.remove(child);
-            }
-            // 重建新 overlay
-            const newOverlay = buildTerritoryOverlay(freshOverlay);
-            // 把新 group 的资源迁移到旧 group
-            while (newOverlay.group.children.length > 0) {
-              territoryOverlay.group.add(newOverlay.group.children[0]);
-            }
-            // 新疆域淡入（材质从 0 → 各自原始 opacity）
-            fadeIn(territoryOverlay.group);
-            console.log(`[overlay] 切换到 ${newPeriod} 时期`);
-            legend.update(freshOverlay);
-          } catch (err) {
-            console.warn('[overlay] 时期切换失败:', err);
-          }
-        }
-        prevYear = y;
+    // 顶栏朝代下拉：数据来自 /api/dynasties（后端 dynasties 表）
+    const dynastySelect = document.getElementById('dynasty-select');
+    getDynasties()
+      .then((list) => {
+        dynastySelect.innerHTML = (list || [])
+          .map((d) => `<option value="${d.id}">${d.name}</option>`)
+          .join('');
+        dynastySelect.value = currentDynasty;
+      })
+      .catch((err) => console.warn('[dynasties] 朝代列表加载失败:', err));
+    dynastySelect.addEventListener('change', () => {
+      const id = dynastySelect.value;
+      if (!id || id === currentDynasty) return;
+      closeDetail();
+      loadingEl.textContent = '正在切换朝代…';
+      loadingEl.classList.remove('hidden');
+      loadDynasty(id)
+        .then(() => loadingEl.classList.add('hidden'))
+        .catch((err) => {
+          console.error('[dynasties] 朝代切换失败:', err);
+          loadingEl.textContent = '朝代数据加载失败';
+        });
+    });
+
+    // —— 核心装配：加载朝代数据并重建可切换图层（初始加载与朝代切换共用）——
+    async function loadDynasty(dynastyId) {
+      currentDynasty = dynastyId;
+      const meta = await getMeta(dynastyId);
+      periodMeta = meta;
+
+      // 初始时期：由 meta 数据驱动；periods 缺失时退到第一个时期（最后防线）
+      const initialPeriod = getPeriodForYear(meta.startYear) || meta.periods?.[0]?.id || '1111';
+      const [geojson, overlayGeojson, events] = await Promise.all([
+        getMap(),
+        getOverlay(dynastyId, initialPeriod),
+        getEvents(dynastyId),
+      ]);
+      currentEvents = events;
+
+      // 标定投影：用历史疆域（覆盖中国及周边）做 fitSize，
+      // 保证现代底图即使隐藏，投影仍然有效。必须在任何 project() 调用前完成（单例，只标定一次）。
+      fitProjection(overlayGeojson);
+
+      // 现代底图：与朝代无关，只建一次
+      if (!mapGroup) {
+        mapGroup = buildChinaMap(geojson);
+        mapGroup.visible = settings.showBaseMap;  // 现代底图默认隐藏
+        scene.add(mapGroup);
       }
-    });
-    // 初始刷新：prevYear 设为 start-1，让开局就在窗口内的事件也能触发「首次出现」
-    bubbles.update(meta.startYear, meta.startYear - 1);
-    territoryOverlay.update(meta.startYear);
-    watermark.textContent = meta.startYear;  // 水印初始值（autoplay 关闭时 onChange 不会立即触发）
 
-    // 时间轴事件刻度点：点击跳到该年并打开详情；初始按设置过滤分类
-    timeline.setEvents(events, (ev) => jumpToEvent(ev));
-    timeline.filterMarkers(settings.categories);
+      // 疆域叠加层：清旧建新
+      if (territoryOverlay) clearOverlayGroup(territoryOverlay.group);
+      territoryOverlay = buildTerritoryOverlay(overlayGeojson);
+      territoryOverlay.group.visible = settings.showOverlay;
+      scene.add(territoryOverlay.group);
 
-    // 时间轴范围标签同步为实际起止年
-    document.querySelector('.tl-range').textContent = `${meta.startYear} — ${meta.endYear}`;
+      // 地图图例
+      if (!legend) legend = new Legend();
+      legend.update(overlayGeojson);
+
+      // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景。
+      // frameMap 以包围球为基准做构图（scale 越大留白越多），后续详情面板开关也复用它。
+      const focusGroup = territoryOverlay.group.children.length
+        ? territoryOverlay.group
+        : mapGroup;
+      const box = new THREE.Box3().setFromObject(focusGroup);
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      frameBase = {
+        center: sphere.center,
+        dist: sphere.radius / Math.sin((camera.fov * Math.PI) / 180 / 2),
+      };
+      // 构图：scale 0.98 让地图主体占画面约六成（参考图比例），微右移平衡左侧图例
+      frameMap({ scale: 0.98, shiftX: 0.02 });
+      controls.update();
+
+      // 事件泡泡层：清旧建新
+      if (bubbles) bubbles.dispose();
+      // 事件流：先清空旧朝代记录（必须在 bubbles.update 触发 onAppear 之前）
+      eventLog.clear();
+      bubbles = new EventBubbles({
+        scene,
+        events,
+        categories: settings.categories,
+        onPick: jumpToEvent,
+        onAppear: (ev) => eventLog.add(ev),
+        toScreen: worldToScreen,
+        leadersHost: labelRenderer.domElement,
+      });
+      bubblesRef = bubbles;
+
+      // 时间轴：当前年份的唯一状态源，起止年由后端 meta 给出。
+      // 首次创建；朝代切换时 setRange 更新边界（onChange 闭包读跨朝代状态，可复用）。
+      if (!timeline) {
+        timeline = new Timeline({
+          start: meta.startYear,
+          end: meta.endYear,
+          tickMs: SPEED_MAP[settings.speed] || SPEED_MAP.normal,
+          autoplay: settings.autoplay,
+          onChange: async (y) => {
+            watermark.textContent = y;
+            bubbles.update(y, prevYear);
+            territoryOverlay.update(y);
+            // 跨过时期边界时，重载疆域叠加层
+            const newPeriod = getPeriodForYear(y);
+            if (newPeriod && newPeriod !== currentPeriod) {
+              // 政权更替转场横幅（如 1127 靖康：北宋 → 南宋）
+              showEraBanner(y, periodLabel(currentPeriod), periodLabel(newPeriod));
+              currentPeriod = newPeriod;
+              try {
+                const freshOverlay = await getOverlay(currentDynasty, newPeriod);
+                clearOverlayGroup(territoryOverlay.group);
+                // 重建新 overlay
+                const newOverlay = buildTerritoryOverlay(freshOverlay);
+                // 把新 group 的资源迁移到旧 group
+                while (newOverlay.group.children.length > 0) {
+                  territoryOverlay.group.add(newOverlay.group.children[0]);
+                }
+                // 新疆域淡入（材质从 0 → 各自原始 opacity）
+                fadeIn(territoryOverlay.group);
+                console.log(`[overlay] 切换到 ${newPeriod} 时期`);
+                legend.update(freshOverlay);
+                // 新 overlay 的政权标签已插入 DOM，重排泡泡避开标签（避免盖住政权名）
+                setTimeout(() => bubbles.resolve(), 100);
+              } catch (err) {
+                console.warn('[overlay] 时期切换失败:', err);
+              }
+            }
+            prevYear = y;
+          }
+        });
+      } else {
+        timeline.setRange(meta.startYear, meta.endYear);
+        timeline.setTickMs(SPEED_MAP[settings.speed] || SPEED_MAP.normal);
+      }
+
+      // 初始刷新：prevYear 设为 start-1，让开局就在窗口内的事件也能触发「首次出现」
+      prevYear = meta.startYear;
+      currentPeriod = getPeriodForYear(meta.startYear) || '1111';
+      bubbles.update(meta.startYear, meta.startYear - 1);
+      territoryOverlay.update(meta.startYear);
+      watermark.textContent = meta.startYear;  // 水印初始值（autoplay 关闭时 onChange 不会立即触发）
+
+      // 时间轴事件刻度点：点击跳到该年并打开详情；初始按设置过滤分类
+      timeline.setEvents(currentEvents, (ev) => jumpToEvent(ev));
+      timeline.filterMarkers(settings.categories);
+
+      // 时间轴范围标签同步为实际起止年
+      tlRange.textContent = `${meta.startYear} — ${meta.endYear}`;
+    }
 
     // 设置菜单：分类/速度/自动播放/底图显隐
     const settingsMenu = new SettingsMenu({
@@ -442,6 +514,8 @@ animate();
       }
     });
 
+    // 初始加载
+    await loadDynasty(currentDynasty);
     loadingEl.classList.add('hidden');
   } catch (err) {
     console.error('加载失败:', err);

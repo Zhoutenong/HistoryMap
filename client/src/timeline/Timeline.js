@@ -2,6 +2,8 @@
 // 是「当前年份」的唯一状态源，地图与泡泡层都通过 onYearChange 订阅。
 // 设计见 AGENTS.md「架构边界」一节。
 
+import { yearToPct, clampYear, tickStep } from './calc.js';
+
 export class Timeline {
   /**
    * @param {object} opts
@@ -48,7 +50,7 @@ export class Timeline {
   _renderTicks() {
     // 每隔数十年打一个刻度（较密，便于定位）
     const span = this.end - this.start;
-    const step = span > 300 ? 40 : span > 120 ? 20 : 10;
+    const step = tickStep(span);
     const frag = document.createDocumentFragment();
     for (let y = this.start; y <= this.end; y += step) {
       const t = document.createElement('div');
@@ -61,11 +63,10 @@ export class Timeline {
   }
 
   _yearToPct(y) {
-    return ((y - this.start) / (this.end - this.start)) * 100;
+    return yearToPct(y, this.start, this.end);
   }
   _pctToYear(p) {
-    const y = Math.round(this.start + (p / 100) * (this.end - this.start));
-    return Math.max(this.start, Math.min(this.end, y));
+    return clampYear(Math.round(this.start + (p / 100) * (this.end - this.start)), this.start, this.end);
   }
 
   _bind() {
@@ -152,6 +153,22 @@ export class Timeline {
       this.pause();
       this.play();
     }
+  }
+
+  /**
+   * 运行时调整时间范围（朝代切换用）：
+   * 更新边界、重渲染刻度、clamp 当前年并通知订阅者。
+   * @param {number} start
+   * @param {number} end
+   */
+  setRange(start, end) {
+    this.start = start;
+    this.end = end;
+    this.year = Math.max(start, Math.min(end, this.year));
+    this.ticksEl.innerHTML = '';
+    this._renderTicks();
+    this._render();
+    this.onChange(this.year);
   }
 
   toggle() {

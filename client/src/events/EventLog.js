@@ -20,6 +20,9 @@ export class EventLog {
     this.seen = new Set();
     /** 抽屉收起期间新增的未读数 */
     this._unread = 0;
+    /** 全部记录（供搜索过滤） */
+    this.entries = [];
+    this._bindSearch();
   }
 
   /**
@@ -38,6 +41,7 @@ export class EventLog {
       <span class="log-short">${ev.short}</span>
     `;
     entry.addEventListener('click', () => this.onPick(ev));
+    this.entries.push({ el: entry, ev });
 
     // 新条目插到最前；配合 CSS column-reverse，视觉上就是从底部冒出来，旧记录上移
     this.list.prepend(entry);
@@ -48,6 +52,40 @@ export class EventLog {
       this._unread++;
       this.onUnread(this._unread);
     }
+  }
+
+  /** 清空全部记录（朝代切换时调用） */
+  clear() {
+    this.entries = [];
+    this.seen.clear();
+    this.list.innerHTML = '';
+    this.clearUnread();
+  }
+
+  /** 搜索框过滤：按事件简称/标题模糊匹配 */
+  _bindSearch() {
+    const input = this.el.querySelector('.log-search input');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const q = input.value.trim();
+      this.entries.forEach(({ el, ev }) => {
+        const hit = !q || ev.short.includes(q) || (ev.title || '').includes(q) || String(ev.year).includes(q);
+        el.style.display = hit ? '' : 'none';
+      });
+      // 空结果提示
+      let empty = this.el.querySelector('.log-empty');
+      const visibleCount = this.entries.filter(({ el }) => el.style.display !== 'none').length;
+      if (q && visibleCount === 0) {
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.className = 'log-empty';
+          this.list.appendChild(empty);
+        }
+        empty.textContent = '没有匹配的事件';
+      } else if (empty) {
+        empty.remove();
+      }
+    });
   }
 
   /** 展开/收起抽屉；展开时清空未读 */

@@ -1,5 +1,6 @@
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { project } from '../map/ChinaMap.js';
+import { resolveCollisions } from './collisions.js';
 
 // 事件泡泡层。
 // 显示规则：泡泡只在 [year, yearEnd] 时间窗口内可见，过期自动消失。
@@ -32,6 +33,10 @@ export class EventBubbles {
     /** @type {{obj: CSS2DObject, el: HTMLElement, shift: HTMLElement, ev, dx:number, dy:number}[]} */
     this.items = [];
     this._lastYear = undefined; // 记录最近一次 update 的年份，供 setCategories 重算用
+    /** 折叠状态：同簇 ≥3 个且推挤不开时收成「+N」聚合泡泡 */
+    this._folds = [];       // [{ members: items[], aggObj }]
+    this._folded = new Set(); // 被折叠隐藏的 item
+    this._skipFoldOnce = false; // 展开后跳过本帧折叠（避免立即又收拢）
     this._buildAll();
     this._buildLeaders(leadersHost);
   }
@@ -96,6 +101,8 @@ export class EventBubbles {
    */
   update(year, prevYear) {
     this._lastYear = year;
+    // 年份变化：清掉旧折叠（聚合对象移除、成员恢复），重新按窗口评估
+    this._clearFolds();
     const cats = this.activeCategories;
     this.items.forEach(({ obj, el, ev }) => {
       const inCat = cats.includes(ev.category);
@@ -140,19 +147,19 @@ export class EventBubbles {
 
   /**
    * 屏幕空间碰撞避让：读可见泡泡的实际矩形，重叠时把「后出现者」
-   * （年份较晚）向下/向侧推挤。年份变化与窗口 resize 时调用；
+   * （年份较晚）向下/向侧推挤；同时把地图政权标签视为不可移动障碍物，
+   * 避免泡泡盖在政权名上。年份变化与窗口 resize 时调用；
    * 相机拖动期间的瞬时重叠不做实时重排（指向线每帧跟随，可接受）。
    */
   resolve() {
     const visible = this.items.filter((it) => it.obj.visible);
     // 清空偏移
     visible.forEach((it) => this._setShift(it, 0, 0));
-    if (visible.length < 2) return;
 
     // 1. 读锚点：偏移已清零，getBoundingClientRect 即未推挤时的实际位置。
     //    注意：此方法由 _scheduleResolve 在下一帧渲染后调用（元素已在 DOM 中），
     //    同步直调（如 resize）时可见元素也已在 DOM，均可测得真实矩形。
-    const nodes = visible.map((it) => {
+    const bubbleNodes = visible.map((it) => {
       const r = it.el.getBoundingClientRect();
       return {
         it,
@@ -162,14 +169,63 @@ export class EventBubbles {
         dy: 0,
       };
     });
-    // 年份早者优先不动，晚者被推挤（同坐标时按年份先后分离）
-    nodes.sort((a, b) => a.year - b.year);
 
-    const GAP = 6;        // 泡泡间留白
-    const MAX_PUSH = 64;  // 单方向最大推挤量（px）
+    // 2. 把地图政权标签加入为不可移动障碍物（年份 -Infinity，确保排序最前）
+    const labelEls = Array.from(document.querySelectorAll('.regime-label'));
+    const labelNodes = labelEls
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({
+        it: null,
+        year: -Infinity,
+        rect: { x: r.left, y: r.top, w: r.width, h: r.height },
+        dx: 0,
+        dy: 0,
+      }));
 
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
+    // 刚切换时期/首次渲染时，CSS2DRenderer 可能还没把元素插回 DOM，
+    // 此时所有矩形都是 0 —— 延迟一帧重试（有上限，防死循环）
+    const needRetry =
+      (labelEls.length > 0 && labelNodes.length === 0) ||
+      (visible.length > 0 && bubbleNodes.length === 0);
+    if (needRetry && (this._resolveTries || 0) < 4) {
+      this._resolveTries = (this._resolveTries || 0) + 1;
+      this._scheduleResolve();
+      return;
+    }
+    this._resolveTries = 0;
+
+    const nodes = [...labelNodes, ...bubbleNodes];
+    if (nodes.length < 2) return;
+
+    // 推挤逻辑为纯函数（collisions.js），便于单测；障碍物（标签）标记 fixed 不可推
+    const shifts = resolveCollisions(
+      nodes.map((nd) => ({ ...nd, fixed: !nd.it })),
+      { gap: 6, maxPush: 64 }
+    );
+    nodes.forEach((nd, i) => {
+      if (nd.it) this._setShift(nd.it, shifts[i].dx, shifts[i].dy);
+    });
+    this._applyFolds(bubbleNodes);
+  }
+
+  /**
+   * 同屏折叠：推挤后仍互相重叠的泡泡构成「簇」；
+   * 簇 ≥3 个时收成「+N」聚合泡泡（点击展开），避免画面拥挤。
+   * 展开后的下一帧跳过折叠（_skipFoldOnce），让用户能看到明细。
+   */
+  _applyFolds(nodes) {
+    if (this._skipFoldOnce) {
+      this._skipFoldOnce = false;
+      return;
+    }
+    if (nodes.length < 3) return;
+    // 并查集按「推挤后仍重叠」聚簇
+    const n = nodes.length;
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
         const a = nodes[i];
         const b = nodes[j];
         const ax = a.rect.x + a.dx;
@@ -178,21 +234,81 @@ export class EventBubbles {
         const by = b.rect.y + b.dy;
         const ox = Math.min(ax + a.rect.w, bx + b.rect.w) - Math.max(ax, bx);
         const oy = Math.min(ay + a.rect.h, by + b.rect.h) - Math.max(ay, by);
-        if (ox <= 0 || oy <= 0) continue;
-
-        // 优先向下推（视觉上自然）；垂直将超限时改水平推挤
-        const verticalRoom = MAX_PUSH - Math.abs(b.dy);
-        if (oy + GAP <= verticalRoom) {
-          b.dy += oy + GAP;
-        } else {
-          const dir = b.dx <= 0 ? 1 : -1; // 优先向右，已右偏则向左
-          const need = Math.min(ox + GAP, MAX_PUSH);
-          b.dx += need * dir;
-        }
+        if (ox > 0 && oy > 0) parent[find(i)] = find(j);
       }
     }
+    const groups = new Map();
+    nodes.forEach((nd, i) => {
+      const root = find(i);
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root).push(nd);
+    });
+    groups.forEach((group) => {
+      if (group.length < 3) return;
+      const members = group.map((g) => g.it);
+      members.forEach((it) => {
+        this._folded.add(it);
+        it.obj.visible = false; // 渲染器下一帧隐藏
+      });
+      this._createFold(members);
+    });
+  }
 
-    nodes.forEach((n) => this._setShift(n.it, n.dx, n.dy));
+  /** 创建「+N」聚合泡泡（位置取成员世界坐标平均） */
+  _createFold(members) {
+    let sx = 0;
+    let sy = 0;
+    members.forEach((it) => {
+      sx += it.obj.position.x;
+      sy += it.obj.position.y;
+    });
+    sx /= members.length;
+    sy /= members.length;
+
+    const el = document.createElement('div');
+    el.className = 'event-bubble fold-bubble';
+    const inner = document.createElement('span');
+    inner.className = 'bubble-inner cat-era';
+    inner.innerHTML = `<span class="bubble-seal"></span><span class="bubble-short">+${members.length} 个事件</span>`;
+    el.appendChild(inner);
+    inner.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._expandFold(members);
+    });
+    const obj = new CSS2DObject(el);
+    obj.position.set(sx, sy, 12);
+    this.scene.add(obj);
+    this._folds.push({ members, aggObj: obj });
+  }
+
+  /** 展开折叠：移除聚合对象、恢复成员可见，并跳过本帧重折叠 */
+  _expandFold(members) {
+    const f = this._folds.find((x) => x.members === members);
+    if (f) {
+      if (f.aggObj.element && f.aggObj.element.parentNode) {
+        f.aggObj.element.parentNode.removeChild(f.aggObj.element);
+      }
+      this.scene.remove(f.aggObj);
+      this._folds = this._folds.filter((x) => x !== f);
+    }
+    members.forEach((it) => {
+      this._folded.delete(it);
+      it.obj.visible = true;
+    });
+    this._skipFoldOnce = true;
+    this._scheduleResolve();
+  }
+
+  /** 清空全部折叠（年份变化时调用） */
+  _clearFolds() {
+    this._folds.forEach(({ aggObj }) => {
+      if (aggObj.element && aggObj.element.parentNode) {
+        aggObj.element.parentNode.removeChild(aggObj.element);
+      }
+      this.scene.remove(aggObj);
+    });
+    this._folds = [];
+    this._folded.clear();
   }
 
   /**
@@ -211,15 +327,43 @@ export class EventBubbles {
       return;
     }
     svg.style.display = 'block';
-    let markup = '';
-    shifted.forEach((it) => {
+    // 轻量缓存：位置/颜色未变时跳过 innerHTML 重建（每帧调用，避免无谓 DOM 解析）
+    let key = `${shifted.length}|`;
+    const parts = shifted.map((it) => {
       const [sx, sy] = this.toScreen(it.obj.position.x, it.obj.position.y, it.obj.position.z);
       const r = it.el.getBoundingClientRect();
+      const inner = it.el.querySelector('.bubble-inner');
+      const catColor = inner
+        ? (getComputedStyle(inner).getPropertyValue('--cat').trim() || '#b03a2e')
+        : '#b03a2e';
+      return { it, sx, sy, r, catColor };
+    });
+    parts.forEach(({ sx, sy, r, catColor }) => {
+      key += `${sx.toFixed(1)},${sy.toFixed(1)},${r.left.toFixed(1)},${r.top.toFixed(1)},${catColor};`;
+    });
+    if (key === this._leadersKey) return;
+    this._leadersKey = key;
+
+    let markup = '';
+    parts.forEach(({ sx, sy, r, catColor }) => {
       const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      // 线连到泡泡底边中点（视觉上更自然），锚点画朱砂圆点（带纸色描边，色块上更醒目）
-      markup += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${(r.top + 2).toFixed(1)}" stroke="rgba(58,52,40,0.62)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
-      markup += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="3" fill="#b03a2e" stroke="#fdf8ec" stroke-width="1" opacity="0.92"/>`;
+      const topY = r.top + 2;
+      // 方向（锚点 → 泡泡底边），线终点留出箭头空间
+      const dx = cx - sx;
+      const dy = topY - sy;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const endX = cx - ux * 6;
+      const endY = topY - uy * 6;
+      // 箭头三角（指向泡泡）与锚点圆点
+      const ax = endX + ux * 5;
+      const ay = endY + uy * 5;
+      const px = -uy;
+      const py = ux;
+      markup += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${endX.toFixed(1)}" y2="${endY.toFixed(1)}" stroke="rgba(58,52,40,0.62)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      markup += `<polygon points="${ax.toFixed(1)},${ay.toFixed(1)} ${(endX + px * 3.5).toFixed(1)},${(endY + py * 3.5).toFixed(1)} ${(endX - px * 3.5).toFixed(1)},${(endY - py * 3.5).toFixed(1)}" fill="${catColor}" opacity="0.85"/>`;
+      markup += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="3" fill="${catColor}" stroke="#fdf8ec" stroke-width="1" opacity="0.92"/>`;
     });
     svg.innerHTML = markup;
   }
@@ -246,5 +390,16 @@ export class EventBubbles {
     this.items.forEach((it) => {
       it.el.classList.toggle('is-focus', it.ev === event);
     });
+  }
+
+  /** 销毁全部泡泡与聚合对象（朝代切换时调用，之后可重建新实例） */
+  dispose() {
+    this._clearFolds();
+    this.items.forEach(({ obj, el }) => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+      this.scene.remove(obj);
+    });
+    this.items = [];
+    if (this.leadersSvg) this.leadersSvg.innerHTML = '';
   }
 }

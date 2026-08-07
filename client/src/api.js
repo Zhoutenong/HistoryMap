@@ -33,3 +33,8 @@ export function getEvents(dynasty = 'song') {
 export function getMeta(dynasty = 'song') {
   return fetch(`${BASE}/meta?dynasty=${dynasty}`).then(handle);
 }
+
+/** 获取全部朝代列表（顶栏朝代下拉） */
+export function getDynasties() {
+  return fetch(`${BASE}/dynasties`).then(handle);
+}

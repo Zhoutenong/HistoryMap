@@ -15,6 +15,7 @@
           <span class="brand-seal">宋</span>
         </div>
         <div class="top-actions">
+          <select id="dynasty-select" title="选择朝代" aria-label="选择朝代"></select>
           <button id="log-toggle" class="top-btn" title="历史事件流">
             <span class="top-btn-icon">☰</span><span class="top-btn-label">事件</span>
             <span id="log-badge" class="hidden"></span>
@@ -36,6 +37,9 @@
         <div class="log-header">
           <span>历史事件</span>
           <button id="log-close" title="收起">×</button>
+        </div>
+        <div class="log-search">
+          <input type="text" id="log-search-input" placeholder="搜索事件…" aria-label="搜索事件">
         </div>
         <div class="log-list"></div>
       </div>

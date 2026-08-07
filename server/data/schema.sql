@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS events (
   title       TEXT NOT NULL,           -- 详情面板标题
   detail      TEXT NOT NULL,           -- 详情正文
   impact      TEXT NOT NULL DEFAULT '', -- 事件影响（详情面板「影响」栏，可为空）
+  place       TEXT NOT NULL DEFAULT '', -- 事件地点（详情面板「地点」徽章，如「陈桥驿·开封」）
   category    TEXT NOT NULL DEFAULT 'era'  -- 事件分类：era 时代格局 / figure 名人轨迹 / military 军事·领土 / economy 经济变革 / invention 重要发明
 );
 
