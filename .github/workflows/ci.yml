@@ -29,58 +29,21 @@ jobs:
             client/package-lock.json
             server/package-lock.json
 
+      # npm ci 加网络重试：CI 偶发 registry 拉取瞬时失败（历史 3 次 flaky 均为此类）
       - name: Install root dependencies
-        run: npm ci
+        run: npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000
 
       - name: Install client dependencies
-        run: npm --prefix client ci
-        continue-on-error: true   # 临时诊断：失败不中断，走 Diagnose 步骤输出原因
-
-      # 临时诊断步骤（定位首次 CI 失败后移除）
-      - name: Diagnose client install
-        if: always()
-        run: |
-          node -v
-          npm -v
-          echo "--- lockfile head ---"
-          node -e "const l=require('./client/package-lock.json'); console.log('lockfileVersion:', l.lockfileVersion, '| packages:', Object.keys(l.packages||{}).length)"
-          echo "--- npm ls client (exit tolerated) ---"
-          (cd client && npm ls --depth=0 2>&1 | head -30) || true
+        run: npm --prefix client ci --fetch-retries=5 --fetch-retry-mintimeout=20000
 
       - name: Install server dependencies
-        run: npm --prefix server ci
+        run: npm --prefix server ci --fetch-retries=5 --fetch-retry-mintimeout=20000
 
       - name: Lint
         run: npm run lint
 
       - name: Run unit tests
         run: npm run test
-        continue-on-error: true   # 临时诊断：失败不中断，输出真实错误
-
-      # 临时诊断步骤（定位 CI test 失败后移除）
-      - name: Diagnose tests
-        if: always()
-        run: |
-          {
-            echo "### Test 诊断"
-            echo '```'
-            (cd client && npx vitest run 2>&1 | tail -50)
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY" || true
-          echo "exit=$?"
 
       - name: Build client (production)
         run: npm run build
-        continue-on-error: true   # 临时诊断
-
-      # 临时诊断步骤（定位 CI build 失败后移除）
-      - name: Diagnose build
-        if: always()
-        run: |
-          {
-            echo "### Build 诊断"
-            echo '```'
-            (cd client && npx vite build 2>&1 | tail -40)
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY" || true
-          echo "exit=$?"
