@@ -34,6 +34,18 @@ jobs:
 
       - name: Install client dependencies
         run: npm --prefix client ci
+        continue-on-error: true   # 临时诊断：失败不中断，走 Diagnose 步骤输出原因
+
+      # 临时诊断步骤（定位首次 CI 失败后移除）
+      - name: Diagnose client install
+        if: always()
+        run: |
+          node -v
+          npm -v
+          echo "--- lockfile head ---"
+          node -e "const l=require('./client/package-lock.json'); console.log('lockfileVersion:', l.lockfileVersion, '| packages:', Object.keys(l.packages||{}).length)"
+          echo "--- npm ls client (exit tolerated) ---"
+          (cd client && npm ls --depth=0 2>&1 | head -30) || true
 
       - name: Install server dependencies
         run: npm --prefix server ci
