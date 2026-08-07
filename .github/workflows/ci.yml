@@ -18,11 +18,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 无 npm workspaces：根 / client / server 三处独立 package.json 与 lockfile
-      - name: Setup Node.js 20
+      # Node 20 runner 已弃用（actions 被强制跑在 Node 24，setup-node 安装 Node 20
+      # 存在间歇兼容问题）；vitest4/vite5/better-sqlite3 均兼容 Node 24
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: |
             package-lock.json
