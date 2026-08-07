@@ -1,5 +1,7 @@
 # HistoryMap · 中国历史地图
 
+![CI](https://github.com/Zhoutenong/HistoryMap/actions/workflows/ci.yml/badge.svg)
+
 基于 three.js 的中国历史地图交互式可视化，首期为**宋朝（960–1279）**。
 
 主画面是一张中国地图，下方时间轴自动播放（可暂停/拖动），时间推进时地图上弹出历史事件泡泡，点击查看详情。顶栏朝代下拉可在已播种的朝代间切换。
