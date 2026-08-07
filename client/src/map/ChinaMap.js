@@ -56,7 +56,7 @@ export function buildChinaMap(geojson) {
 
   const provinceShape = new THREE.Shape();
   const extrudeSettings = {
-    depth: 6,           // 薄板厚度，给一点立体感
+    depth: 1.5,         // 薄片厚度：参考图是平面古地图，不需要 3D 立体感
     bevelEnabled: false
   };
 

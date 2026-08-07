@@ -21,7 +21,7 @@ export class Legend {
       return;
     }
 
-    // 提取所有唯一 entity + color
+    // 提取所有唯一 entity + color（labelMajor 主叙事政权加粗显示）
     const seen = new Set();
     this._entries = [];
     for (const feat of overlayGeojson.features) {
@@ -30,7 +30,7 @@ export class Legend {
       const color = props.color;
       if (entity && color && !seen.has(entity)) {
         seen.add(entity);
-        this._entries.push({ entity, color });
+        this._entries.push({ entity, color, major: !!props.labelMajor });
       }
     }
 
@@ -39,13 +39,16 @@ export class Legend {
       return;
     }
 
-    // 渲染
-    this.el.innerHTML = this._entries.map(e => `
-      <div class="legend-row">
-        <span class="legend-swatch" style="background:${e.color}"></span>
-        <span>${e.entity}</span>
-      </div>
-    `).join('');
+    // 渲染：顶部小标题「政权」（设计图风格），每行色块 + 政权名
+    this.el.innerHTML = `
+      <div class="legend-title">政权</div>
+      ${this._entries.map(e => `
+        <div class="legend-row${e.major ? ' major' : ''}">
+          <span class="legend-swatch" style="background:${e.color}"></span>
+          <span>${e.entity}</span>
+        </div>
+      `).join('')}
+    `;
 
     this.el.classList.remove('hidden');
   }

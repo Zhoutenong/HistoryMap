@@ -45,22 +45,25 @@ export function getDb() {
 function initSchema(db) {
   const sql = readFileSync(join(DATA_DIR, 'schema.sql'), 'utf8');
   db.run(sql);
-  migrateEventsCategory(db);
+  migrateEventsColumn(db, 'category', "TEXT NOT NULL DEFAULT 'era'");
+  migrateEventsColumn(db, 'impact', "TEXT NOT NULL DEFAULT ''");
 }
 
 /**
- * 幂等迁移：给已存在的老 history.db 补 events.category 列。
+ * 幂等迁移：给已存在的老 history.db 补 events 新列。
  * 新库列已在 schema.sql 里；老库（CREATE TABLE IF NOT EXISTS 命中旧表）则靠这里 ALTER。
  * 用 PRAGMA table_info 查列是否存在，避免重复 ALTER 报错。
+ * @param {string} col 列名
+ * @param {string} def 列定义（含默认值）
  */
-function migrateEventsCategory(db) {
+function migrateEventsColumn(db, col, def) {
   const stmt = db.prepare('PRAGMA table_info(events)');
   const cols = [];
   while (stmt.step()) cols.push(stmt.getAsObject().name);
   stmt.free();
-  if (cols.includes('category')) return;
-  db.run("ALTER TABLE events ADD COLUMN category TEXT NOT NULL DEFAULT 'era'");
-  console.log('[db] 迁移：events 表已添加 category 列');
+  if (cols.includes(col)) return;
+  db.run(`ALTER TABLE events ADD COLUMN ${col} ${def}`);
+  console.log(`[db] 迁移：events 表已添加 ${col} 列`);
 }
 
 /**

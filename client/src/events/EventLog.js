@@ -31,7 +31,8 @@ export class EventLog {
     this.seen.add(ev.id);
 
     const entry = document.createElement('div');
-    entry.className = 'log-entry';
+    // cat-xxx 供 CSS 按分类给条目左侧色条配色（与泡泡/刻度点共用 --cat）
+    entry.className = `log-entry cat-${ev.category || 'era'}`;
     entry.innerHTML = `
       <span class="log-year">${ev.year} 年</span>
       <span class="log-short">${ev.short}</span>

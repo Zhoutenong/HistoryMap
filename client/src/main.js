@@ -6,11 +6,11 @@ import { buildChinaMap, fitProjection, project } from './map/ChinaMap.js';
 import { Timeline } from './timeline/Timeline.js';
 import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
-import { buildTerritoryOverlay } from './map/TerritoryOverlay.js';
+import { buildTerritoryOverlay, fadeIn } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
 import { getMap, getEvents, getMeta, getOverlay } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
-import { loadSettings, SPEED_MAP } from './settings/store.js';
+import { loadSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
 import { SettingsMenu } from './settings/SettingsMenu.js';
 import './styles.css';
 
@@ -26,12 +26,14 @@ const theme = getTheme();
 
 // —— three.js 基础三件套 ——
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(theme.bg);
+// 场景透明（alpha），让页面宣纸纹理透出为地图背景；不要设置 scene.background
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
 camera.position.set(0, -650, 760);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0);  // 透明清屏
 renderer.setPixelRatio(window.devicePixelRatio);
 container.appendChild(renderer.domElement);
 
@@ -53,8 +55,10 @@ scene.add(dirLight);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.minDistance = 300;
-controls.maxDistance = 2000;
+// 参考图是平面古地图：锁定旋转，只保留滚轮缩放 + 拖动平移
+controls.enableRotate = false;
+controls.minDistance = 350;
+controls.maxDistance = 4200;
 controls.target.set(0, 0, 0);
 
 // 详情面板
@@ -68,6 +72,18 @@ const watermark = document.getElementById('year-watermark');
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 let camTween = null;
+
+// 事件泡泡实例（IIFE 内创建），供 animate 循环同步指向线
+let bubblesRef = null;
+
+// 世界坐标 → 屏幕 CSS 像素（事件泡泡指向线用；与 CSS2DRenderer 同款换算）
+const _v3 = new THREE.Vector3();
+function worldToScreen(x, y, z) {
+  _v3.set(x, y, z).project(camera);
+  const w = container.clientWidth / 2;
+  const h = container.clientHeight / 2;
+  return [_v3.x * w + w, -_v3.y * h + h];
+}
 
 /** 平滑聚焦到某经纬度：目标设为事件点，相机沿原视角方向适度拉近。 */
 function focusOn(coord, zoom = 0.62) {
@@ -85,6 +101,35 @@ function focusOn(coord, zoom = 0.62) {
       px: tx + dx * zoom, py: ty + dy * zoom, pz: dz * zoom,
       tx, ty, tz: 0,
     },
+  };
+}
+
+/**
+ * 取景构图：以疆域包围球为准重设相机距离与视野中心。
+ * - scale：距离倍率（越大地图越小、留白越多）。默认 1.12 是全图构图；
+ *   详情面板打开时用 1.28（地图缩小给右侧面板让位）。
+ * - shiftX：水平偏移比例（占视口宽度），正数右移、负数左移；详情打开时 -0.16。
+ * 相机相对视角方向不变（正俯 + 前倾），保证地图永远是「北朝上」平面视图。
+ */
+let frameBase = null; // { center, dist } 首次标定后固定，供缩放/平移后回归
+function frameMap({ scale = 1.12, shiftX = 0 } = {}) {
+  if (!frameBase) return;
+  const { center, dist } = frameBase;
+  const d = dist * scale;
+  // 水平偏移换算：屏幕比例 → 世界单位（按当前取景距离的可见半宽）
+  const halfW = d * Math.tan((camera.fov * Math.PI) / 180 / 2) * camera.aspect;
+  const shift = shiftX * 2 * halfW;
+  const tweenTo = {
+    px: center.x + shift, py: center.y - d * 0.3, pz: center.z + d * 0.95,
+    tx: center.x + shift, ty: center.y, tz: center.z,
+  };
+  camTween = {
+    t: 0,
+    from: {
+      px: camera.position.x, py: camera.position.y, pz: camera.position.z,
+      tx: controls.target.x, ty: controls.target.y, tz: controls.target.z,
+    },
+    to: tweenTo,
   };
 }
 
@@ -115,6 +160,8 @@ function animate() {
   }
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
+  // 指向线每帧跟随（泡泡被推挤后，线从事件真实位置连到泡泡）
+  if (bubblesRef) bubblesRef.syncLeaders();
 }
 animate();
 
@@ -164,42 +211,92 @@ animate();
     const legend = new Legend();
     legend.update(overlayGeojson);
 
-    // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景
+    // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景。
+    // frameMap 以包围球为基准做构图（scale 越大留白越多），后续详情面板开关也复用它。
     const focusGroup = territoryOverlay.group.children.length
       ? territoryOverlay.group
       : mapGroup;
     const box = new THREE.Box3().setFromObject(focusGroup);
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    controls.target.copy(sphere.center);
-    const dist = sphere.radius / Math.sin((camera.fov * Math.PI) / 180 / 2);
-    camera.position.set(sphere.center.x, sphere.center.y - dist * 0.25, dist);
+    const baseDist = sphere.radius / Math.sin((camera.fov * Math.PI) / 180 / 2);
+    frameBase = { center: sphere.center, dist: baseDist };
+    // 构图：scale 0.98 让地图主体占画面约六成（参考图比例），微右移平衡左侧图例
+    frameMap({ scale: 0.98, shiftX: 0.02 });
     controls.update();
 
     // 详情面板逻辑：打开详情时暂停播放（避免读详情时年份继续跑、聚焦的泡泡过期），
     // 关闭时恢复打开前的播放状态。timeline/bubbles 在下方创建，闭包内运行时访问，安全。
+    // 详情打开时加半透明遮罩并锁死地图交互（读详情时防止误触旋转/拾取）。
+    const detailMask = document.getElementById('detail-mask');
     let resumePlayback = false;
     function showDetail(ev) {
       resumePlayback = timeline.playing;
       timeline.pause();
+      // 分类名（设计图详情面板的「时代格局/军事·领土」徽章）；无匹配时不显示
+      const catLabel = (CATEGORIES.find((c) => c.id === ev.category) || {}).label || '';
+      // 时期名（如「北宋极盛」）：由 meta.periods 数据驱动，补充事件的时代背景
+      const periodName = periodLabel(getPeriodForYear(ev.year));
+      // 相关事件：按年份排序后取当前事件前后各一条（排除自身）
+      const sorted = events.slice().sort((a, b) => a.year - b.year);
+      const idx = sorted.findIndex((e) => e.id === ev.id);
+      const related = [];
+      if (idx > 0) related.push(sorted[idx - 1]);
+      if (idx >= 0 && idx < sorted.length - 1) related.push(sorted[idx + 1]);
       detailPanel.innerHTML = `
         <button class="detail-close" title="关闭">×</button>
-        <div class="detail-year">${ev.year} 年</div>
+        <div class="detail-head">
+          <span class="detail-year">${ev.year} 年</span>
+          ${catLabel ? `<span class="detail-cat">${catLabel}</span>` : ''}
+          ${periodName ? `<span class="detail-cat">${periodName}</span>` : ''}
+        </div>
         <h2>${ev.title}</h2>
-        <p>${ev.detail}</p>
+        <div class="detail-divider"></div>
+        <p class="detail-text">${ev.detail}</p>
+        ${ev.impact ? `
+          <div class="detail-impact">
+            <div class="detail-impact-title">影 响</div>
+            <p>${ev.impact}</p>
+          </div>` : ''}
+        ${related.length ? `
+          <div class="detail-related">
+            <div class="detail-related-title">相关事件</div>
+            <div class="detail-related-list">
+              ${related.map((r) => `
+                <button type="button" class="detail-related-item" data-id="${r.id}">${r.year} · ${r.short}</button>
+              `).join('')}
+            </div>
+          </div>` : ''}
+        <img src="/ink-landscape.png" class="detail-ink-art" alt="水墨山水">
       `;
+      // 相关事件点击：跳到该事件并刷新详情
+      detailPanel.querySelectorAll('.detail-related-item').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const target = events.find((x) => x.id === Number(btn.dataset.id));
+          if (target) jumpToEvent(target);
+        });
+      });
       detailPanel.classList.remove('hidden');
+      detailMask.classList.remove('hidden');
+      controls.enabled = false;
       detailPanel.querySelector('.detail-close').addEventListener('click', (e) => {
         e.stopPropagation();
         closeDetail();
       });
       bubbles.highlight(ev);
+      // 打开详情：地图缩小 + 左移，给右侧面板让位（构图级重取景）
+      frameMap({ scale: 1.28, shiftX: -0.16 });
       // 点击事件：相机平滑聚焦到事件位置
       focusOn(ev.coord);
     }
 
     function closeDetail() {
       detailPanel.classList.add('hidden');
+      detailMask.classList.add('hidden');
+      controls.enabled = true;
       bubbles.highlight(null);
+      // 关闭详情：回到全图构图（与初始构图一致）
+      frameMap({ scale: 0.98, shiftX: 0.02 });
       if (resumePlayback) timeline.play();
       resumePlayback = false;
     }
@@ -244,8 +341,13 @@ animate();
       events,
       categories: settings.categories,
       onPick: jumpToEvent,
-      onAppear: (ev) => eventLog.add(ev)
+      onAppear: (ev) => eventLog.add(ev),
+      toScreen: worldToScreen,
+      leadersHost: labelRenderer.domElement,
     });
+    bubblesRef = bubbles;
+    // 窗口尺寸变化时重排泡泡碰撞（锚点随布局变化）
+    window.addEventListener('resize', () => bubbles.resolve());
 
     // 点击空白处关闭详情（并恢复播放）；拖拽相机时取消聚焦补间（避免运镜与用户操作打架）
     renderer.domElement.addEventListener('click', () => {
@@ -254,6 +356,8 @@ animate();
     renderer.domElement.addEventListener('pointerdown', () => {
       camTween = null;
     });
+    // 点遮罩 = 关闭详情（遮罩挡住地图，避免误触，也天然替代了上面的 canvas 点击关闭）
+    detailMask.addEventListener('click', closeDetail);
 
     // Esc 关闭详情 / 设置面板
     window.addEventListener('keydown', (e) => {
@@ -286,6 +390,13 @@ animate();
             while (territoryOverlay.group.children.length > 0) {
               const child = territoryOverlay.group.children[0];
               child.traverse((node) => {
+                // CSS2DRenderer 缓存不会自动清理已从 scene 移除的对象的 DOM 元素，
+                // 需手动摘除，否则旧时期政权名标签会残留在页面上
+                if (node.isCSS2DObject && node.element && node.element.parentNode) {
+                  node.element.parentNode.removeChild(node.element);
+                }
+                // 水墨纹理随材质一起释放（CanvasTexture 不自动跟随 material.dispose）
+                if (node.material && node.material.map) node.material.map.dispose();
                 if (node.geometry) node.geometry.dispose();
                 if (node.material) node.material.dispose();
               });
@@ -297,6 +408,8 @@ animate();
             while (newOverlay.group.children.length > 0) {
               territoryOverlay.group.add(newOverlay.group.children[0]);
             }
+            // 新疆域淡入（材质从 0 → 各自原始 opacity）
+            fadeIn(territoryOverlay.group);
             console.log(`[overlay] 切换到 ${newPeriod} 时期`);
             legend.update(freshOverlay);
           } catch (err) {

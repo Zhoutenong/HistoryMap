@@ -8,6 +8,18 @@
 
 ## 快速开始
 
+### 方式一：双击启动器（推荐，Windows）
+
+```text
+1. 首次使用：在项目根目录打开终端执行  npm run install:all
+2. 双击  start-dev.bat    —— 检查环境后自动启动前后端并打开浏览器
+3. 双击  stop-dev.bat    —— 停止前后端服务
+```
+
+启动器会检查 Node.js / 依赖 / 端口占用，缺什么会提示；前后端各开一个独立窗口。
+
+### 方式二：命令行
+
 ```bash
 # 1. 安装三处依赖（根 / server / client）
 npm run install:all
@@ -27,6 +39,12 @@ npm run dev:server     # 仅后端
 npm run dev:client     # 仅前端
 npm run build          # 构建前端到 client/dist/
 ```
+
+## 快捷键
+
+- `空格` 播放 / 暂停时间轴
+- `← / →` 逐年前进 / 后退
+- `Esc` 关闭详情 / 设置面板
 
 ## API
 

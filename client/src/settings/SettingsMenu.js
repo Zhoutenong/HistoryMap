@@ -93,11 +93,14 @@ export class SettingsMenu {
 
     // 面板内交互统一在面板上委托
     this.panel.addEventListener('change', (e) => this._onChange(e));
+    // 关闭按钮 + 阻止冒泡合并到同一个 capture 监听：
+    // capture 阶段的 stopPropagation 会掐死事件传播（同元素 bubble 阶段的
+    // listener 也不会执行），所以「× 关闭」的判断必须放在这里，否则按钮点击失效。
     this.panel.addEventListener('click', (e) => {
       if (e.target.classList.contains('settings-close')) this.hide();
-    });
-    // 阻止面板内点击冒泡到地图（避免关闭详情面板/触发射线拾取）
-    this.panel.addEventListener('click', (e) => e.stopPropagation(), true);
+      // 阻止面板内点击冒泡到地图（避免关闭详情面板/触发射线拾取）
+      e.stopPropagation();
+    }, true);
   }
 
   _onChange(e) {

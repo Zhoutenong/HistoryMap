@@ -86,7 +86,9 @@ npm run build          # 输出到 client/dist/
   "coord": [114.35, 34.52],
   "short": "陈桥兵变",
   "title": "陈桥兵变 · 北宋建立",
-  "detail": "后周大将赵匡胤……"
+  "detail": "后周大将赵匡胤……",
+  "impact": "结束五代十国乱局……",
+  "category": "era"
 }
 ```
 

@@ -2,44 +2,44 @@
 
 /* 古典水墨·宣纸主题变量兜底，避免 JS 加载前出现无样式闪烁 */
 :root {
-  --bg: #f2ecdc;
-  --text: #2e2a24;
-  --panelBg: rgba(250,246,235,0.95);
-  --panelBorder: rgba(46,42,36,0.28);
-  --panelShadow: rgba(46,42,36,0.18);
+  --bg: #e6d8b5;
+  --text: #3a3428;
+  --panelBg: rgba(244,240,228,0.96);
+  --panelBorder: rgba(58,52,40,0.28);
+  --panelShadow: rgba(58,52,40,0.22);
   --accent: #b03a2e;
   --accentText: #fdf8ec;
   --accentHover: #c4503f;
   --bubble: rgba(250,246,235,0.96);
   --bubbleHover: rgba(176,58,46,0.96);
-  --bubbleText: #2e2a24;
-  --bubbleBorder: rgba(46,42,36,0.4);
+  --bubbleText: #3a3428;
+  --bubbleBorder: rgba(58,52,40,0.4);
   --bubbleFocus: #b03a2e;
   --bubbleFocusText: #fdf8ec;
   --bubbleFocusBorder: #8a2c22;
   --bubbleDot: #b03a2e;
   --timelineBgStart: rgba(250,246,235,0.95);
   --timelineBgEnd: rgba(250,246,235,0.86);
-  --timelineTrack: rgba(46,42,36,0.14);
+  --timelineTrack: rgba(58,52,40,0.14);
   --timelineProgressStart: #b03a2e;
   --timelineProgressEnd: #d49a2a;
   --timelineThumb: #fdf8ec;
   --timelineThumbBorder: #b03a2e;
-  --timelineTick: rgba(46,42,36,0.35);
-  --timelineTickText: rgba(46,42,36,0.6);
-  --logHeaderBorder: rgba(46,42,36,0.14);
-  --logEntryBg: rgba(46,42,36,0.045);
+  --timelineTick: rgba(58,52,40,0.35);
+  --timelineTickText: rgba(58,52,40,0.6);
+  --logHeaderBorder: rgba(58,52,40,0.14);
+  --logEntryBg: rgba(58,52,40,0.045);
   --logEntryHover: rgba(176,58,46,0.09);
   --loadingBg: rgba(250,246,235,0.95);
-  --loadingText: #2e2a24;
-  --loadingBorder: rgba(46,42,36,0.3);
+  --loadingText: #3a3428;
+  --loadingBorder: rgba(58,52,40,0.3);
 
   /* 字体：标题/年份用衬线（宋体/楷体本地栈，不下载 webfont） */
   --font-serif: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", "Songti SC", serif;
   --font-sans: -apple-system, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
 }
 
-html, body, #app {
+html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -48,18 +48,43 @@ html, body, #app {
   color: var(--text);
 }
 
-/* 宣纸质感：底色 + 极淡的纤维/水渍渐变（无图片资源） */
+/* 宣纸质感：暖黄宣纸 + 纸张颗粒 + 四边暗角（聚光灯效果）。
+   由下至上叠加：底色 → 纸张纹理 → 暖色罩层（让纹理透出）→ 暗角。
+   注：paper-grain.png 是不透明灰噪点，必须用 soft-light 混合才呈现颗粒
+   而非灰罩；故颗粒层放到 body::before（mix-blend-mode），其余层照计划。 */
 body {
   background:
-    radial-gradient(ellipse 80% 60% at 25% 20%, rgba(255,253,244,0.55), transparent 70%),
-    radial-gradient(ellipse 60% 50% at 78% 75%, rgba(186,166,118,0.10), transparent 65%),
+    /* 暗角：中心透明，边缘压暗偏棕褐 */
+    radial-gradient(ellipse at 50% 50%,
+      rgba(230, 216, 181, 0) 0%,
+      rgba(230, 216, 181, 0) 55%,
+      rgba(68, 58, 46, 0.22) 100%
+    ),
+    /* 暖色罩层，调低透明度让纹理透出 */
+    linear-gradient(rgba(230, 216, 181, 0.70), rgba(230, 216, 181, 0.70)),
+    url('/paper-texture.jpg') center / cover fixed,
     var(--bg);
+  background-color: var(--bg);
+}
+/* 纸张颗粒层：overlay 混合灰噪点（avg≈135），纤维颗粒清晰可见。
+   注：paper-grain.png 是不透明灰噪点，不能当普通图层平铺（会罩成灰色罩），
+   必须用混合模式；soft-light 效果偏淡（stddev≈2），overlay 更明显（≈3.6）。 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: url('/paper-grain.png') center / 400px repeat;
+  mix-blend-mode: overlay;
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 0;
 }
 
 #app {
   position: relative;
   width: 100%;
   height: 100%;
+  background: transparent;   /* 不遮挡 body 的宣纸纹理/暗角背景层 */
 }
 
 /* —— 顶栏 —— */
@@ -106,24 +131,33 @@ body {
   gap: 10px;
 }
 .top-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-serif);
   font-size: 13px;
   color: var(--text);
-  background: transparent;
+  background: rgba(250, 246, 235, 0.82);
   border: 1px solid var(--panelBorder);
-  border-radius: 8px;
-  padding: 6px 14px;
+  border-radius: 999px;
+  padding: 6px 15px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  box-shadow: 0 1px 4px rgba(46, 42, 36, 0.1);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.top-btn-icon {
+  font-size: 12px;
+  opacity: 0.75;
 }
 .top-btn:hover {
   color: var(--accent);
   border-color: var(--accent);
-  background: rgba(176,58,46,0.06);
+  background: rgba(176, 58, 46, 0.07);
+  box-shadow: 0 2px 8px rgba(176, 58, 46, 0.18);
 }
 #log-badge {
   display: inline-block;
-  margin-left: 6px;
+  margin-left: 2px;
   min-width: 16px;
   padding: 1px 5px;
   font-size: 11px;
@@ -133,6 +167,7 @@ body {
   color: var(--accentText);
   background: var(--accent);
   border-radius: 9px;
+  box-shadow: 0 0 0 2px rgba(176, 58, 46, 0.18);
 }
 #log-badge.hidden { display: none; }
 
@@ -159,27 +194,30 @@ body {
 }
 #loading.hidden { display: none; }
 
-/* —— 大年份水印 —— */
+/* —— 大年份水印 ——
+   居中偏右的巨型衬线数字，极淡墨色，营造设计图的「年代感」背景层次。 */
 #year-watermark {
   position: absolute;
-  right: 30px;
-  bottom: 128px;
+  right: 4vw;
+  top: 42%;
+  transform: translateY(-50%);
   font-family: var(--font-serif);
-  font-size: clamp(100px, 18vw, 220px);
-  font-weight: 700;
+  font-size: clamp(160px, 28vw, 380px);
+  font-weight: 800;
   line-height: 1;
-  color: rgba(46,42,36,0.09);
-  letter-spacing: 4px;
+  color: rgba(58, 52, 40, 0.07);
+  letter-spacing: 6px;
+  text-align: right;
   pointer-events: none;
   user-select: none;
-  z-index: 5;
+  z-index: 2;
 }
 #year-watermark::after {
   content: '年';
-  font-size: 0.22em;
+  font-size: 0.2em;
   letter-spacing: 0;
-  margin-left: 0.3em;
-  vertical-align: 0.5em;
+  margin-left: 0.35em;
+  vertical-align: 0.6em;
 }
 
 /* —— 事件泡泡 ——
@@ -195,46 +233,91 @@ body {
 }
 .event-bubble:hover { z-index: 5; }
 
-/* 笺条式泡泡：米白底 + 墨字 + 分类色左竖线，hover 变分类色底 */
+/* 碰撞避让偏移层：CSS2DRenderer 只写父级 .event-bubble 的 transform，
+   这里的 left/top 是屏幕空间推挤量，两者互不冲突。
+   必须用 position:relative（不能 absolute——会脱离文档流把父级尺寸
+   塌陷成 0×0，导致 CSS2DRenderer 的 translate(-50%,-50%) 失效） */
+.bubble-shift {
+  position: relative;
+  left: 0;
+  top: 0;
+}
+
+/* 指向线 SVG 层：铺满 labelRenderer 容器、不拦事件，压在泡泡(1)下方 */
+.bubble-leaders {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+/* 印章式泡泡：朱砂竖条 + 顶部圆点 + 横向事件名。
+   竖条承担「定位锚点」的视觉重心，hover 时整块放大 + 光晕增强。 */
 .bubble-inner {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--bubble);
+  gap: 5px;
+  padding: 2px 8px 2px 3px;
+  background: rgba(250, 246, 235, 0.94);
   color: var(--bubbleText);
   font-family: var(--font-serif);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
-  border: 1px solid var(--bubbleBorder);
-  border-left: 3px solid var(--cat, var(--bubbleDot));
+  border: 1px solid rgba(176, 58, 46, 0.45);
   border-radius: 2px 10px 10px 2px;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(46,42,36,0.22);
-  transform-origin: center;
-  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+  box-shadow: 0 2px 10px rgba(46, 42, 36, 0.18);
+  transform-origin: left center;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
   user-select: none;
 }
 .bubble-inner:hover {
-  transform: scale(1.12);
-  background: var(--cat, var(--bubbleHover));
-  color: var(--bubbleFocusText);
-  border-color: var(--cat, var(--bubbleHover));
+  transform: scale(1.1);
+  background: rgba(250, 246, 235, 0.98);
+  box-shadow: 0 4px 16px rgba(176, 58, 46, 0.32);
 }
-.bubble-inner .bubble-dot {
-  width: 6px;
-  height: 6px;
+/* 竖条印章（小巧，与文字高度一致） */
+.bubble-seal {
+  position: relative;
+  width: 5px;
+  height: 18px;
+  border-radius: 2px;
+  margin-left: 2px;
+  background: var(--cat, var(--bubbleDot));
+  box-shadow: 0 0 8px var(--cat, rgba(176, 58, 46, 0.45));
+  flex-shrink: 0;
+}
+/* 事件名：古风排版微调 */
+.bubble-short {
+  letter-spacing: 0.5px;
+}
+/* 印章顶部圆点（带光晕，如印泥盖下的圆点） */
+.bubble-seal::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--cat, var(--bubbleDot));
-  flex-shrink: 0;
+  box-shadow: 0 0 10px var(--cat, rgba(176, 58, 46, 0.6));
 }
 /* 详情面板打开时，对应泡泡高亮 */
 .event-bubble.is-focus .bubble-inner {
   background: var(--bubbleFocus);
   color: var(--bubbleFocusText);
   border-color: var(--bubbleFocusBorder);
+  box-shadow: 0 4px 18px rgba(176, 58, 46, 0.45);
+}
+.event-bubble.is-focus .bubble-seal,
+.event-bubble.is-focus .bubble-seal::after {
+  background: var(--bubbleFocusText);
+  box-shadow: none;
 }
 /* hover 某泡泡时，其他泡泡降低透明度 */
 .event-bubble.dimmed { opacity: 0.28; }
@@ -254,40 +337,52 @@ body {
 .bubble-inner.cat-economy   { --cat: #5f7d4f; }  /* 竹绿 */
 .bubble-inner.cat-invention { --cat: #46647f; }  /* 黛蓝 */
 
-/* —— 底部悬浮时间轴控制条 —— */
+/* —— 底部扁平细长时间轴 ——
+   设计图风格：半透明细条 + 红→黄渐变进度线 + 图标式播放按钮。 */
 #timeline {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  bottom: 16px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 18px;
-  width: min(880px, calc(100vw - 40px));
-  padding: 12px 22px 10px;
-  background: linear-gradient(to top, var(--timelineBgStart), var(--timelineBgEnd));
+  gap: 14px;
+  width: min(860px, calc(100vw - 40px));
+  padding: 8px 18px 7px;
+  background: rgba(250, 246, 235, 0.88);
   border: 1px solid var(--panelBorder);
-  border-radius: 16px;
-  box-shadow: 0 8px 28px var(--panelShadow);
-  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  box-shadow: 0 4px 18px var(--panelShadow);
+  backdrop-filter: blur(6px);
   z-index: 10;
 }
 #tl-play {
   flex-shrink: 0;
-  font-family: var(--font-serif);
-  font-size: 14px;
-  font-weight: 600;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
+  /* 参考图风格：米白底 + 朱砂描边，hover 反色 */
   color: var(--accent);
-  background: transparent;
+  background: rgba(250, 246, 235, 0.9);
   border: 1px solid var(--accent);
   border-radius: 10px;
-  padding: 9px 16px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+#tl-play .tl-play-icon {
+  display: inline-block;
+  transform: translateX(0.5px);
 }
 #tl-play:hover {
   background: var(--accent);
   color: var(--accentText);
+}
+#tl-play:active {
+  transform: scale(0.94);
 }
 .tl-main {
   flex: 1;
@@ -297,42 +392,42 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
 }
 #tl-year {
   font-family: var(--font-serif);
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--accent);
   letter-spacing: 1px;
   font-variant-numeric: tabular-nums;
 }
-.tl-range { font-size: 12px; color: var(--timelineTickText); }
+.tl-range { font-size: 11px; color: var(--timelineTickText); }
 
 #tl-track {
   position: relative;
-  height: 8px;
+  height: 5px;
   background: var(--timelineTrack);
-  border-radius: 4px;
+  border-radius: 3px;
   cursor: pointer;
 }
 #tl-progress {
   position: absolute;
   left: 0; top: 0; bottom: 0;
   background: linear-gradient(to right, var(--timelineProgressStart), var(--timelineProgressEnd));
-  border-radius: 4px;
+  border-radius: 3px;
   width: 0;
 }
 #tl-thumb {
   position: absolute;
   top: 50%;
-  width: 18px; height: 18px;
-  margin-left: -9px;
-  margin-top: -9px;
+  width: 14px; height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
   background: var(--timelineThumb);
-  border: 3px solid var(--timelineThumbBorder);
+  border: 2.5px solid var(--timelineThumbBorder);
   border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(46,42,36,0.3);
+  box-shadow: 0 2px 6px rgba(46, 42, 36, 0.3);
   cursor: grab;
   z-index: 3;
 }
@@ -349,13 +444,13 @@ body {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   padding: 0;
   border: 1.5px solid var(--timelineThumb);
   border-radius: 50%;
   background: var(--cat, var(--bubbleDot));
-  box-shadow: 0 0 0 1px rgba(46,42,36,0.3);
+  box-shadow: 0 0 0 1px rgba(46, 42, 36, 0.3);
   cursor: pointer;
   pointer-events: auto;
   transition: transform 0.12s;
@@ -368,8 +463,8 @@ body {
 
 #tl-ticks {
   position: relative;
-  height: 16px;
-  margin-top: 4px;
+  height: 14px;
+  margin-top: 3px;
 }
 .tl-tick {
   position: absolute;
@@ -379,60 +474,151 @@ body {
 .tl-tick::before {
   content: '';
   display: block;
-  width: 1px; height: 4px;
+  width: 1px; height: 3px;
   background: var(--timelineTick);
   margin: 0 auto;
 }
 .tl-tick span {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--timelineTickText);
 }
 
-/* —— 详情面板（右侧滑入）—— */
+/* —— 详情面板（右侧滑入，宣纸卡片）—— */
 #detail-panel {
   position: fixed;
   top: 64px;
   right: 16px;
   bottom: 128px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(350px, calc(100vw - 32px));
   overflow-y: auto;
-  padding: 18px 22px 22px;
-  background: var(--panelBg);
+  padding: 20px 24px 24px;
+  background:
+    linear-gradient(rgba(250, 246, 235, 0.96), rgba(250, 246, 235, 0.96)),
+    url('/paper-texture.jpg') center / cover;
   border: 1px solid var(--panelBorder);
-  border-radius: 14px;
-  box-shadow: 0 10px 32px var(--panelShadow);
+  border-radius: 4px 16px 16px 4px;   /* 左缘直角，古书签质感 */
+  box-shadow:
+    inset 0 0 0 1px rgba(253, 248, 236, 0.65),
+    0 10px 32px var(--panelShadow);
   backdrop-filter: blur(8px);
   z-index: 20;
   transform: translateX(0);
   opacity: 1;
-  transition: transform 0.28s ease, opacity 0.28s ease;
+  transition: transform 0.28s ease, opacity 0.28s ease, visibility 0s;
 }
 #detail-panel.hidden {
   transform: translateX(calc(100% + 40px));
   opacity: 0;
+  /* visibility 延迟到滑出动画结束：关闭时不再残留在无障碍树/读屏 */
+  visibility: hidden;
   pointer-events: none;
+  transition: transform 0.28s ease, opacity 0.28s ease, visibility 0s linear 0.28s;
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .detail-year {
   display: inline-block;
   font-size: 12px;
+  font-weight: 600;
   color: var(--accentText);
   background: var(--accent);
-  padding: 2px 12px;
+  padding: 3px 14px;
   border-radius: 12px;
-  margin-bottom: 12px;
+}
+.detail-cat {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(46, 42, 36, 0.06);
+  border: 1px solid var(--panelBorder);
+  padding: 2px 10px;
+  border-radius: 12px;
 }
 #detail-panel h2 {
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 24px;
   margin-bottom: 12px;
   color: var(--accent);
   line-height: 1.5;
+  letter-spacing: 2px;
 }
-#detail-panel p {
+.detail-divider {
+  height: 1.5px;
+  background: linear-gradient(to right, rgba(176, 58, 46, 0.65), rgba(176, 58, 46, 0.05));
+  margin: 6px 0 16px;
+}
+#detail-panel .detail-text {
   font-size: 14px;
   line-height: 1.9;
   color: var(--text);
   opacity: 0.92;
+}
+.detail-impact {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: rgba(176, 58, 46, 0.075);
+  border-left: 4px solid var(--accent);
+  border-radius: 2px 8px 8px 2px;
+}
+.detail-impact-title {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 4px;
+  margin-bottom: 6px;
+}
+.detail-impact p {
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--text);
+  opacity: 0.9;
+}
+/* 相关事件：胶囊按钮，点击跳转 */
+.detail-related {
+  margin-top: 16px;
+}
+.detail-related-title {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+}
+.detail-related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.detail-related-item {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(46, 42, 36, 0.05);
+  border: 1px solid var(--panelBorder);
+  border-radius: 999px;
+  padding: 4px 13px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.detail-related-item:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(176, 58, 46, 0.07);
+}
+/* 底部水墨山水插画 */
+.detail-ink-art {
+  width: 100%;
+  margin-top: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(46, 42, 36, 0.12);
+  opacity: 0.95;
+  display: block;
 }
 .detail-close {
   position: absolute;
@@ -465,12 +651,15 @@ body {
   transform-origin: top right;
   transform: scale(1) translateY(0);
   opacity: 1;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s;
 }
 #settings-panel.hidden {
   transform: scale(0.94) translateY(-10px);
   opacity: 0;
+  /* visibility 延迟到动画结束：关闭后不再残留在无障碍树/读屏 */
+  visibility: hidden;
   pointer-events: none;
+  transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0.2s;
 }
 #settings-panel h3 {
   font-family: var(--font-serif);
@@ -519,35 +708,53 @@ body {
   background: var(--cat);
 }
 
-/* —— 右侧事件流抽屉 —— */
+/* —— 左侧事件流抽屉 ——
+   设计图风格：从左侧滑出，覆盖图例（图例 z-index 18 < 抽屉 19）。 */
 #event-log {
   position: fixed;
   top: 52px;
-  right: 0;
+  left: 0;
   bottom: 0;
   width: 300px;
   display: flex;
   flex-direction: column;
   background: var(--panelBg);
-  border-left: 1px solid var(--logHeaderBorder);
+  border-right: 1px solid var(--logHeaderBorder);
   backdrop-filter: blur(10px);
-  z-index: 16;
+  z-index: 19;
   transform: translateX(0);
-  transition: transform 0.28s ease;
+  transition: transform 0.28s ease, visibility 0s;
 }
-#event-log.collapsed { transform: translateX(105%); }
+#event-log.collapsed {
+  transform: translateX(-105%);
+  /* visibility 延迟到滑出动画结束：收起后不再残留在无障碍树/读屏 */
+  visibility: hidden;
+  transition: transform 0.28s ease, visibility 0s linear 0.28s;
+}
 .log-header {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 12px;
+  gap: 8px;
+  padding: 16px 18px 13px;
   font-family: var(--font-serif);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--accent);
   border-bottom: 1px solid var(--logHeaderBorder);
-  letter-spacing: 2px;
+  letter-spacing: 4px;
+}
+/* 标题左侧朱砂竖线装饰 */
+.log-header::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+#log-close {
+  margin-left: auto;   /* 关闭按钮仍贴右缘 */
 }
 #log-close {
   width: 24px; height: 24px;
@@ -571,7 +778,7 @@ body {
 .log-entry {
   padding: 10px 12px;
   background: var(--logEntryBg);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--cat, var(--accent));
   border-radius: 2px 8px 8px 2px;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
@@ -582,6 +789,12 @@ body {
 .log-entry:active {
   transform: scale(0.98);
 }
+/* 分类色条：与泡泡/刻度点共用 --cat 配色 */
+.log-entry.cat-era       { --cat: #b03a2e; }
+.log-entry.cat-figure    { --cat: #6e5a7e; }
+.log-entry.cat-military  { --cat: #a0622d; }
+.log-entry.cat-economy   { --cat: #5f7d4f; }
+.log-entry.cat-invention { --cat: #46647f; }
 .log-year {
   display: inline-block;
   min-width: 48px;
@@ -596,39 +809,59 @@ body {
   color: var(--text);
 }
 
-/* —— 地图图例 —— */
+/* —— 地图图例 ——
+   设计图风格：左侧垂直居中的竖排小卡片，顶部小标题「政权」，每行色块+政权名。 */
 #legend {
   position: absolute;
-  bottom: 128px;
-  left: 18px;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  width: 100px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
   z-index: 18;
-  background: var(--panelBg);
-  border: 1px solid var(--panelBorder);
+  background: rgba(244, 240, 228, 0.84);
+  border: 1px solid rgba(58, 52, 40, 0.22);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   font-size: 12px;
   font-family: var(--font-serif);
-  line-height: 1.8;
-  box-shadow: 0 4px 16px var(--panelShadow);
+  line-height: 1.65;
+  box-shadow: 0 4px 16px rgba(58, 52, 40, 0.14);
   backdrop-filter: blur(4px);
   pointer-events: none;
 }
 #legend.hidden { display: none; }
+.legend-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 3px;
+  border-bottom: 1px solid var(--logHeaderBorder);
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   white-space: nowrap;
 }
+/* 主叙事政权（宋/辽/西夏/金/元/吐蕃/大理）：图例中加粗 */
+.legend-row.major span:last-child {
+  font-weight: 600;
+  color: var(--text);
+}
 .legend-swatch {
-  width: 16px;
-  height: 8px;
+  width: 12px;
+  height: 7px;
   border-radius: 2px;
-  border: 1px solid rgba(46,42,36,0.25);
+  border: 1px solid rgba(58, 52, 40, 0.22);
   flex-shrink: 0;
 }
 
 /* —— 朝代更替转场横幅 ——
+   设计图风格：深墨压暗全屏 + 金色大字（如「北宋极盛 → 南宋·绍兴和议」）。
    默认 opacity:0 悬浮层，不拦事件；JS 加 .show 淡入，约 2.6s 后移除。 */
 #era-banner {
   position: fixed;
@@ -636,7 +869,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(46,42,36,0.35);
+  background: rgba(28, 24, 18, 0.78);
   z-index: 40;
   pointer-events: none;
   user-select: none;
@@ -645,26 +878,36 @@ body {
 }
 #era-banner.show { opacity: 1; }
 .era-banner-inner {
+  position: relative;
   text-align: center;
   font-family: var(--font-serif);
-  color: var(--accentText);
-  background: var(--accent);
-  padding: 26px clamp(36px, 6vw, 60px);
-  border: 2px solid rgba(253,248,236,0.5);
-  border-radius: 4px;
-  box-shadow: 0 12px 40px rgba(46,42,36,0.35);
+  color: #d8b24a;
+  padding: 30px clamp(40px, 7vw, 72px);
 }
+/* 上下金色细线装饰（更亮、更居中收窄） */
+.era-banner-inner::before,
+.era-banner-inner::after {
+  content: '';
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  height: 1.5px;
+  background: linear-gradient(to right, transparent, rgba(216, 178, 74, 0.85), transparent);
+}
+.era-banner-inner::before { top: 0; }
+.era-banner-inner::after { bottom: 0; }
 .era-banner-year {
-  font-size: 14px;
-  letter-spacing: 4px;
-  opacity: 0.85;
-  margin-bottom: 10px;
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: rgba(216, 178, 74, 0.85);
+  margin-bottom: 12px;
 }
 .era-banner-text {
-  font-size: clamp(20px, 4.5vw, 30px);
+  font-size: clamp(28px, 5.5vw, 42px);
   font-weight: 700;
-  letter-spacing: 5px;
+  letter-spacing: 8px;
   white-space: nowrap;
+  text-shadow: 0 0 48px rgba(216, 178, 74, 0.45);
 }
 
 /* —— 面板滚动条（古典风细条）—— */
@@ -678,4 +921,107 @@ body {
 .log-list::-webkit-scrollbar-thumb {
   background: rgba(46,42,36,0.22);
   border-radius: 3px;
+}
+
+/* —— 政权名标注（A1：地图上的政权标签，随疆域层显隐）—— */
+.regime-label {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: rgba(46, 42, 36, 0.72);
+  background: rgba(247, 242, 230, 0.72);
+  border-radius: 3px;
+  padding: 1px 6px 2px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(46, 42, 36, 0.12);
+}
+/* 主叙事政权（宋/辽/西夏/金/吐蕃/大理）：字号更大、墨色更重 */
+.regime-label.major {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(40, 34, 26, 0.88);
+  background: rgba(247, 242, 230, 0.82);
+  letter-spacing: 3px;
+  box-shadow: 0 1px 6px rgba(46, 42, 36, 0.18);
+}
+
+/* —— 详情遮罩（B3：详情打开时压暗并锁死地图交互）—— */
+#detail-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(46, 42, 36, 0.16);
+  z-index: 19; /* 低于详情面板(20)，高于事件抽屉(16)/时间轴(10) */
+  cursor: pointer;
+  transition: opacity 0.28s ease, visibility 0s;
+  opacity: 1;
+}
+#detail-mask.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.28s ease, visibility 0s linear 0.28s;
+}
+
+/* —— 时间轴快捷键提示：默认隐藏，hover 时间轴时淡入（保持桌面干净）—— */
+.tl-hint {
+  position: absolute;
+  left: 22px;
+  bottom: -18px;
+  font-size: 11px;
+  color: var(--timelineTickText);
+  letter-spacing: 1px;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+#timeline:hover .tl-hint { opacity: 1; }
+
+/* —— 移动端适配（B1）—— */
+@media (max-width: 640px) {
+  /* 图例：左侧竖排保持不变，整体收紧、减少遮挡 */
+  #legend {
+    top: 50%;
+    left: 8px;
+    transform: translateY(-50%);
+    width: 88px;
+    padding: 9px 10px;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .legend-swatch {
+    width: 12px;
+    height: 6px;
+  }
+  .legend-row {
+    gap: 6px;
+  }
+
+  /* 时间轴：整体收紧 */
+  #timeline {
+    gap: 10px;
+    padding: 10px 14px 8px;
+    border-radius: 12px;
+  }
+  #tl-play {
+    font-size: 13px;
+    padding: 0;
+  }
+  #tl-year {
+    font-size: 22px;
+  }
+  .tl-marker {
+    width: 8px;
+    height: 8px;
+  }
+  .tl-tick span {
+    font-size: 9px;
+  }
+  .tl-hint {
+    left: 14px;
+    bottom: -16px;
+    font-size: 10px;
+  }
 }

@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
   const dynasty = req.query.dynasty || 'song';
   const categoryParam = req.query.category;
   try {
-    let sql = `SELECT id, dynasty_id, year, year_end, lng, lat, short, title, detail, category
+    let sql = `SELECT id, dynasty_id, year, year_end, lng, lat, short, title, detail, impact, category
                FROM events WHERE dynasty_id = ?`;
     const params = [dynasty];
     if (categoryParam) {
@@ -34,6 +34,7 @@ router.get('/', async (req, res) => {
       short: r.short,
       title: r.title,
       detail: r.detail,
+      impact: r.impact || '',
       category: r.category
     })));
   } catch (err) {

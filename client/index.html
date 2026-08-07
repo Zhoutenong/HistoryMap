@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>中国历史地图 · 宋朝</title>
   </head>
   <body>
@@ -14,8 +15,13 @@
           <span class="brand-seal">宋</span>
         </div>
         <div class="top-actions">
-          <button id="log-toggle" class="top-btn" title="历史事件流">☰ 事件<span id="log-badge" class="hidden"></span></button>
-          <button id="settings-btn" class="top-btn" title="设置">⚙ 设置</button>
+          <button id="log-toggle" class="top-btn" title="历史事件流">
+            <span class="top-btn-icon">☰</span><span class="top-btn-label">事件</span>
+            <span id="log-badge" class="hidden"></span>
+          </button>
+          <button id="settings-btn" class="top-btn" title="设置">
+            <span class="top-btn-icon">⚙</span><span class="top-btn-label">设置</span>
+          </button>
         </div>
       </header>
 
@@ -35,6 +41,7 @@
       </div>
 
       <!-- 详情 / 设置面板 -->
+      <div id="detail-mask" class="hidden"></div>
       <div id="detail-panel" class="hidden"></div>
       <div id="settings-panel" class="hidden"></div>
 
@@ -61,6 +68,7 @@
             <div id="tl-ticks"></div>
           </div>
         </div>
+        <div class="tl-hint">空格 播放/暂停 · ← → 逐年</div>
       </div>
 
       <div id="loading">正在加载历史数据…</div>

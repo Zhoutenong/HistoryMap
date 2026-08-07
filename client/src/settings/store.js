@@ -21,7 +21,9 @@ export const CATEGORIES = [
 export const SPEED_MAP = { slow: 220, normal: 110, fast: 50 };
 
 export const defaultSettings = {
-  categories: ['era'], // 默认只看「时代格局」
+  // 默认开「时代格局 + 军事·领土」：南宋后期（1206-1279）事件全是 military
+  // 分类，只开 era 会导致该时段地图上无任何事件泡泡
+  categories: ['era', 'military'],
   speed: 'normal',
   autoplay: true,
   showBaseMap: false,   // 现代底图默认关闭

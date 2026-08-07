@@ -46,9 +46,9 @@ export class Timeline {
   }
 
   _renderTicks() {
-    // 每隔几十年打一个刻度，便于定位
+    // 每隔数十年打一个刻度（较密，便于定位）
     const span = this.end - this.start;
-    const step = span > 200 ? 50 : span > 100 ? 25 : 10;
+    const step = span > 300 ? 40 : span > 120 ? 20 : 10;
     const frag = document.createDocumentFragment();
     for (let y = this.start; y <= this.end; y += step) {
       const t = document.createElement('div');
@@ -121,7 +121,8 @@ export class Timeline {
     // 到末尾再点播放：从头重来，避免「点了没反应」
     if (this.year >= this.end) this.setYear(this.start);
     this.playing = true;
-    this.playBtn.textContent = '⏸ 暂停';
+    this.playBtn.innerHTML = '<span class="tl-play-icon">❚❚</span>';
+    this.playBtn.setAttribute('aria-label', '暂停');
     this._timer = setInterval(() => {
       if (this.year >= this.end) {
         this.pause();
@@ -133,7 +134,8 @@ export class Timeline {
 
   pause() {
     this.playing = false;
-    this.playBtn.textContent = '▶ 播放';
+    this.playBtn.innerHTML = '<span class="tl-play-icon">▶</span>';
+    this.playBtn.setAttribute('aria-label', '播放');
     if (this._timer) {
       clearInterval(this._timer);
       this._timer = null;

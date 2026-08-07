@@ -35,10 +35,10 @@ const ENTITY_STYLE = {
   'Tibet':             { entity: '吐蕃', color: '#8a6a4a', fillOpacity: 0.30 },
   'Nan Chao':          { entity: '大理', color: '#6a8a5f', fillOpacity: 0.35 },
   'Dali':              { entity: '大理', color: '#6a8a5f', fillOpacity: 0.35 },
-  'Đại Việt':          { entity: '大越', color: '#7a8a5a', fillOpacity: 0.35 },
-  'Khmer Empire':      { entity: '高棉', color: '#9a7a5a', fillOpacity: 0.30 },
-  'Champa':            { entity: '占婆', color: '#b85a6a', fillOpacity: 0.30 },
-  'Champa City States':{ entity: '占婆', color: '#b85a6a', fillOpacity: 0.30 },
+  'Đại Việt':          { entity: '大越', color: '#8a9a5a', fillOpacity: 0.35 },
+  'Khmer Empire':      { entity: '高棉', color: '#8a6a5a', fillOpacity: 0.30 },
+  'Champa':            { entity: '占婆', color: '#a84a5a', fillOpacity: 0.30 },
+  'Champa City States':{ entity: '占婆', color: '#a84a5a', fillOpacity: 0.30 },
   'Korea':             { entity: '高丽', color: '#5a7a9a', fillOpacity: 0.35 },
   'Goryeo':            { entity: '高丽', color: '#5a7a9a', fillOpacity: 0.35 },
   'Mongols':           { entity: '蒙古', color: '#6a4a3a', fillOpacity: 0.32 },
@@ -46,7 +46,7 @@ const ENTITY_STYLE = {
   'Great Khanate':     { entity: '元',   color: '#6a4a3a', fillOpacity: 0.38 },
   'Pagan':             { entity: '蒲甘', color: '#6a8a5f', fillOpacity: 0.30 },
   'Bagan':             { entity: '蒲甘', color: '#6a8a5f', fillOpacity: 0.30 },
-  'Hainan':            { entity: '海南', color: '#b03a2e', fillOpacity: 0.30 },
+  'Hainan':            { entity: '海南', color: '#a04a3a', fillOpacity: 0.30 },
   'Kara Khitai Khaganate': { entity: '西辽', color: '#7a6a8a', fillOpacity: 0.30 },
 };
 

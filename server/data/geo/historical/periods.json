@@ -28,7 +28,7 @@
   "entities": [
     { "id": "song",    "name": "宋",   "color": "#b03a2e" },
     { "id": "liao",    "name": "辽",   "color": "#4a6a8a" },
-    { "id": "hainan",  "name": "海南", "color": "#b03a2e" },
+    { "id": "hainan",  "name": "海南", "color": "#a04a3a" },
     { "id": "jin",     "name": "金",   "color": "#a8873a" },
     { "id": "xia",     "name": "西夏", "color": "#b08d4f" },
     { "id": "tibet",   "name": "吐蕃", "color": "#8a6a4a" },
@@ -36,11 +36,28 @@
     { "id": "mongol",  "name": "蒙古", "color": "#6a4a3a" },
     { "id": "yuan",    "name": "元",   "color": "#6a4a3a" },
     { "id": "korea",   "name": "高丽", "color": "#5a7a9a" },
-    { "id": "vietnam", "name": "大越", "color": "#7a8a5a" },
-    { "id": "khmer",   "name": "高棉", "color": "#9a7a5a" },
-    { "id": "champa",  "name": "占婆", "color": "#b85a6a" },
+    { "id": "vietnam", "name": "大越", "color": "#8a9a5a" },
+    { "id": "khmer",   "name": "高棉", "color": "#8a6a5a" },
+    { "id": "champa",  "name": "占婆", "color": "#a84a5a" },
     { "id": "pagan",   "name": "蒲甘", "color": "#6a8a5f" },
     { "id": "qarakhan","name": "西辽", "color": "#7a6a8a" }
   ],
+  "labels": {
+    "宋": [112.6, 33.2],
+    "辽": [115.6, 43.4],
+    "西夏": [105.2, 38.4],
+    "金": [124.2, 44.0],
+    "元": [110.5, 37.2],
+    "吐蕃": [89.8, 31.6],
+    "大理": [100.0, 25.4],
+    "蒙古": [108.5, 44.5],
+    "高丽": [127.2, 38.4],
+    "大越": [105.6, 20.6],
+    "高棉": [104.6, 12.4],
+    "占婆": [108.6, 14.6],
+    "蒲甘": [96.0, 21.2],
+    "海南": [109.6, 19.0]
+  },
+  "labelMajor": ["宋", "辽", "西夏", "金", "元", "吐蕃", "大理"],
   "default": "song-1111"
 }
