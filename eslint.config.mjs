@@ -15,7 +15,7 @@ export default [
     },
   },
   {
-    files: ['server/**/*.js'],
+    files: ['server/**/*.js', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: { ...globals.node, ...globals.es2021 },
       sourceType: 'module',

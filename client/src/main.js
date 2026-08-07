@@ -187,6 +187,9 @@ animate();
     let territoryOverlay = null;
     let prevYear = 0;
     let currentPeriod = '';
+    let overlayLoadingPeriod = '';
+    let dynastyRequestSeq = 0;
+    let overlayRequestSeq = 0;
 
     // 按年份确定显示哪个时期的疆域：边界由后端 meta.periods 给出，前端不写死
     function getPeriodForYear(year) {
@@ -369,9 +372,13 @@ animate();
       closeDetail();
       loadingEl.textContent = '正在切换朝代…';
       loadingEl.classList.remove('hidden');
+      const requestSeq = dynastyRequestSeq + 1;
       loadDynasty(id)
-        .then(() => loadingEl.classList.add('hidden'))
+        .then(() => {
+          if (requestSeq === dynastyRequestSeq) loadingEl.classList.add('hidden');
+        })
         .catch((err) => {
+          if (requestSeq !== dynastyRequestSeq) return;
           console.error('[dynasties] 朝代切换失败:', err);
           loadingEl.textContent = '朝代数据加载失败';
         });
@@ -379,18 +386,25 @@ animate();
 
     // —— 核心装配：加载朝代数据并重建可切换图层（初始加载与朝代切换共用）——
     async function loadDynasty(dynastyId) {
-      currentDynasty = dynastyId;
+      const requestSeq = ++dynastyRequestSeq;
       const meta = await getMeta(dynastyId);
-      periodMeta = meta;
+      if (requestSeq !== dynastyRequestSeq) return false;
 
       // 初始时期：由 meta 数据驱动；periods 缺失时退到第一个时期（最后防线）
-      const initialPeriod = getPeriodForYear(meta.startYear) || meta.periods?.[0]?.id || '1111';
+      const initialPeriod = meta.periods?.find((p) => meta.startYear >= p.start && meta.startYear <= p.end)?.id
+        || meta.periods?.[0]?.id
+        || '1111';
       const [geojson, overlayGeojson, events] = await Promise.all([
         getMap(),
         getOverlay(dynastyId, initialPeriod),
         getEvents(dynastyId),
       ]);
+      if (requestSeq !== dynastyRequestSeq) return false;
+
+      currentDynasty = dynastyId;
+      periodMeta = meta;
       currentEvents = events;
+      overlayRequestSeq++;
 
       // 标定投影：用历史疆域（覆盖中国及周边）做 fitSize，
       // 保证现代底图即使隐藏，投影仍然有效。必须在任何 project() 调用前完成（单例，只标定一次）。
@@ -445,6 +459,8 @@ animate();
 
       // 时间轴：当前年份的唯一状态源，起止年由后端 meta 给出。
       // 首次创建；朝代切换时 setRange 更新边界（onChange 闭包读跨朝代状态，可复用）。
+      currentPeriod = getPeriodForYear(meta.startYear) || '1111';
+      overlayLoadingPeriod = currentPeriod;
       if (!timeline) {
         timeline = new Timeline({
           start: meta.startYear,
@@ -461,8 +477,13 @@ animate();
               // 政权更替转场横幅（如 1127 靖康：北宋 → 南宋）
               showEraBanner(y, periodLabel(currentPeriod), periodLabel(newPeriod));
               currentPeriod = newPeriod;
+              overlayLoadingPeriod = newPeriod;
+              const requestSeq = ++overlayRequestSeq;
+              const dynastySeq = dynastyRequestSeq;
               try {
                 const freshOverlay = await getOverlay(currentDynasty, newPeriod);
+                if (requestSeq !== overlayRequestSeq || dynastySeq !== dynastyRequestSeq
+                  || overlayLoadingPeriod !== newPeriod) return;
                 clearOverlayGroup(territoryOverlay.group);
                 // 重建新 overlay
                 const newOverlay = buildTerritoryOverlay(freshOverlay);
@@ -477,20 +498,24 @@ animate();
                 // 新 overlay 的政权标签已插入 DOM，重排泡泡避开标签（避免盖住政权名）
                 setTimeout(() => bubbles.resolve(), 100);
               } catch (err) {
-                console.warn('[overlay] 时期切换失败:', err);
+                if (requestSeq === overlayRequestSeq && dynastySeq === dynastyRequestSeq
+                  && overlayLoadingPeriod === newPeriod) {
+                  console.warn('[overlay] 时期切换失败:', err);
+                }
               }
             }
             prevYear = y;
           }
         });
       } else {
-        timeline.setRange(meta.startYear, meta.endYear);
+        timeline.setRange(meta.startYear, meta.endYear, { resetYear: true });
         timeline.setTickMs(SPEED_MAP[settings.speed] || SPEED_MAP.normal);
       }
 
       // 初始刷新：prevYear 设为 start-1，让开局就在窗口内的事件也能触发「首次出现」
       prevYear = meta.startYear;
       currentPeriod = getPeriodForYear(meta.startYear) || '1111';
+      overlayLoadingPeriod = currentPeriod;
       bubbles.update(meta.startYear, meta.startYear - 1);
       territoryOverlay.update(meta.startYear);
       watermark.textContent = meta.startYear;  // 水印初始值（autoplay 关闭时 onChange 不会立即触发）

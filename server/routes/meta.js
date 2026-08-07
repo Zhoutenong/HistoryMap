@@ -36,6 +36,7 @@ router.get('/', async (req, res) => {
       const indexPath = path.join(HISTORICAL_DIR, 'periods.json');
       const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
       periods = (index.periods || [])
+        .filter((p) => p.id.startsWith(`${dynasty}-`))
         .filter((p) => p.start !== undefined && p.end !== undefined)
         .map((p) => ({
           id: p.id.replace(`${dynasty}-`, ''),

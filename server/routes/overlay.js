@@ -123,10 +123,10 @@ router.get('/', (req, res) => {
       year: periodDef.year,
       _periodId: periodDef.id,
       // 淡墨辅助元素（示意路径/点位，供前端水彩层叠加绘制）
-      rivers: periodsIndex.rivers || [],
-      mountains: periodsIndex.mountains || [],
+      rivers: periodDef.rivers || periodsIndex.rivers || [],
+      mountains: periodDef.mountains || periodsIndex.mountains || [],
       // 都会/重镇标注位（前端城市标签，与政权名标签区分层级）
-      cities: periodsIndex.cities || [],
+      cities: periodDef.cities || periodsIndex.cities || [],
     }
   });
 });

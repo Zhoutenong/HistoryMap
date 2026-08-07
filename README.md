@@ -40,9 +40,22 @@ npm run dev
 npm run dev:server     # 仅后端
 npm run dev:client     # 仅前端
 npm run build          # 构建前端到 client/dist/
-npm run lint           # ESLint 静态检查（client/src + server）
+npm run lint           # ESLint 静态检查（client/src + server + scripts）
 npm run test           # vitest 单元测试（client 内 11 用例）
+npm run smoke          # 检查运行中的生产服务页面与关键 API
 ```
+
+## 生产部署
+
+先构建前端，再由后端进程同时提供静态页面和 `/api/*` 接口：
+
+```bash
+npm run build
+npm --prefix server start
+npm run smoke
+```
+
+默认访问 `http://localhost:3001`。部署到其他端口时设置 `PORT`，例如 `PORT=8080 npm --prefix server start`；smoke 检查也可传入服务地址：`npm run smoke -- http://localhost:8080`。生产启动前必须存在 `client/dist/`，否则请先执行构建。
 
 ## 快捷键
 
@@ -87,6 +100,13 @@ HistoryMap/
 ```
 
 详细架构、约定、已知坑见 [AGENTS.md](./AGENTS.md)。
+当前未完成工作、优先级、验收标准与进度标记见 [docs/roadmap.md](./docs/roadmap.md)。
+
+## 已接入朝代
+
+当前已接入宋朝（960—1279）和金朝（1115—1234）。金朝包含 25 条事件、3 个历史时期及对应疆域/辅助层数据，可通过顶栏朝代下拉切换。
+
+新增 seed 只会在全新 `server/history.db` 初始化时自动执行；已有数据库不会自动重跑历史 seed。开发验证新增朝代时，请先停止服务并删除 `server/history.db`（以及同名 `-shm`、`-wal` 文件），再启动后端。
 
 ## 加新朝代
 

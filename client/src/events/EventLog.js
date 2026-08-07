@@ -22,6 +22,7 @@ export class EventLog {
     this._unread = 0;
     /** 全部记录（供搜索过滤） */
     this.entries = [];
+    this.searchInput = this.el.querySelector('.log-search input');
     this._bindSearch();
   }
 
@@ -59,6 +60,7 @@ export class EventLog {
     this.entries = [];
     this.seen.clear();
     this.list.innerHTML = '';
+    if (this.searchInput) this.searchInput.value = '';
     this.clearUnread();
   }
 

@@ -160,11 +160,12 @@ export class Timeline {
    * 更新边界、重渲染刻度、clamp 当前年并通知订阅者。
    * @param {number} start
    * @param {number} end
+   * @param {{resetYear?: boolean}} [opts]
    */
-  setRange(start, end) {
+  setRange(start, end, { resetYear = false } = {}) {
     this.start = start;
     this.end = end;
-    this.year = Math.max(start, Math.min(end, this.year));
+    this.year = resetYear ? start : Math.max(start, Math.min(end, this.year));
     this.ticksEl.innerHTML = '';
     this._renderTicks();
     this._render();

@@ -19,19 +19,24 @@ $nodeVer = (& node -v).Trim()
 Write-Host "  [1/5] Node.js $nodeVer OK"
 
 # 2. 依赖检查（根 / server / client 三处）
-foreach ($d in @('node_modules', 'server\node_modules', 'client\node_modules')) {
-    if (-not (Test-Path (Join-Path $PSScriptRoot $d))) {
-        Write-Host "  [错误] 依赖未安装完整。请先打开终端执行：npm run install:all" -ForegroundColor Red
-        exit 1
-    }
+$missing = @('node_modules', 'server\node_modules', 'client\node_modules') | Where-Object {
+    -not (Test-Path (Join-Path $PSScriptRoot $_))
+}
+if ($missing.Count -gt 0) {
+    Write-Host "  [错误] 依赖未安装完整：$($missing -join ', ')" -ForegroundColor Red
+    Write-Host "         请在项目根目录执行：npm run install:all" -ForegroundColor Yellow
+    exit 1
 }
 Write-Host "  [2/5] 依赖已安装 OK"
 
 # 3. 端口占用检查
 foreach ($port in @(3001, 5173)) {
-    if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
-        Write-Host "  [错误] 端口 $port 已被占用（服务可能已在运行）。" -ForegroundColor Red
-        Write-Host "         请先运行 stop-dev.bat 或关闭旧服务。" -ForegroundColor Red
+    $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($listener) {
+        $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+        $processName = if ($process) { $process.ProcessName } else { '未知进程' }
+        Write-Host "  [错误] 端口 $port 已被占用：PID $($listener.OwningProcess)（$processName）。" -ForegroundColor Red
+        Write-Host "         请先运行 stop-dev.bat，或关闭占用该端口的进程后重试。" -ForegroundColor Yellow
         exit 1
     }
 }
