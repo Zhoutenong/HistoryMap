@@ -14,7 +14,7 @@ import { project } from './ChinaMap.js';
  *
  * 保留的外部契约（main.js 依赖）：
  *   - buildTerritoryOverlay(geojson) → { group, update }，group 内包含
- *     washMesh（z=7）+ 政权名标签（z=7.2）
+ *     washMesh（z=7）+ 政权名标签（z=7.2）+ 城市标注（z=7.4）
  *   - fadeIn(group, duration)：对透明材质做 0 → base 淡入
  *   - 时期切换时 main.js 遍历 group.children dispose（washMesh 的
  *     geometry/material.map 均在此处置）
@@ -352,6 +352,22 @@ export function buildTerritoryOverlay(geojson) {
     seen.add(entity);
     const label = buildRegimeLabel(feature, entity);
     if (label) root.add(label);
+  });
+
+  // 城市标注（都会/重镇小字）：读 overlay 顶层透传的 cities，
+  // CSS2DObject 挂在 overlay group 内，随时期切换迁移、随「历史疆域」开关显隐。
+  // z=7.4 略高于政权名标签（7.2），但样式更小更淡，不抢政权名视觉。
+  const cities = geojson.properties?.cities || [];
+  cities.forEach((city) => {
+    const coord = city.coord || [];
+    if (coord.length < 2) return;
+    const [x, y] = project(coord);
+    const el = document.createElement('div');
+    el.className = 'city-label';
+    el.textContent = city.name;
+    const obj = new CSS2DObject(el);
+    obj.position.set(x, y, 7.4);
+    root.add(obj);
   });
 
   // update(year): 时期已在请求时确定，所有政权同时显示

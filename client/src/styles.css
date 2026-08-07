@@ -1084,6 +1084,20 @@ body::before {
   opacity: 0.32;
 }
 
+/* —— 城市标注（A1b：都会/重镇小字，比政权名更小更淡，纯信息标注不抢视觉）——
+   注意：不能写 transform 动画（CSS2DRenderer 每帧用它定位） */
+.city-label {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: rgba(46, 42, 36, 0.55);
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
 /* —— 详情遮罩（B3：详情打开时压暗并锁死地图交互）—— */
 #detail-mask {
   position: fixed;
