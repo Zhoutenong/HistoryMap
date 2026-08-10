@@ -5,6 +5,11 @@
 --   3. 索引覆盖最常见查询：按朝代 + 年份
 --   4. 全部 IF NOT EXISTS，保证启动幂等
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version     INTEGER PRIMARY KEY,
+  applied_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS dynasties (
   id          TEXT PRIMARY KEY,        -- 'song'，API 用的 dynasty 参数
   name        TEXT NOT NULL,           -- '宋朝'

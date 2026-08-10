@@ -1,8 +1,8 @@
 -- 金朝历史事件 seed（1115—1234）
 -- 字段顺序与 schema.sql 一致；坐标为事件核心地点的经纬度。
-INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('jin', '金朝', 1115, 1234);
+INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('jin', '金朝', 1115, 1234);
 
-INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('jin', 1114, 1115, 131.25, 45.55, '宁江州之战', '宁江州之战 · 女真抗辽首捷', '完颜阿骨打率女真军在宁江州击败辽军，随后乘胜攻取宾州，辽东诸部相继响应。', '女真军由部落联盟转为能够持续作战的政治军事力量，为金朝建国及随后灭辽奠定基础。', '宁江州（今吉林扶余一带）', 'military'),
   ('jin', 1115, 1115, 126.57, 45.55, '金朝建立', '完颜阿骨打称帝 · 金朝建立', '完颜阿骨打于会宁府称帝，国号金，改元收国，建立女真族政权。', '东北亚政治格局从辽宋对峙转为辽金宋三方竞争，会宁府成为金朝早期政治中心。', '会宁府（今哈尔滨阿城）', 'era'),
   ('jin', 1116, 1117, 126.57, 45.55, '金取辽东', '金军攻取辽东诸州', '金军连续攻取辽阳府及辽东诸州，辽在东北的行政与军事控制迅速瓦解。', '金朝获得稳定的农业、人口与交通资源，国家形态和财政基础明显增强。', '辽阳府', 'military'),

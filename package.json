@@ -10,11 +10,16 @@
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "build": "cd client && npm run build",
     "smoke": "node scripts/smoke.mjs",
+    "contract": "node scripts/contract.mjs",
+    "contract:db-migration": "node scripts/db-migration-contract.mjs",
     "lint": "eslint client/src server scripts",
-    "test": "npm --prefix client run test"
+    "test": "npm --prefix client run test",
+    "check:build": "node scripts/check-build.mjs",
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "concurrently": "^9.0.0",
     "eslint": "^10.8.0",
     "globals": "^17.9.0"

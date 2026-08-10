@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,10 +23,16 @@ let _db = null;
 export function getDb() {
   if (_db) return _db;
   _db = new Database(DB_PATH);
-  _db.pragma('journal_mode = WAL');
-  initSchema(_db);
-  seedIfNeeded(_db);
+  initializeDatabase(_db);
   return _db;
+}
+
+/** 初始化 schema 并执行所有尚未记录的数据迁移。供升级测试使用。 */
+export function initializeDatabase(db) {
+  db.pragma('journal_mode = WAL');
+  initSchema(db);
+  migrateData(db);
+  return db;
 }
 
 /** 执行 schema.sql，幂等建表。 */
@@ -36,6 +42,62 @@ function initSchema(db) {
   migrateEventsColumn(db, 'category', "TEXT NOT NULL DEFAULT 'era'");
   migrateEventsColumn(db, 'impact', "TEXT NOT NULL DEFAULT ''");
   migrateEventsColumn(db, 'place', "TEXT NOT NULL DEFAULT ''");
+}
+
+const MIGRATIONS = [
+  {
+    version: 1,
+    apply(db) {
+      seedFiles(db, ['01-song-events.sql']);
+    },
+  },
+  {
+    version: 2,
+    apply(db) {
+      seedFiles(db, ['02-jin-events.sql']);
+    },
+  },
+];
+
+function migrateData(db) {
+  const applied = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all();
+  const appliedVersions = new Set(applied.map((row) => row.version));
+
+  // The marker only records that a migration was attempted. Reconcile every seed on
+  // startup so a database left partially seeded by an older release is repaired.
+  const applyMigrations = db.transaction(() => {
+    // Older databases did not enforce a seed identity. Remove only exact
+    // identity duplicates before adding the constraint, so recovery is safe.
+    db.exec(`
+      DELETE FROM events
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM events GROUP BY dynasty_id, year, short
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_events_seed_identity
+      ON events(dynasty_id, year, short);
+    `);
+    for (const migration of MIGRATIONS) {
+      migration.apply(db);
+      if (!appliedVersions.has(migration.version)) {
+        db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version);
+      }
+    }
+  });
+  applyMigrations();
+
+  const newlyApplied = MIGRATIONS.filter((migration) => !appliedVersions.has(migration.version));
+  if (newlyApplied.length > 0) console.log(`[db] 已应用 ${newlyApplied.length} 个数据迁移`);
+}
+
+function seedFiles(db, names) {
+  const seedDir = join(DATA_DIR, 'seed');
+  for (const name of names) {
+    const filePath = join(seedDir, name);
+    if (!existsSync(filePath)) {
+      throw new Error(`缺少 seed 文件: ${filePath}`);
+    }
+    db.exec(readFileSync(filePath, 'utf8'));
+  }
 }
 
 /**
@@ -52,24 +114,6 @@ function migrateEventsColumn(db, col, def) {
   console.log(`[db] 迁移：events 表已添加 ${col} 列`);
 }
 
-/**
- * 若 dynasties 表为空，执行 data/seed/*.sql 灌入初始数据。
- * 用「dynasties 是否有记录」作为 seed 是否跑过的标记，避免重复插入。
- * 新增 seed 数据后需删除 history.db 重启才会重新执行（或手动清空 dynasties）。
- */
-function seedIfNeeded(db) {
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM dynasties').get();
-  if (n > 0) return;
-
-  const seedDir = join(DATA_DIR, 'seed');
-  if (!existsSync(seedDir)) return;
-  const files = readdirSync(seedDir).filter((f) => f.endsWith('.sql')).sort();
-  for (const f of files) {
-    const sql = readFileSync(join(seedDir, f), 'utf8');
-    db.exec(sql);
-  }
-  console.log(`[db] 已 seed ${files.length} 个文件`);
-}
 
 /** 供路由层用：执行查询返回全部行（对象数组）。同步返回，路由层 await 亦可。 */
 export function all(sql, params = []) {

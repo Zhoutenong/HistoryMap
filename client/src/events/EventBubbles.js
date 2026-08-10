@@ -22,14 +22,16 @@ export class EventBubbles {
    * @param {(x:number,y:number,z:number)=>[number,number]} [opts.toScreen]
    *   世界坐标 → 屏幕 CSS 像素（main.js 提供）；缺省则指向线功能禁用
    * @param {HTMLElement} [opts.leadersHost] 指向线 SVG 的挂载容器（labelRenderer.domElement）
+   * @param {() => Array<HTMLElement>} [opts.getCollisionObstacles] 不可移动的地图标签
    */
-  constructor({ scene, events, categories = ['era'], onPick, onAppear = () => {}, toScreen = null, leadersHost = null }) {
+  constructor({ scene, events, categories = ['era'], onPick, onAppear = () => {}, toScreen = null, leadersHost = null, getCollisionObstacles = null }) {
     this.scene = scene;
     this.events = events.slice().sort((a, b) => a.year - b.year);
     this.activeCategories = categories.slice();
     this.onPick = onPick;
     this.onAppear = onAppear;
     this.toScreen = toScreen;
+    this.getCollisionObstacles = getCollisionObstacles;
     /** @type {{obj: CSS2DObject, el: HTMLElement, shift: HTMLElement, ev, dx:number, dy:number}[]} */
     this.items = [];
     this._lastYear = undefined; // 记录最近一次 update 的年份，供 setCategories 重算用
@@ -57,17 +59,29 @@ export class EventBubbles {
       // 印章式结构：竖条印章（.bubble-seal，顶部圆点）+ 横向事件名。
       const inner = document.createElement('span');
       inner.className = `bubble-inner cat-${ev.category || 'era'}`;
-      inner.innerHTML = `
-        <span class="bubble-seal"></span>
-        <span class="bubble-short">${ev.short}</span>
-      `;
+      inner.setAttribute('role', 'button');
+      inner.tabIndex = 0;
+      inner.setAttribute('aria-label', `${ev.year} 年，${ev.short || '未命名事件'}`);
+      const seal = document.createElement('span');
+      seal.className = 'bubble-seal';
+      const short = document.createElement('span');
+      short.className = 'bubble-short';
+      short.textContent = ev.short || '未命名事件';
+      inner.append(seal, short);
       shift.appendChild(inner);
       wrap.appendChild(shift);
 
       // 点击交给内层，stopPropagation 防止冒泡到地图射线拾取
-      inner.addEventListener('click', (e) => {
+      const pick = (e) => {
         e.stopPropagation();
         this.onPick(ev);
+      };
+      inner.addEventListener('click', pick);
+      inner.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          pick(e);
+        }
       });
       // hover：让其他泡泡变暗，自己不变
       wrap.addEventListener('mouseenter', () => this._dimOthers(idx));
@@ -89,6 +103,9 @@ export class EventBubbles {
     svg.setAttribute('class', 'bubble-leaders');
     svg.style.display = 'none';
     this.leadersSvg = svg;
+    // 线条节点在初始化时创建并按需复用，避免每帧解析 SVG 字符串。
+    this._leaderNodes = [];
+    this._leadersDirty = true;
     if (host) host.appendChild(svg);
   }
 
@@ -170,14 +187,18 @@ export class EventBubbles {
       };
     });
 
-    // 2. 把地图政权标签加入为不可移动障碍物（年份 -Infinity，确保排序最前）
-    const labelEls = Array.from(document.querySelectorAll('.regime-label'));
+    // 2. 地图标签加入为不可移动障碍物（年份 -Infinity，确保排序最前）。
+    // 城市标签由 TerritoryOverlay 显式提供，避免把所有 CSS2D 标签误当障碍。
+    const overlayEls = this.getCollisionObstacles?.() || [];
+    const regimeEls = Array.from(document.querySelectorAll('.regime-label'));
+    const labelEls = [...new Set([...regimeEls, ...overlayEls])];
     const labelNodes = labelEls
       .map((el) => el.getBoundingClientRect())
       .filter((r) => r.width > 0 && r.height > 0)
       .map((r) => ({
         it: null,
         year: -Infinity,
+        fixed: true,
         rect: { x: r.left, y: r.top, w: r.width, h: r.height },
         dx: 0,
         dy: 0,
@@ -316,18 +337,24 @@ export class EventBubbles {
    * 只绘制被推开的泡泡：从事件真实位置（世界坐标 → 屏幕）画虚线到泡泡实际中心，
    * 相机拖动时逐帧跟随。
    */
+  markLeadersDirty() {
+    this._leadersDirty = true;
+  }
+
   syncLeaders() {
     const svg = this.leadersSvg;
-    if (!svg || !this.toScreen) return;
+    if (!svg || !this.toScreen || !this._leadersDirty) return;
+    this._leadersDirty = false;
     const shifted = this.items.filter(
       (it) => it.obj.visible && Math.abs(it.dx) + Math.abs(it.dy) > 4
     );
     if (shifted.length === 0) {
       svg.style.display = 'none';
+      this._leadersKey = '';
       return;
     }
     svg.style.display = 'block';
-    // 轻量缓存：位置/颜色未变时跳过 innerHTML 重建（每帧调用，避免无谓 DOM 解析）
+    // 坐标或颜色未变时跳过属性更新；节点本身在 _buildLeaders 中创建后复用。
     let key = `${shifted.length}|`;
     const parts = shifted.map((it) => {
       const [sx, sy] = this.toScreen(it.obj.position.x, it.obj.position.y, it.obj.position.z);
@@ -344,8 +371,29 @@ export class EventBubbles {
     if (key === this._leadersKey) return;
     this._leadersKey = key;
 
-    let markup = '';
-    parts.forEach(({ sx, sy, r, catColor }) => {
+    while (this._leaderNodes.length < parts.length) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('stroke', 'rgba(58,52,40,0.62)');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-dasharray', '4 3');
+      const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      polygon.setAttribute('opacity', '0.85');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('r', '3');
+      circle.setAttribute('stroke', '#fdf8ec');
+      circle.setAttribute('stroke-width', '1');
+      circle.setAttribute('opacity', '0.92');
+      svg.append(line, polygon, circle);
+      this._leaderNodes.push({ line, polygon, circle });
+    }
+    this._leaderNodes.forEach(({ line, polygon, circle }, index) => {
+      const part = parts[index];
+      if (!part) {
+        line.style.display = polygon.style.display = circle.style.display = 'none';
+        return;
+      }
+      line.style.display = polygon.style.display = circle.style.display = '';
+      const { sx, sy, r, catColor } = part;
       const cx = r.left + r.width / 2;
       const topY = r.top + 2;
       // 方向（锚点 → 泡泡底边），线终点留出箭头空间
@@ -361,16 +409,22 @@ export class EventBubbles {
       const ay = endY + uy * 5;
       const px = -uy;
       const py = ux;
-      markup += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${endX.toFixed(1)}" y2="${endY.toFixed(1)}" stroke="rgba(58,52,40,0.62)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
-      markup += `<polygon points="${ax.toFixed(1)},${ay.toFixed(1)} ${(endX + px * 3.5).toFixed(1)},${(endY + py * 3.5).toFixed(1)} ${(endX - px * 3.5).toFixed(1)},${(endY - py * 3.5).toFixed(1)}" fill="${catColor}" opacity="0.85"/>`;
-      markup += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="3" fill="${catColor}" stroke="#fdf8ec" stroke-width="1" opacity="0.92"/>`;
+      line.setAttribute('x1', sx.toFixed(1));
+      line.setAttribute('y1', sy.toFixed(1));
+      line.setAttribute('x2', endX.toFixed(1));
+      line.setAttribute('y2', endY.toFixed(1));
+      polygon.setAttribute('points', `${ax.toFixed(1)},${ay.toFixed(1)} ${(endX + px * 3.5).toFixed(1)},${(endY + py * 3.5).toFixed(1)} ${(endX - px * 3.5).toFixed(1)},${(endY - py * 3.5).toFixed(1)}`);
+      polygon.setAttribute('fill', catColor);
+      circle.setAttribute('cx', sx.toFixed(1));
+      circle.setAttribute('cy', sy.toFixed(1));
+      circle.setAttribute('fill', catColor);
     });
-    svg.innerHTML = markup;
   }
 
   _setShift(it, dx, dy) {
     it.dx = dx;
     it.dy = dy;
+    this._leadersDirty = true;
     it.shift.style.left = `${dx}px`;
     it.shift.style.top = `${dy}px`;
   }
@@ -400,6 +454,14 @@ export class EventBubbles {
       this.scene.remove(obj);
     });
     this.items = [];
-    if (this.leadersSvg) this.leadersSvg.innerHTML = '';
+    if (this.leadersSvg) {
+      this.leadersSvg.style.display = 'none';
+      this._leaderNodes.forEach(({ line, polygon, circle }) => {
+        line.remove();
+        polygon.remove();
+        circle.remove();
+      });
+      this._leaderNodes = [];
+    }
   }
 }

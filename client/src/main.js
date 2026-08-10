@@ -6,17 +6,20 @@ import { buildChinaMap, fitProjection, project } from './map/ChinaMap.js';
 import { Timeline } from './timeline/Timeline.js';
 import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
-import { buildTerritoryOverlay, fadeIn } from './map/TerritoryOverlay.js';
+import { buildTerritoryOverlay, fadeIn, getOverlayCacheStats } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
 import { getMap, getEvents, getMeta, getOverlay, getDynasties } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
-import { loadSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
+import { loadSettings, saveSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
+import { settingsFromParam } from './settings/transfer.js';
+import { parseViewParams, viewToQuery, buildShareUrl, copyText } from './share.js';
 import { SettingsMenu } from './settings/SettingsMenu.js';
 import './styles.css';
 
 // 默认朝代。未来切换朝代只改这个常量 + 后端数据，地图/泡泡层无需改（AGENTS.md 扩展点）。
 const DYNASTY_DEFAULT = 'song';
 let currentDynasty = DYNASTY_DEFAULT;
+const isAbortError = (err) => err && err.name === 'AbortError';
 
 const container = document.getElementById('scene-container');
 const loadingEl = document.getElementById('loading');
@@ -54,6 +57,7 @@ dirLight.position.set(200, -400, 600);
 scene.add(dirLight);
 
 const controls = new OrbitControls(camera, renderer.domElement);
+controls.addEventListener('change', () => bubblesRef?.markLeadersDirty());
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 // 参考图是平面古地图：锁定旋转，只保留滚轮缩放 + 拖动平移
@@ -140,6 +144,7 @@ function resize() {
   const h = container.clientHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  bubblesRef?.markLeadersDirty();
   renderer.setSize(w, h);
   labelRenderer.setSize(w, h);
 }
@@ -170,6 +175,9 @@ animate();
 // 用 async IIFE 而非顶层 await，避免老 target 不支持（AGENTS.md 已知坑）
 (async () => {
   try {
+    // 分享链接里的设置优先于本地保存：先落库再读取，保证后续所有读取点一致
+    const urlSettings = settingsFromParam(new URLSearchParams(location.search).get('s'));
+    if (urlSettings) saveSettings(urlSettings);
     const settings = loadSettings();
     const detailMask = document.getElementById('detail-mask');
     const eraBanner = document.getElementById('era-banner');
@@ -188,8 +196,20 @@ animate();
     let prevYear = 0;
     let currentPeriod = '';
     let overlayLoadingPeriod = '';
+    let overlayEmpty = false;
     let dynastyRequestSeq = 0;
     let overlayRequestSeq = 0;
+    let dynastyController = null;
+    let overlayController = null;
+
+    // 深链接路由状态：当前详情面板打开的事件（URL ?event= 与详情同步）
+    let detailOpenEvent = null;
+
+    /** 构建视图 URL（相对路径，供 history pushState/replaceState 使用）。 */
+    function buildViewHref(view) {
+      return `${location.pathname}${viewToQuery(view)}`;
+    }
+
 
     // 按年份确定显示哪个时期的疆域：边界由后端 meta.periods 给出，前端不写死
     function getPeriodForYear(year) {
@@ -225,7 +245,9 @@ animate();
     // 关闭时恢复打开前的播放状态。timeline/bubbles 在 loadDynasty 中创建，闭包内运行时访问。
     // 详情打开时加半透明遮罩并锁死地图交互（读详情时防止误触旋转/拾取）。
     let resumePlayback = false;
+    let detailReturnFocus = null;
     function showDetail(ev) {
+      detailReturnFocus = document.activeElement;
       resumePlayback = timeline.playing;
       timeline.pause();
       // 分类名（设计图详情面板的「时代格局/军事·领土」徽章）；无匹配时不显示
@@ -238,33 +260,71 @@ animate();
       const related = [];
       if (idx > 0) related.push(sorted[idx - 1]);
       if (idx >= 0 && idx < sorted.length - 1) related.push(sorted[idx + 1]);
-      detailPanel.innerHTML = `
-        <button class="detail-close" title="关闭">×</button>
-        <div class="detail-head">
-          <span class="detail-year">${ev.year} 年</span>
-          ${catLabel ? `<span class="detail-cat">${catLabel}</span>` : ''}
-          ${periodName ? `<span class="detail-cat">${periodName}</span>` : ''}
-        </div>
-        <h2>${ev.title}</h2>
-        ${ev.place ? `<div class="detail-meta">${ev.place}</div>` : ''}
-        <div class="detail-divider"></div>
-        <p class="detail-text">${ev.detail}</p>
-        ${ev.impact ? `
-          <div class="detail-impact">
-            <div class="detail-impact-title">影 响</div>
-            <p>${ev.impact}</p>
-          </div>` : ''}
-        ${related.length ? `
-          <div class="detail-related">
-            <div class="detail-related-title">相关事件</div>
-            <div class="detail-related-list">
-              ${related.map((r) => `
-                <button type="button" class="detail-related-item" data-id="${r.id}">${r.year} · ${r.short}</button>
-              `).join('')}
-            </div>
-          </div>` : ''}
-        <img src="/ink-landscape.png" class="detail-ink-art" alt="水墨山水">
-      `;
+      detailPanel.replaceChildren();
+      const addText = (tag, className, text, parent = detailPanel) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = text;
+        parent.appendChild(node);
+        return node;
+      };
+      const closeButton = addText('button', 'detail-close', '×');
+      closeButton.type = 'button';
+      closeButton.title = '关闭详情';
+      closeButton.setAttribute('aria-label', '关闭详情');
+      const head = document.createElement('div');
+      head.className = 'detail-head';
+      addText('span', 'detail-year', `${ev.year} 年`, head);
+      if (catLabel) addText('span', 'detail-cat', catLabel, head);
+      if (periodName) addText('span', 'detail-cat', periodName, head);
+      // 分享：把当前视图（朝代/年份/事件）写入 URL 并复制，收件人可直接打开该事件
+      const shareBtn = addText('button', 'detail-share', '分享', head);
+      shareBtn.type = 'button';
+      shareBtn.title = '复制分享链接';
+      shareBtn.setAttribute('aria-label', '复制分享链接');
+      shareBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const url = buildShareUrl({ dynasty: currentDynasty, year: ev.year, event: ev.id });
+        const ok = await copyText(url);
+        shareBtn.textContent = ok ? '已复制' : '复制失败';
+        shareBtn.classList.toggle('detail-share-ok', ok);
+        setTimeout(() => {
+          shareBtn.textContent = '分享';
+          shareBtn.classList.remove('detail-share-ok');
+        }, 1600);
+      });
+      detailPanel.appendChild(head);
+      const detailTitle = addText('h2', '', ev.title || '未命名事件');
+      detailTitle.id = 'detail-title';
+      if (ev.place) addText('div', 'detail-meta', ev.place);
+      addText('div', 'detail-divider', '');
+      addText('p', 'detail-text', ev.detail || '暂无详情');
+      if (ev.impact) {
+        const impact = document.createElement('div');
+        impact.className = 'detail-impact';
+        addText('div', 'detail-impact-title', '影 响', impact);
+        addText('p', '', ev.impact, impact);
+        detailPanel.appendChild(impact);
+      }
+      if (related.length) {
+        const relatedPanel = document.createElement('div');
+        relatedPanel.className = 'detail-related';
+        addText('div', 'detail-related-title', '相关事件', relatedPanel);
+        const relatedList = document.createElement('div');
+        relatedList.className = 'detail-related-list';
+        related.forEach((r) => {
+          const button = addText('button', 'detail-related-item', `${r.year} · ${r.short || '未命名事件'}`, relatedList);
+          button.type = 'button';
+          button.dataset.id = String(r.id);
+        });
+        relatedPanel.appendChild(relatedList);
+        detailPanel.appendChild(relatedPanel);
+      }
+      const art = document.createElement('img');
+      art.src = '/ink-landscape.png';
+      art.className = 'detail-ink-art';
+      art.alt = '水墨山水';
+      detailPanel.appendChild(art);
       // 相关事件点击：跳到该事件并刷新详情
       detailPanel.querySelectorAll('.detail-related-item').forEach((btn) => {
         btn.addEventListener('click', (e) => {
@@ -274,28 +334,45 @@ animate();
         });
       });
       detailPanel.classList.remove('hidden');
+      detailPanel.setAttribute('aria-hidden', 'false');
       detailMask.classList.remove('hidden');
+      detailMask.setAttribute('aria-hidden', 'false');
       controls.enabled = false;
       detailPanel.querySelector('.detail-close').addEventListener('click', (e) => {
         e.stopPropagation();
         closeDetail();
       });
+      closeButton.focus();
       bubbles.highlight(ev);
       // 打开详情：地图缩小 + 左移，给右侧面板让位（构图级重取景）
       frameMap({ scale: 1.28, shiftX: -0.16 });
       // 点击事件：相机平滑聚焦到事件位置
       focusOn(ev.coord);
+      // 路由：当前视图写入 URL（前进/后退可恢复，刷新可深链接直达）
+      detailOpenEvent = ev;
+      history.pushState({ view: 'event' }, '', buildViewHref({ dynasty: currentDynasty, year: ev.year, event: ev.id }));
     }
 
     function closeDetail() {
       detailPanel.classList.add('hidden');
+      detailPanel.setAttribute('aria-hidden', 'true');
       detailMask.classList.add('hidden');
+      detailMask.setAttribute('aria-hidden', 'true');
       controls.enabled = true;
       bubbles.highlight(null);
       // 关闭详情：回到全图构图（与初始构图一致）
       frameMap({ scale: 0.98, shiftX: 0.02 });
       if (resumePlayback) timeline.play();
       resumePlayback = false;
+      // 路由：移除 URL 中的事件参数（replaceState 不新增历史记录）
+      if (detailOpenEvent) {
+        detailOpenEvent = null;
+        history.replaceState({ view: 'map' }, '', buildViewHref({ dynasty: currentDynasty, year: timeline.year }));
+      }
+      if (detailReturnFocus && typeof detailReturnFocus.focus === 'function') {
+        detailReturnFocus.focus();
+      }
+      detailReturnFocus = null;
     }
 
     // 点击事件流/刻度点：先跳到事件年份，再打开详情
@@ -324,8 +401,7 @@ animate();
         logBadge.classList.toggle('hidden', n === 0);
       }
     });
-    document.getElementById('log-toggle').addEventListener('click', (e) => {
-      e.currentTarget.blur();  // 松开焦点，避免屏蔽空格等全局快捷键
+    document.getElementById('log-toggle').addEventListener('click', () => {
       eventLog.toggle();
     });
     document.getElementById('log-close').addEventListener('click', () => eventLog.hide());
@@ -360,9 +436,13 @@ animate();
     const dynastySelect = document.getElementById('dynasty-select');
     getDynasties()
       .then((list) => {
-        dynastySelect.innerHTML = (list || [])
-          .map((d) => `<option value="${d.id}">${d.name}</option>`)
-          .join('');
+        dynastySelect.replaceChildren();
+        (list || []).forEach((d) => {
+          const option = document.createElement('option');
+          option.value = d.id;
+          option.textContent = d.name;
+          dynastySelect.appendChild(option);
+        });
         dynastySelect.value = currentDynasty;
       })
       .catch((err) => console.warn('[dynasties] 朝代列表加载失败:', err));
@@ -375,19 +455,48 @@ animate();
       const requestSeq = dynastyRequestSeq + 1;
       loadDynasty(id)
         .then(() => {
-          if (requestSeq === dynastyRequestSeq) loadingEl.classList.add('hidden');
+          if (requestSeq === dynastyRequestSeq) {
+            loadingEl.classList.add('hidden');
+            dynastySelect.value = currentDynasty;
+            // 朝代切换后同步 URL（详情已关闭，URL 只保留朝代 + 当前年）
+            history.replaceState(null, '', buildViewHref({ dynasty: currentDynasty, year: timeline.year }));
+          }
         })
         .catch((err) => {
-          if (requestSeq !== dynastyRequestSeq) return;
+          if (requestSeq !== dynastyRequestSeq || isAbortError(err)) return;
           console.error('[dynasties] 朝代切换失败:', err);
           loadingEl.textContent = '朝代数据加载失败';
         });
     });
 
+    // 深链接路由：浏览器前进/后退时按 URL 恢复视图（详情开合与历史记录同步）
+    window.addEventListener('popstate', async () => {
+      const view = parseViewParams(location.search);
+      if (view?.dynasty && view.dynasty !== currentDynasty) {
+        try {
+          await loadDynasty(view.dynasty);
+          dynastySelect.value = currentDynasty;
+        } catch (err) {
+          if (!isAbortError(err)) console.warn('[view] 深链接朝代加载失败，已停留在当前朝代:', err);
+        }
+      }
+      const ev = view?.event !== undefined ? currentEvents.find((e) => e.id === view.event) : undefined;
+      if (ev) {
+        timeline.setYear(ev.year);
+        showDetail(ev);
+      } else {
+        closeDetail();
+      }
+    });
+
     // —— 核心装配：加载朝代数据并重建可切换图层（初始加载与朝代切换共用）——
     async function loadDynasty(dynastyId) {
       const requestSeq = ++dynastyRequestSeq;
-      const meta = await getMeta(dynastyId);
+      dynastyController?.abort();
+      overlayController?.abort();
+      const controller = new AbortController();
+      dynastyController = controller;
+      const meta = await getMeta(dynastyId, { signal: controller.signal });
       if (requestSeq !== dynastyRequestSeq) return false;
 
       // 初始时期：由 meta 数据驱动；periods 缺失时退到第一个时期（最后防线）
@@ -395,14 +504,20 @@ animate();
         || meta.periods?.[0]?.id
         || '1111';
       const [geojson, overlayGeojson, events] = await Promise.all([
-        getMap(),
-        getOverlay(dynastyId, initialPeriod),
-        getEvents(dynastyId),
+        getMap({ signal: controller.signal }),
+        getOverlay(dynastyId, initialPeriod, { signal: controller.signal }),
+        getEvents(dynastyId, { signal: controller.signal }),
       ]);
       if (requestSeq !== dynastyRequestSeq) return false;
 
       currentDynasty = dynastyId;
       periodMeta = meta;
+      // 朝代数据只有在全部请求成功后才提交；此时同步页面标题和印章，
+      // 避免切换期间仍显示上一个朝代的品牌信息。
+      const brandSeal = document.querySelector('.brand-seal');
+      if (brandSeal) brandSeal.textContent = meta.name?.replace(/朝$/, '') || dynastyId;
+      document.title = `中国历史地图 · ${meta.name || dynastyId}`;
+      overlayEmpty = false;
       currentEvents = events;
       overlayRequestSeq++;
 
@@ -417,11 +532,25 @@ animate();
         scene.add(mapGroup);
       }
 
-      // 疆域叠加层：清旧建新
+      // 疆域叠加层：清旧建新；纹理按时期/视口配置复用
+      const overlayBuildStarted = performance.now();
       if (territoryOverlay) clearOverlayGroup(territoryOverlay.group);
-      territoryOverlay = buildTerritoryOverlay(overlayGeojson);
+      territoryOverlay = buildTerritoryOverlay(overlayGeojson, { period: initialPeriod, layerConfig: 'default' });
+      const overlayDurationMs = performance.now() - overlayBuildStarted;
+      performance.mark('map-initialization-overlay-end');
+      console.info('[overlay] 地图初始化', {
+        durationMs: overlayDurationMs,
+        cache: getOverlayCacheStats(),
+      });
       territoryOverlay.group.visible = settings.showOverlay;
+      territoryOverlay.setAuxiliaryVisibility?.(settings);
       scene.add(territoryOverlay.group);
+      const hasOverlayFeatures = Array.isArray(overlayGeojson?.features) && overlayGeojson.features.length > 0;
+      overlayEmpty = !hasOverlayFeatures;
+      if (overlayEmpty) {
+        loadingEl.textContent = '当前时期暂无疆域数据，仍可查看事件与时间轴';
+        loadingEl.classList.remove('hidden');
+      }
 
       // 地图图例
       if (!legend) legend = new Legend();
@@ -429,14 +558,16 @@ animate();
 
       // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景。
       // frameMap 以包围球为基准做构图（scale 越大留白越多），后续详情面板开关也复用它。
-      const focusGroup = territoryOverlay.group.children.length
-        ? territoryOverlay.group
-        : mapGroup;
+      const focusGroup = territoryOverlay.group.children.length ? territoryOverlay.group : mapGroup;
       const box = new THREE.Box3().setFromObject(focusGroup);
       const sphere = box.getBoundingSphere(new THREE.Sphere());
+      const radius = Number.isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 500;
+      const center = [sphere.center.x, sphere.center.y, sphere.center.z].every(Number.isFinite)
+        ? sphere.center
+        : new THREE.Vector3(0, 0, 0);
       frameBase = {
-        center: sphere.center,
-        dist: sphere.radius / Math.sin((camera.fov * Math.PI) / 180 / 2),
+        center,
+        dist: radius / Math.sin((camera.fov * Math.PI) / 180 / 2),
       };
       // 构图：scale 0.98 让地图主体占画面约六成（参考图比例），微右移平衡左侧图例
       frameMap({ scale: 0.98, shiftX: 0.02 });
@@ -444,8 +575,10 @@ animate();
 
       // 事件泡泡层：清旧建新
       if (bubbles) bubbles.dispose();
-      // 事件流：先清空旧朝代记录（必须在 bubbles.update 触发 onAppear 之前）
+      // 事件流：先清空旧朝代记录（必须在 bubbles.update 触发 onAppear 之前），
+      // 再注入完整索引，使尚未播放的事件也可搜索。
       eventLog.clear();
+      eventLog.setEvents(currentEvents);
       bubbles = new EventBubbles({
         scene,
         events,
@@ -454,6 +587,7 @@ animate();
         onAppear: (ev) => eventLog.add(ev),
         toScreen: worldToScreen,
         leadersHost: labelRenderer.domElement,
+        getCollisionObstacles: () => territoryOverlay?.getCollisionObstacles?.() || [],
       });
       bubblesRef = bubbles;
 
@@ -480,13 +614,16 @@ animate();
               overlayLoadingPeriod = newPeriod;
               const requestSeq = ++overlayRequestSeq;
               const dynastySeq = dynastyRequestSeq;
+              overlayController?.abort();
+              const controller = new AbortController();
+              overlayController = controller;
               try {
-                const freshOverlay = await getOverlay(currentDynasty, newPeriod);
+                const freshOverlay = await getOverlay(currentDynasty, newPeriod, { signal: controller.signal });
                 if (requestSeq !== overlayRequestSeq || dynastySeq !== dynastyRequestSeq
                   || overlayLoadingPeriod !== newPeriod) return;
                 clearOverlayGroup(territoryOverlay.group);
                 // 重建新 overlay
-                const newOverlay = buildTerritoryOverlay(freshOverlay);
+                const newOverlay = buildTerritoryOverlay(freshOverlay, { period: newPeriod, layerConfig: 'default' });
                 // 把新 group 的资源迁移到旧 group
                 while (newOverlay.group.children.length > 0) {
                   territoryOverlay.group.add(newOverlay.group.children[0]);
@@ -495,12 +632,19 @@ animate();
                 fadeIn(territoryOverlay.group);
                 console.log(`[overlay] 切换到 ${newPeriod} 时期`);
                 legend.update(freshOverlay);
+                overlayEmpty = !Array.isArray(freshOverlay?.features) || freshOverlay.features.length === 0;
+                loadingEl.textContent = overlayEmpty
+                  ? '当前时期暂无疆域数据，仍可查看事件与时间轴'
+                  : '';
+                loadingEl.classList.toggle('hidden', !overlayEmpty);
                 // 新 overlay 的政权标签已插入 DOM，重排泡泡避开标签（避免盖住政权名）
                 setTimeout(() => bubbles.resolve(), 100);
               } catch (err) {
-                if (requestSeq === overlayRequestSeq && dynastySeq === dynastyRequestSeq
+                if (!isAbortError(err) && requestSeq === overlayRequestSeq && dynastySeq === dynastyRequestSeq
                   && overlayLoadingPeriod === newPeriod) {
                   console.warn('[overlay] 时期切换失败:', err);
+                  loadingEl.textContent = '时期疆域加载失败，仍可查看事件与时间轴';
+                  loadingEl.classList.remove('hidden');
                 }
               }
             }
@@ -536,13 +680,36 @@ animate();
         timeline.setTickMs(SPEED_MAP[s.speed] || SPEED_MAP.normal);
         mapGroup.visible = !!s.showBaseMap;         // 现代底图
         territoryOverlay.group.visible = !!s.showOverlay;  // 历史疆域
+        if (territoryOverlay.setAuxiliaryVisibility) {
+          territoryOverlay.setAuxiliaryVisibility(s);
+        }
       }
     });
 
     // 初始加载
     await loadDynasty(currentDynasty);
-    loadingEl.classList.add('hidden');
+
+    // —— 深链接恢复：URL 携带 dynasty/year/event 时还原视图并打开详情 ——
+    const view = parseViewParams(location.search);
+    if (view?.dynasty && view.dynasty !== currentDynasty) {
+      try {
+        await loadDynasty(view.dynasty);
+        dynastySelect.value = currentDynasty;
+      } catch (err) {
+        if (!isAbortError(err)) console.warn('[view] 深链接朝代加载失败，已停留在默认朝代:', err);
+      }
+    }
+    const viewEvent = view?.event !== undefined ? currentEvents.find((e) => e.id === view.event) : undefined;
+    if (viewEvent) {
+      timeline.setYear(viewEvent.year);
+      showDetail(viewEvent);
+    } else if (view?.year !== undefined) {
+      timeline.setYear(view.year);  // 只带年份：跳到该年（setYear 内部 clamp 到朝代范围）
+    }
+
+    loadingEl.classList.toggle('hidden', !overlayEmpty);
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error('加载失败:', err);
     loadingEl.textContent = '数据加载失败，请确认后端已启动 (localhost:3001)';
     loadingEl.style.color = theme.errorText;

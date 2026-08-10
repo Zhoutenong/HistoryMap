@@ -4,6 +4,16 @@
 
 const KEY = 'historymap.settings.v1';
 
+// Node/SSR and privacy-mode environments may not expose localStorage.
+// Keep the store usable without a DOM while preserving browser persistence.
+function getStorage() {
+  try {
+    return typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 事件分类定义（顺序即设置面板里的展示顺序，color 给泡泡 dot 用）。
  * id 与后端 events.category 取值一一对应。
@@ -27,20 +37,42 @@ export const defaultSettings = {
   speed: 'normal',
   autoplay: true,
   showBaseMap: false,   // 现代底图默认关闭
-  showOverlay: true     // 历史疆域叠加层默认显示
+  showOverlay: true,    // 历史疆域叠加层默认显示
+  showRivers: true,
+  showMountains: true,
+  showCities: true
 };
+
+/** 布尔开关字段清单（校验时逐个规整）。 */
+const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities'];
+
+/**
+ * 校验并规整一份设置对象：合并默认值、过滤非法分类/速度/布尔值。
+ * 导入（文本/URL 参数）与 localStorage 读取共用，保证任意来源的设置都合法。
+ * @param {unknown} raw
+ * @returns {object} 完整设置对象（永远包含全部字段）
+ */
+export function sanitizeSettings(raw) {
+  const base = { ...defaultSettings };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
+  const merged = { ...base, ...raw };
+  merged.categories = Array.isArray(raw.categories)
+    ? [...new Set(raw.categories.filter((id) => CATEGORIES.some((c) => c.id === id)))]
+    : base.categories;
+  merged.speed = SPEED_MAP[merged.speed] ? merged.speed : base.speed;
+  BOOL_KEYS.forEach((key) => {
+    if (typeof raw[key] !== 'boolean') merged[key] = base[key];
+  });
+  return merged;
+}
 
 /** 读取设置：合并默认值，容错坏数据。 */
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const storage = getStorage();
+    const raw = storage?.getItem(KEY);
     if (!raw) return { ...defaultSettings };
-    const parsed = JSON.parse(raw);
-    return {
-      ...defaultSettings,
-      ...parsed,
-      categories: Array.isArray(parsed.categories) ? parsed.categories.filter(Boolean) : defaultSettings.categories
-    };
+    return sanitizeSettings(JSON.parse(raw));
   } catch {
     return { ...defaultSettings };
   }
@@ -50,7 +82,7 @@ export function loadSettings() {
 export function saveSettings(patch) {
   const merged = { ...loadSettings(), ...patch };
   try {
-    localStorage.setItem(KEY, JSON.stringify(merged));
+    getStorage()?.setItem(KEY, JSON.stringify(merged));
   } catch {
     // localStorage 不可用（隐私模式等）时静默降级：设置仅当前会话有效。
   }

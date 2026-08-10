@@ -4,9 +4,9 @@
 -- impact 为事件影响（详情面板「影响」栏），可为空。
 -- place 为事件地点（详情面板「地点」徽章），可为空。
 
-INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('song', '宋朝', 960, 1279);
+INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('song', '宋朝', 960, 1279);
 
-INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('song', 960, 975, 114.35, 34.52, '陈桥兵变', '陈桥兵变 · 北宋建立', '后周大将赵匡胤在陈桥驿被部下黄袍加身，回师汴梁，逼后周恭帝禅位，建立宋朝，定都东京开封府（汴梁），是为宋太祖。', '结束五代十国兵戈相夺的乱局，中原重归一统；开创「重文轻武」的文官政治，为两宋经济文化的空前繁荣奠定根基。', '陈桥驿·开封', 'era'),
   ('song', 963, 978, 114.35, 34.52, '杯酒释兵权', '杯酒释兵权', '宋太祖赵匡胤通过宴请禁军将领，以厚赏换取兵权，解除石守信等高级将领军权，确立「重文轻武」国策，根除唐末以来藩镇割据之弊。', '以近乎和平的方式解决兵权问题，两宋三百年再无武将跋扈、黄袍加身之祸；「强干弱枝」之策稳固了中央集权，也埋下边防孱弱的隐忧。', '汴梁宫苑', 'era'),
   ('song', 979, 994, 112.55, 37.87, '北汉灭亡', '太宗灭北汉 · 结束分裂', '宋太宗赵光义亲征，攻灭北汉，结束五代十国分裂局面，基本统一中原。同年乘胜伐辽，于高梁河之战大败。', '五代十国分裂局面正式终结；宋辽由间接对抗转为正面冲突，高梁河之败使燕云十六州再无收复之望，宋辽攻守之势就此逆转。', '太原', 'era'),

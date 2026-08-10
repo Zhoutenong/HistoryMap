@@ -40,15 +40,25 @@ export class Legend {
     }
 
     // 渲染：顶部小标题「政权」（设计图风格），每行色块 + 政权名
-    this.el.innerHTML = `
-      <div class="legend-title">政权</div>
-      ${this._entries.map(e => `
-        <div class="legend-row${e.major ? ' major' : ''}" data-entity="${e.entity}">
-          <span class="legend-swatch" style="background:${e.color}"></span>
-          <span>${e.entity}</span>
-        </div>
-      `).join('')}
-    `;
+    this.el.replaceChildren();
+    const title = document.createElement('div');
+    title.className = 'legend-title';
+    title.textContent = '政权';
+    this.el.appendChild(title);
+    this._entries.forEach((entry) => {
+      const row = document.createElement('div');
+      row.className = `legend-row${entry.major ? ' major' : ''}`;
+      row.dataset.entity = entry.entity;
+      row.setAttribute('role', 'listitem');
+      const swatch = document.createElement('span');
+      swatch.className = 'legend-swatch';
+      swatch.style.backgroundColor = entry.color;
+      swatch.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.textContent = entry.entity;
+      row.append(swatch, label);
+      this.el.appendChild(row);
+    });
     this._bindHover();
 
     this.el.classList.remove('hidden');

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { featureCollectionToLegacy, filterGeoJSONByPeriod, validateGeoJSON } from '../data/geo/historical/geojson.js';
 
 const router = Router();
 
@@ -10,6 +11,17 @@ const __dirname = path.dirname(__filename);
 
 // 历史边界数据目录
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
+const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson'];
+
+function readStandardFeatures(periodId) {
+  const features = [];
+  STANDARD_GEO_FILES.forEach((filename) => {
+    const data = readCachedJSON(path.join(HISTORICAL_DIR, filename));
+    if (!data || !validateGeoJSON(data).valid) return;
+    features.push(...filterGeoJSONByPeriod(data, periodId).features);
+  });
+  return features;
+}
 
 /**
  * 带 mtime 校验的 JSON 文件缓存：
@@ -115,6 +127,19 @@ router.get('/', (req, res) => {
     });
   });
 
+  // 标准化辅助地理数据优先；缺失或校验失败时保留 periods.json 旧数组兼容。
+  const standardFeatures = readStandardFeatures(periodDef.id);
+  const standardByKind = standardFeatures.reduce((groups, feature) => {
+    const kind = feature.properties?.kind;
+    if (kind) groups[kind].push(feature);
+    return groups;
+  }, { river: [], mountain: [], city: [] });
+  const legacy = featureCollectionToLegacy(standardFeatures);
+  const legacyByKind = (kind) => legacy.filter((item) => item.kind === kind);
+  const rivers = standardByKind.river.length ? legacyByKind('river') : (periodDef.rivers || periodsIndex.rivers || []);
+  const mountains = standardByKind.mountain.length ? legacyByKind('mountain') : (periodDef.mountains || periodsIndex.mountains || []);
+  const cities = standardByKind.city.length ? legacyByKind('city') : (periodDef.cities || periodsIndex.cities || []);
+
   res.json({
     type: 'FeatureCollection',
     features: allFeatures,
@@ -122,11 +147,9 @@ router.get('/', (req, res) => {
       period: periodDef.label,
       year: periodDef.year,
       _periodId: periodDef.id,
-      // 淡墨辅助元素（示意路径/点位，供前端水彩层叠加绘制）
-      rivers: periodDef.rivers || periodsIndex.rivers || [],
-      mountains: periodDef.mountains || periodsIndex.mountains || [],
-      // 都会/重镇标注位（前端城市标签，与政权名标签区分层级）
-      cities: periodDef.cities || periodsIndex.cities || [],
+      rivers,
+      mountains,
+      cities,
     }
   });
 });

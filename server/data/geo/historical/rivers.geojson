@@ -1,0 +1,8 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","id":"river-yellow","geometry":{"type":"LineString","coordinates":[[95.5,35],[100,35.5],[104,36.5],[107,38],[110.5,40],[113.5,40.5],[116,38.5],[119,37],[122,37.5],[125,37.8],[127.5,37.8]]},"properties":{"id":"river-yellow","name":"黄河","kind":"river","rank":1,"style":"ink-blue","source":"historical periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期示意路径；非水文测绘","periods":["song-1111","song-1142","song-1279","jin-1120","jin-1142","jin-1200"]}},
+    {"type":"Feature","id":"river-yangtze","geometry":{"type":"LineString","coordinates":[[90.5,29.5],[96,31],[102,30.8],[108,30.5],[112,30.2],[116,30.8],[120,31.8],[122.5,30.8]]},"properties":{"id":"river-yangtze","name":"长江","kind":"river","rank":1,"style":"ink-blue","source":"historical periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期示意路径；非水文测绘","periods":["song-1111","song-1142","song-1279","jin-1120","jin-1142","jin-1200"]}},
+    {"type":"Feature","id":"river-huai","geometry":{"type":"LineString","coordinates":[[112.5,33.5],[115.5,33.2],[118.5,33.4],[120.3,34.3]]},"properties":{"id":"river-huai","name":"淮河","kind":"river","rank":2,"style":"ink-blue","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金宋对峙时期示意路径","periods":["song-1142","song-1279","jin-1142","jin-1200"]}}
+  ]
+}

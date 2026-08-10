@@ -21,6 +21,7 @@ jobs:
       # Node 20 runner 已弃用（actions 被强制跑在 Node 24，setup-node 安装 Node 20
       # 存在间歇兼容问题）；vitest4/vite5/better-sqlite3 均兼容 Node 24
       - name: Setup Node.js 24
+        id: setup-node
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -29,6 +30,10 @@ jobs:
             package-lock.json
             client/package-lock.json
             server/package-lock.json
+
+      - name: Check npm cache
+        run: |
+          echo "npm cache hit: ${{ steps.setup-node.outputs.cache-hit || 'false (new or unavailable)' }}"
 
       # npm ci 加网络重试：CI 偶发 registry 拉取瞬时失败（历史 3 次 flaky 均为此类）
       - name: Install root dependencies
@@ -40,6 +45,13 @@ jobs:
       - name: Install server dependencies
         run: npm --prefix server ci --fetch-retries=5 --fetch-retry-mintimeout=20000
 
+      # Report known advisories without blocking the existing build/test gates.
+      - name: npm audit (report)
+        run: |
+          npm audit --audit-level=high || true
+          npm --prefix client audit --audit-level=high || true
+          npm --prefix server audit --audit-level=high || true
+
       - name: Lint
         run: npm run lint
 
@@ -48,3 +60,51 @@ jobs:
 
       - name: Build client (production)
         run: npm run build
+
+      - name: Check build artifacts
+        run: npm run check:build
+
+      - name: Data and API contract tests
+        run: npm run contract
+
+      - name: Database migration contract tests
+        run: npm run contract:db-migration
+
+      - name: Start API for smoke test
+        run: |
+          npm --prefix server start > server.log 2>&1 &
+          healthy=0
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:3001/api/health; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" -ne 1 ]; then
+            echo "API did not become healthy within 30 seconds"
+            exit 1
+          fi
+
+      - name: Run npm smoke test
+        run: npm run smoke -- http://localhost:3001
+
+      # Optional browser smoke gate; enable with repository variable HISTORYMAP_RUN_E2E=true.
+      # The default CI path remains unchanged and does not require browser binaries.
+      - name: Install Playwright Chromium (optional E2E)
+        if: ${{ vars.HISTORYMAP_RUN_E2E == 'true' }}
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests (optional E2E)
+        if: ${{ vars.HISTORYMAP_RUN_E2E == 'true' }}
+        env:
+          HISTORYMAP_BASE_URL: http://localhost:3001
+        run: npm run e2e
+
+      - name: Upload API server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: server.log
+          if-no-files-found: warn

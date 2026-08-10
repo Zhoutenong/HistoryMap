@@ -16,38 +16,38 @@
         </div>
         <div class="top-actions">
           <select id="dynasty-select" title="选择朝代" aria-label="选择朝代"></select>
-          <button id="log-toggle" class="top-btn" title="历史事件流">
-            <span class="top-btn-icon">☰</span><span class="top-btn-label">事件</span>
-            <span id="log-badge" class="hidden"></span>
+          <button id="log-toggle" class="top-btn" title="历史事件流" aria-label="打开历史事件流" aria-controls="event-log" aria-expanded="false">
+            <span class="top-btn-icon" aria-hidden="true">☰</span><span class="top-btn-label">事件</span>
+            <span id="log-badge" class="hidden" aria-hidden="true"></span>
           </button>
-          <button id="settings-btn" class="top-btn" title="设置">
-            <span class="top-btn-icon">⚙</span><span class="top-btn-label">设置</span>
+          <button id="settings-btn" class="top-btn" title="设置" aria-label="打开设置" aria-controls="settings-panel" aria-expanded="false">
+            <span class="top-btn-icon" aria-hidden="true">⚙</span><span class="top-btn-label">设置</span>
           </button>
         </div>
       </header>
 
       <!-- 全屏 3D 场景 -->
-      <div id="scene-container">
-        <div id="year-watermark"></div>
-        <div id="legend" class="hidden"></div>
+      <div id="scene-container" role="application" aria-label="中国历史地图，可通过时间轴浏览历史事件">
+        <div id="year-watermark" aria-live="polite"></div>
+        <div id="legend" class="hidden" role="region" aria-label="政权图例"></div>
       </div>
 
       <!-- 右侧事件流抽屉（默认收起） -->
-      <div id="event-log" class="collapsed">
+      <aside id="event-log" class="collapsed" role="region" aria-labelledby="event-log-title" aria-hidden="true">
         <div class="log-header">
-          <span>历史事件</span>
-          <button id="log-close" title="收起">×</button>
+          <span id="event-log-title">历史事件</span>
+          <button id="log-close" type="button" title="收起事件流" aria-label="收起事件流">×</button>
         </div>
         <div class="log-search">
           <input type="text" id="log-search-input" placeholder="搜索事件…" aria-label="搜索事件">
         </div>
-        <div class="log-list"></div>
-      </div>
+        <div class="log-list" role="list" aria-live="polite"></div>
+      </aside>
 
       <!-- 详情 / 设置面板 -->
-      <div id="detail-mask" class="hidden"></div>
-      <div id="detail-panel" class="hidden"></div>
-      <div id="settings-panel" class="hidden"></div>
+      <div id="detail-mask" class="hidden" role="presentation" aria-hidden="true"></div>
+      <aside id="detail-panel" class="hidden" role="dialog" aria-modal="true" aria-labelledby="detail-title" aria-hidden="true"></aside>
+      <aside id="settings-panel" class="hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true"></aside>
 
       <!-- 朝代更替全屏转场横幅（跨时期边界时显示，如 1127 靖康） -->
       <div id="era-banner">

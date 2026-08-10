@@ -79,7 +79,50 @@ function makeRng(seed) {
  * @param {object} geojson FeatureCollection
  * @returns {{ canvas: HTMLCanvasElement, width:number, height:number, worldBox: {xmin,xmax,ymin,ymax} }}
  */
-function buildWatercolorCanvas(geojson) {
+const OVERLAY_CACHE_MAX = 4;
+const watercolorCache = new Map();
+const overlayCacheMetrics = { hits: 0, misses: 0 };
+
+function getViewportConfig(config = {}) {
+  const dpr = Math.min(2, Number(config.dpr) || window.devicePixelRatio || 1);
+  const viewW = Math.max(800, Number(config.viewportWidth) || window.innerWidth || 1280);
+  const viewH = Math.max(1, Number(config.viewportHeight) || window.innerHeight || 720);
+  const lowEnd = config.lowEnd === undefined
+    ? (navigator.hardwareConcurrency || 8) <= 4
+    : !!config.lowEnd;
+  return { period: config.period || '', dpr, viewW, viewH, lowEnd, layerConfig: config.layerConfig || 'default' };
+}
+
+function overlayCacheKey(geojson, config) {
+  const props = geojson?.properties || {};
+  const features = Array.isArray(geojson?.features) ? geojson.features : [];
+  const featureSignature = features.map((feature) => {
+    const featureProps = feature?.properties || {};
+    return `${featureProps.entity || ''}:${featureProps.color || ''}:${feature.geometry?.type || ''}:${JSON.stringify(feature.geometry?.coordinates || '')}`;
+  }).join('|');
+  return [config.period || props.period || props.periodId || props.id || props.year || '', featureSignature,
+    config.viewW, config.viewH, config.dpr, config.lowEnd, config.layerConfig].join('~');
+}
+
+function recordOverlayMetric(name, value) {
+  if (typeof performance !== 'undefined' && performance.mark) performance.mark(name);
+  if (typeof console !== 'undefined' && console.debug) console.debug(`[overlay] ${name}`, value);
+}
+
+export function getOverlayCacheStats() {
+  const total = overlayCacheMetrics.hits + overlayCacheMetrics.misses;
+  return { ...overlayCacheMetrics, size: watercolorCache.size, hitRate: total ? overlayCacheMetrics.hits / total : 0 };
+}
+
+export function disposeOverlayCache() {
+  watercolorCache.clear();
+}
+
+function buildWatercolorCanvas(geojson, renderConfig = {}) {
+  // 空 overlay 不应进入投影/纹理计算，否则 Infinity/NaN 会传播到 canvas 与相机。
+  const features = Array.isArray(geojson?.features) ? geojson.features : [];
+  if (features.length === 0) return null;
+
   // 1. 计算所有投影坐标的边界（水彩晕染会超出多边形，加 6% 边距）
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
   geojson.features.forEach((feature) => {
@@ -93,15 +136,14 @@ function buildWatercolorCanvas(geojson) {
       }));
     });
   });
+  if (![xmin, xmax, ymin, ymax].every(Number.isFinite) || xmax <= xmin || ymax <= ymin) return null;
   const padX = (xmax - xmin) * 0.06 || 1;
   const padY = (ymax - ymin) * 0.06 || 1;
   xmin -= padX; xmax += padX;
   ymin -= padY; ymax += padY;
 
   // 动态纹理尺寸：按视口 × dpr 决定（上限 2048），低端机（核数 ≤4）减半省内存
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const viewW = Math.max(800, window.innerWidth || 1280);
-  const lowEnd = (navigator.hardwareConcurrency || 8) <= 4;
+  const { dpr, viewW, lowEnd } = getViewportConfig(renderConfig);
   const W = Math.max(1024, Math.min(2048, Math.round(viewW * dpr * (lowEnd ? 0.6 : 1.2))));
   const H = Math.max(256, Math.round((W * (ymax - ymin)) / (xmax - xmin)));
 
@@ -190,54 +232,6 @@ function buildWatercolorCanvas(geojson) {
     });
   });
 
-  // 2f. 淡墨河流（示意路径）：宽而淡的墨晕底 + 细实墨线，古地图水脉感。
-  //     数据源 periods.json 的 rivers（黄河/长江简化路径，示意用）。
-  const rivers = geojson.properties?.rivers || [];
-  rivers.forEach((river) => {
-    const pts = (river.path || []).map(([lng, lat]) => toPx(lng, lat));
-    if (pts.length < 2) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.filter = 'blur(2px)';
-    ctx.strokeStyle = 'rgba(58, 52, 40, 0.16)';
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    ctx.filter = 'none';
-    ctx.strokeStyle = 'rgba(58, 52, 40, 0.38)';
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.restore();
-  });
-
-  // 2g. 山脉符号：古地图「三峰」式淡墨小三角（示意点位）
-  const mountains = geojson.properties?.mountains || [];
-  mountains.forEach((m) => {
-    const coord = m.coord || [];
-    if (coord.length < 2) return;
-    const [x, y] = toPx(coord[0], coord[1]);
-    const s = 8; // 单峰半宽（px，画布尺度；2048 画布缩到屏幕后约 3-4px）
-    ctx.save();
-    ctx.fillStyle = 'rgba(58, 52, 40, 0.5)';
-    // 三峰并列：中间高、两侧低
-    [
-      { dx: -s * 1.6, dh: s * 0.9 },
-      { dx: 0, dh: s * 1.4 },
-      { dx: s * 1.6, dh: s * 0.9 },
-    ].forEach(({ dx, dh }) => {
-      ctx.beginPath();
-      ctx.moveTo(x + dx - s * 0.6, y + s * 0.8);
-      ctx.lineTo(x + dx, y - dh);
-      ctx.lineTo(x + dx + s * 0.6, y + s * 0.8);
-      ctx.closePath();
-      ctx.fill();
-    });
-    ctx.restore();
-  });
-
   // 2e. 暖色罩：低透明暖褐罩层（soft-light），让色块与宣纸更融合
   ctx.save();
   ctx.globalCompositeOperation = 'soft-light';
@@ -317,36 +311,140 @@ function buildRegimeLabel(feature, entity) {
  * @param {object} geojson FeatureCollection
  * @returns {{ group: THREE.Group, update: (year:number)=>void }}
  */
-export function buildTerritoryOverlay(geojson) {
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function auxiliaryItems(geojson, kind) {
+  const props = geojson?.properties || {};
+  const values = asArray(props[kind]);
+  const features = asArray(geojson?.features).filter((f) => f?.properties?.kind === kind.slice(0, -1));
+  const items = values.length ? values : features.map((f) => ({ ...f.properties, geometry: f.geometry }));
+  return items;
+}
+
+function itemCoord(item) {
+  if (Array.isArray(item.coord)) return item.coord;
+  const geometry = item.geometry;
+  if (geometry?.type === 'Point') return geometry.coordinates;
+  return null;
+}
+
+function itemPath(item) {
+  if (Array.isArray(item.path)) return item.path;
+  const geometry = item.geometry;
+  if (geometry?.type === 'LineString') return geometry.coordinates;
+  return null;
+}
+
+function isVisibleAt(item, year) {
+  if (!item) return false;
+  // visiblePeriods is the preferred year-window field. Keep `periods` as a
+  // compatible alias, but do not treat period ids (for example `song-1111`)
+  // as years when the overlay is updated between timeline ticks.
+  const periods = Array.isArray(item.visiblePeriods) ? item.visiblePeriods
+    : Array.isArray(item.periods) ? item.periods : null;
+  if (periods?.length) {
+    const matches = periods.some((period) => {
+      if (typeof period === 'object' && period !== null) {
+        return year >= Number(period.start ?? -Infinity) && year <= Number(period.end ?? Infinity);
+      }
+      const value = Number(period);
+      return Number.isFinite(value) && value === Number(year);
+    });
+    if (!matches && periods.some((period) => typeof period === 'object' || Number.isFinite(Number(period)))) return false;
+  }
+  if (item.start !== undefined && year < Number(item.start)) return false;
+  if (item.end !== undefined && year > Number(item.end)) return false;
+  return true;
+}
+
+function buildAuxiliaryOverlay(geojson, kind, z) {
+  const group = new THREE.Group();
+  group.name = kind;
+  group.position.z = z;
+  const items = auxiliaryItems(geojson, kind);
+  items.forEach((item) => {
+    const path = kind === 'rivers' ? itemPath(item) : null;
+    const coord = kind === 'mountains' || kind === 'cities' ? itemCoord(item) : null;
+    if (kind === 'rivers' && (!path || path.length < 2)) return;
+    if (kind !== 'rivers' && (!coord || coord.length < 2)) return;
+    if (kind === 'rivers') {
+      const points = path.map((lngLat) => { const [x, y] = project(lngLat); return new THREE.Vector3(x, y, 0); });
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({ color: 0x3a3428, transparent: true, opacity: 0.38 });
+      const line = new THREE.Line(geometry, material);
+      line.name = 'river';
+      line.userData.overlayItem = item;
+      group.add(line);
+      return;
+    }
+    const el = document.createElement('div');
+    el.className = `${kind.slice(0, -1)}-label`;
+    el.dataset.kind = item.kind || kind.slice(0, -1);
+    if (item.rank !== undefined) el.dataset.rank = String(item.rank);
+    if (kind === 'cities' || kind === 'mountains') el.textContent = item.name || '';
+    const obj = new CSS2DObject(el);
+    obj.userData.overlayItem = item;
+    const [x, y] = project(coord);
+    obj.position.set(x, y, 0);
+    group.add(obj);
+  });
+  return { group, items };
+}
+
+function getCachedWatercolor(geojson, renderConfig) {
+  const config = getViewportConfig(renderConfig);
+  const key = overlayCacheKey(geojson, config);
+  const cached = watercolorCache.get(key);
+  if (cached) {
+    watercolorCache.delete(key);
+    watercolorCache.set(key, cached);
+    overlayCacheMetrics.hits += 1;
+    recordOverlayMetric('cache-hit', { key, hitRate: getOverlayCacheStats().hitRate });
+    return cached;
+  }
+  overlayCacheMetrics.misses += 1;
+  const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const watercolor = buildWatercolorCanvas(geojson, config);
+  if (!watercolor) return null;
+  watercolorCache.set(key, watercolor);
+  while (watercolorCache.size > OVERLAY_CACHE_MAX) {
+    const oldestKey = watercolorCache.keys().next().value;
+    watercolorCache.delete(oldestKey);
+  }
+  recordOverlayMetric('cache-miss', {
+    key,
+    durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started,
+    hitRate: getOverlayCacheStats().hitRate,
+  });
+  return watercolor;
+}
+
+export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   const root = new THREE.Group();
   root.name = 'TerritoryOverlay';
+  const rivers = buildAuxiliaryOverlay(geojson, 'rivers', 7.1);
+  const mountains = buildAuxiliaryOverlay(geojson, 'mountains', 7.15);
+  const cities = buildAuxiliaryOverlay(geojson, 'cities', 7.3);
+  root.add(rivers.group, mountains.group, cities.group);
 
-  // 水彩纹理 plane
-  const { canvas, worldBox } = buildWatercolorCanvas(geojson);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const watercolor = getCachedWatercolor(geojson, renderConfig);
+  if (watercolor) {
+    const { canvas, worldBox } = watercolor;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const box = worldBox;
+    const planeGeo = new THREE.PlaneGeometry(box.xmax - box.xmin, box.ymax - box.ymin);
+    const planeMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+    const washMesh = new THREE.Mesh(planeGeo, planeMat);
+    washMesh.name = 'watercolor-wash';
+    washMesh.position.set((box.xmin + box.xmax) / 2, (box.ymin + box.ymax) / 2, 7);
+    root.add(washMesh);
+  }
 
-  const box = worldBox;
-  const w = box.xmax - box.xmin;
-  const h = box.ymax - box.ymin;
-  const planeGeo = new THREE.PlaneGeometry(w, h);
-  const planeMat = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    opacity: 0.95,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const washMesh = new THREE.Mesh(planeGeo, planeMat);
-  washMesh.name = 'watercolor-wash';
-  washMesh.castShadow = false;
-  washMesh.receiveShadow = false;
-  washMesh.position.set((box.xmin + box.xmax) / 2, (box.ymin + box.ymax) / 2, 7);
-  root.add(washMesh);
-
-  // 政权名标签（同一政权只标一次，取第一个 feature 的质心）
   const seen = new Set();
-  geojson.features.forEach((feature) => {
+  asArray(geojson?.features).forEach((feature) => {
     const entity = (feature.properties || {}).entity;
     if (!entity || seen.has(entity)) return;
     seen.add(entity);
@@ -354,28 +452,35 @@ export function buildTerritoryOverlay(geojson) {
     if (label) root.add(label);
   });
 
-  // 城市标注（都会/重镇小字）：读 overlay 顶层透传的 cities，
-  // CSS2DObject 挂在 overlay group 内，随时期切换迁移、随「历史疆域」开关显隐。
-  // z=7.4 略高于政权名标签（7.2），但样式更小更淡，不抢政权名视觉。
-  const cities = geojson.properties?.cities || [];
-  cities.forEach((city) => {
-    const coord = city.coord || [];
-    if (coord.length < 2) return;
-    const [x, y] = project(coord);
-    const el = document.createElement('div');
-    el.className = 'city-label';
-    el.textContent = city.name;
-    const obj = new CSS2DObject(el);
-    obj.position.set(x, y, 7.4);
-    root.add(obj);
-  });
-
-  // update(year): 时期已在请求时确定，所有政权同时显示
-  function update(_year) {
-    // no-op
-  }
-
-  return { group: root, update };
+  const update = (year) => {
+    [rivers, mountains, cities].forEach(({ group, items }) => {
+      group.children.forEach((child) => { child.visible = isVisibleAt(child.userData.overlayItem, year); });
+      group.visible = items.some((item) => isVisibleAt(item, year));
+    });
+  };
+  update(Number.isFinite(Number(geojson?.properties?.year)) ? Number(geojson.properties.year) : 0);
+  const setAuxiliaryVisibility = (settings) => {
+    rivers.group.visible = !!settings.showRivers;
+    mountains.group.visible = !!settings.showMountains;
+    cities.group.visible = !!settings.showCities;
+  };
+  // EventBubbles consumes these as screen-space, fixed obstacles. Return only
+  // currently visible city/regime labels so hidden historical items do not
+  // reserve space for events.
+  const getCollisionObstacles = () => {
+    if (!root.visible) return [];
+    const obstacles = [];
+    if (cities.group.visible) {
+      cities.group.children.forEach((child) => {
+        if (child.visible && child.element && child.element.classList.contains('city-label')) obstacles.push(child.element);
+      });
+    }
+    root.children.forEach((child) => {
+      if (child.visible && child.element && child.element.classList.contains('regime-label')) obstacles.push(child.element);
+    });
+    return obstacles;
+  };
+  return { group: root, update, setAuxiliaryVisibility, getCollisionObstacles };
 }
 
 /**

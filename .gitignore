@@ -4,6 +4,9 @@ server/server.log
 dist/
 *.log
 .playwright-mcp/
+test-results/
+playwright-report/
+playwright/.cache/
 
 # Python cache
 **/__pycache__/

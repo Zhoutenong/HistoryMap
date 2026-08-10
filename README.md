@@ -42,8 +42,15 @@ npm run dev:client     # 仅前端
 npm run build          # 构建前端到 client/dist/
 npm run lint           # ESLint 静态检查（client/src + server + scripts）
 npm run test           # vitest 单元测试（client 内 11 用例）
+npm run check:build    # 检查 client/dist/index.html 与打包 assets
+npm run contract       # 校验历史 GeoJSON 与可选 API overlay 契约
+npm run contract:db-migration  # 校验数据库版本化 seed 迁移契约
 npm run smoke          # 检查运行中的生产服务页面与关键 API
+npm run e2e            # Playwright 桌面/移动 smoke（需先 npm run build 并启动后端 :3001）
+npm audit              # 查看根目录依赖安全报告（CI 以 high 级别报告，不阻塞）
 ```
+
+CI 依次执行三处依赖安装、lint、Vitest、生产构建、构建产物检查、GeoJSON/API contract 检查和生产服务 smoke；同时报告根目录、client、server 的 `npm audit --audit-level=high` 结果。npm 缓存命中状态会在 CI 日志中输出。
 
 ## 生产部署
 
@@ -106,7 +113,7 @@ HistoryMap/
 
 当前已接入宋朝（960—1279）和金朝（1115—1234）。金朝包含 25 条事件、3 个历史时期及对应疆域/辅助层数据，可通过顶栏朝代下拉切换。
 
-新增 seed 只会在全新 `server/history.db` 初始化时自动执行；已有数据库不会自动重跑历史 seed。开发验证新增朝代时，请先停止服务并删除 `server/history.db`（以及同名 `-shm`、`-wal` 文件），再启动后端。
+新增 seed 通过版本化迁移（`schema_migrations`）在服务启动时自动应用到已有数据库，无需删除 `server/history.db`；seed 使用 `INSERT OR IGNORE` + 事件唯一索引 `(dynasty_id, year, short)` 保证幂等。
 
 ## 加新朝代
 

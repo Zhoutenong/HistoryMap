@@ -14,5 +14,19 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['three', 'd3-geo']
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the rendering engine out of the application entry chunk. This
+        // avoids loading the large three.js bundle with the app bootstrap.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/three/')) return 'three';
+          if (id.includes('/d3-geo/')) return 'geo';
+          return 'vendor';
+        }
+      }
+    }
   }
 });
