@@ -36,12 +36,13 @@ function snapshot(db) {
 function assertCompleteAndIdempotent(db, label) {
   initializeDatabase(db);
   const first = snapshot(db);
-  assert.deepEqual(first.migrations, [{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }], `${label}: markers`);
-  assert.deepEqual(first.dynasties, [{ id: 'jin' }, { id: 'liao' }, { id: 'song' }, { id: 'yuan' }], `${label}: dynasties`);
+  assert.deepEqual(first.migrations, [{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }], `${label}: markers`);
+  assert.deepEqual(first.dynasties, [{ id: 'jin' }, { id: 'liao' }, { id: 'song' }, { id: 'tang' }, { id: 'yuan' }], `${label}: dynasties`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'song').length > 0, `${label}: Song events`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'jin').length > 0, `${label}: Jin events`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'liao').length > 0, `${label}: Liao events`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'yuan').length > 0, `${label}: Yuan events`);
+  assert.ok(first.events.filter((event) => event.dynasty_id === 'tang').length > 0, `${label}: Tang events`);
   initializeDatabase(db);
   assert.deepEqual(snapshot(db), first, `${label}: second startup changed data`);
   db.close();

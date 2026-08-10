@@ -22,6 +22,10 @@ test.describe('HistoryMap smoke', () => {
     await expect(page.locator('#dynasty-select')).toHaveValue('liao');
     await expect(page.locator('.brand-seal')).toHaveText('辽');
 
+    await page.locator('#dynasty-select').selectOption('tang');
+    await expect(page.locator('#dynasty-select')).toHaveValue('tang');
+    await expect(page.locator('.brand-seal')).toHaveText('唐');
+
     await page.locator('#dynasty-select').selectOption('yuan');
     await expect(page.locator('#dynasty-select')).toHaveValue('yuan');
     await expect(page.locator('.brand-seal')).toHaveText('元');

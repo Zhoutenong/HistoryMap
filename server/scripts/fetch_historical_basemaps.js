@@ -1,13 +1,14 @@
 /**
- * 从 aourednik/historical-basemaps 抓取并精简宋朝及周边政权疆域数据。
+ * 从 aourednik/historical-basemaps 抓取并精简唐宋元时期政权疆域数据。
  *
  * 数据源：https://github.com/aourednik/historical-basemaps (GPL-3.0)
+ *   - world_800.geojson   唐朝时期（618-907 用，盛唐全盛疆域）
  *   - world_1100.geojson  北宋极盛期（960-1126 用）
  *   - world_1200.geojson  南宋期（1127-1270 用）
  *   - world_1279.geojson  元朝期（1271-1279 用，此时南宋已亡）
  *   - world_1300.geojson  元朝中期（1280-1368 用）
  *
- * 输出：server/data/geo/historical/regimes-{1100|1200|1279|1300}.json
+ * 输出：server/data/geo/historical/regimes-{800|1100|1200|1279|1300}.json
  *   每个文件是 FeatureCollection，features 为筛选后的政权，
  *   properties 注入 entity(中文名) / color / fillOpacity / regime(英文原名)。
  *
@@ -28,6 +29,7 @@ const BASE_URL =
 // ── 政权配色表（大地色系，与现有主题一致）──────────────────────────
 // key = historical-basemaps 里的 NAME 字段；中文 entity / 颜色 / 不透明度
 // 注意 1200 年数据源把金朝领土错标为 "Liao"，用 regimes 表把它的中文名改成"金"。
+// 800 年（唐朝）数据源命名与 1100+ 不同，统一放在 STYLE_OVERRIDE_BY_YEAR 里按年覆盖。
 const ENTITY_STYLE = {
   'Song Empire':       { entity: '宋',   color: '#b03a2e', fillOpacity: 0.38 },
   'Liao':              { entity: '辽',   color: '#4a6a8a', fillOpacity: 0.35 },
@@ -51,13 +53,38 @@ const ENTITY_STYLE = {
   'Kara Khitai Khaganate': { entity: '西辽', color: '#7a6a8a', fillOpacity: 0.30 },
 };
 
+// ── per-year 样式覆盖（800 年唐朝）────────────────────────────────
+// 800 年数据源的世界政权命名与 1100+ 不同，且同名 NAME 的政权含义也不同：
+//   - Tibetan Empire = 吐蕃（1100+ 名 Tibet，同一政权不同写法）
+//   - Nan Chao 在 800 年是云南的「南诏」；1100/1200 年的 Nan Chao 实为大理前身。
+//     必须按年份覆盖，否则 Nan Chao 会被 ENTITY_STYLE 错标成"大理"。
+//   - Ouighurs（回鹘）/ Parhae（渤海）/ Silia（新罗）/ Japan / Chen-La（真腊）为新政权
+// 键 = 数据源 NAME；命中时优先于 ENTITY_STYLE（含 canonicalName 重映射后的查询）。
+const STYLE_OVERRIDE_BY_YEAR = {
+  800: {
+    'Tang Empire':    { entity: '唐',   color: '#a8322a', fillOpacity: 0.40 },
+    'Tibetan Empire': { entity: '吐蕃', color: '#8a6a4a', fillOpacity: 0.30 },
+    'Ouighurs':       { entity: '回鹘', color: '#6a8a5f', fillOpacity: 0.32 },
+    'Parhae':         { entity: '渤海', color: '#4a6a8a', fillOpacity: 0.35 },
+    'Nan Chao':       { entity: '南诏', color: '#8a5a7a', fillOpacity: 0.32 },
+    'Silia':          { entity: '新罗', color: '#5a7a9a', fillOpacity: 0.35 },
+    'Japan':          { entity: '日本', color: '#7a6a8a', fillOpacity: 0.30 },
+    'Chen-La':        { entity: '真腊', color: '#8a9a5a', fillOpacity: 0.30 },
+  },
+};
+
 // ── 每个时期要纳入的政权 NAME 列表 ────────────────────────────────
+// 800 唐：唐/吐蕃/回鹘/渤海/南诏/新罗/日本/真腊/占婆/海南（南诏是云南政权，非大理）
 // 1100 北宋：宋/辽/西夏/吐蕃/大理/大越/高棉/占婆/高丽 + 海南（宋领土）
 // 1200 南宋：宋/金(数据源标 Liao)/西夏/吐蕃/大理/蒙古/大越/高棉/占婆/蒲甘/高丽/西辽
 // 1279 元代：元(覆盖原宋金夏) / 吐蕃 / 大越 / 高棉 / 占婆 / 蒲甘 + 海南
 //   注：1279 南宋已亡（1276 临安陷落），整段属元朝。
 // 1300 元中后期：与 1279 相同的政权集合（1300 数据源无高丽/蒙古等政权）。
 const PERIOD_REGIMES = {
+  800: [
+    'Tang Empire', 'Tibetan Empire', 'Ouighurs', 'Parhae', 'Nan Chao',
+    'Silia', 'Japan', 'Chen-La', 'Champa', 'Hainan',
+  ],
   1100: [
     'Song Empire', 'Liao', 'Xixia', 'Tibet', 'Nan Chao',
     'Đại Việt', 'Khmer Empire', 'Champa', 'Korea', 'Hainan',
@@ -95,7 +122,7 @@ async function download(url, dest) {
 async function main() {
   fs.mkdirSync(SOURCE_DIR, { recursive: true });
 
-  for (const yr of [1100, 1200, 1279, 1300]) {
+  for (const yr of [800, 1100, 1200, 1279, 1300]) {
     const srcPath = path.join(SOURCE_DIR, `world_${yr}.geojson`);
     if (!fs.existsSync(srcPath)) {
       process.stdout.write(`下载 world_${yr}.geojson ... `);
@@ -124,6 +151,7 @@ async function main() {
       process.exit(1);
     }
     const overrides = NAME_OVERRIDE[year] || {};
+    const styleOverrides = STYLE_OVERRIDE_BY_YEAR[year] || {};
 
     const features = [];
     for (const name of regimeNames) {
@@ -135,7 +163,8 @@ async function main() {
       }
       // 数据源标签修正后的"规范名"，用于查 ENTITY_STYLE
       const canonicalName = overrides[name] || name;
-      const style = ENTITY_STYLE[canonicalName] || ENTITY_STYLE[name];
+      // per-year 样式覆盖优先（800 年 Nan Chao 是南诏而非大理等，避免错标）
+      const style = styleOverrides[name] || ENTITY_STYLE[canonicalName] || ENTITY_STYLE[name];
       if (!style) {
         console.warn(`  [警告] ${year} 年 ${name} 无配色配置，跳过`);
         continue;

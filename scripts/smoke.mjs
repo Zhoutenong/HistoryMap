@@ -4,6 +4,7 @@ const baseUrl = (process.argv[2] || 'http://localhost:3001').replace(/\/$/, '');
 const dynastyConfigs = [
   { id: 'jin', name: '金朝', start: 1115, end: 1234, periodIds: ['jin-1120', 'jin-1142', 'jin-1200'] },
   { id: 'liao', name: '辽朝', start: 916, end: 1125, periodIds: ['liao-1111'] },
+  { id: 'tang', name: '唐朝', start: 618, end: 907, periodIds: ['tang-800'] },
   { id: 'yuan', name: '元朝', start: 1271, end: 1368, periodIds: ['yuan-1279', 'yuan-1300'] },
 ];
 
