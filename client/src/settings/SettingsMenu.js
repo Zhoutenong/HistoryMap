@@ -22,7 +22,7 @@ export class SettingsMenu {
   }
 
   _render() {
-    const { categories, speed, autoplay, showBaseMap, showOverlay, showRivers, showMountains, showCities } = this.settings;
+    const { categories, speed, autoplay, showBaseMap, showOverlay, showRivers, showMountains, showCities, showPlaces } = this.settings;
     const allChecked = CATEGORIES.every((c) => categories.includes(c.id));
 
     const catRows = CATEGORIES.map((c) => {
@@ -91,6 +91,10 @@ export class SettingsMenu {
         <label class="settings-row">
           <input type="checkbox" id="settings-cities" ${showCities ? 'checked' : ''}>
           <span class="settings-label">城市</span>
+        </label>
+        <label class="settings-row">
+          <input type="checkbox" id="settings-places" ${showPlaces ? 'checked' : ''}>
+          <span class="settings-label">地点</span>
         </label>
       </div>
 
@@ -194,6 +198,7 @@ export class SettingsMenu {
       'settings-rivers': 'showRivers',
       'settings-mountains': 'showMountains',
       'settings-cities': 'showCities',
+      'settings-places': 'showPlaces',
     };
     if (auxiliarySettings[t.id]) this._patch({ [auxiliarySettings[t.id]]: t.checked });
   }

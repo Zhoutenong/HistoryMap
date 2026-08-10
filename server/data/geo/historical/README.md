@@ -6,7 +6,7 @@
 
 **主数据源**：[aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps) (GPL-3.0, 772★)
 
-从其 `geojson/world_{1100,1200,1279}.geojson` 中筛选宋朝相关政权，注入中文名与配色后输出。每政权为 100-400 顶点的真实历史轮廓（不再是现代省界的裁剪）。
+从其 `geojson/world_{1100,1200,1279,1300}.geojson` 中筛选相关政权，注入中文名与配色后输出。每政权为 100-400 顶点的真实历史轮廓（不再是现代省界的裁剪）。
 
 **许可声明**：地图数据衍生自 GPL-3.0 项目，按许可要求衍生作品须沿用 GPL-3.0。本项目地理数据部分以此许可发布。
 
@@ -20,10 +20,16 @@ historical/
 ├── regimes-1100.json            北宋极盛（960-1126）10 政权
 ├── regimes-1200.json            南宋并立（1127-1270）12 政权
 ├── regimes-1279.json            元代（1271-1279）7 政权
+├── regimes-1300.json            元中后期（1280-1368）7 政权
+├── rivers.geojson               河流示意（标准辅助层）
+├── mountains.geojson            山脉示意（标准辅助层）
+├── cities.geojson               城市示意（标准辅助层）
+├── places.geojson               地点示意：都城/战场/书院（kind=capital/battlefield/academy）
 ├── source/                      原始全球文件（world_*.geojson，备查）
 │   ├── world_1100.geojson
 │   ├── world_1200.geojson
-│   └── world_1279.geojson
+│   ├── world_1279.geojson
+│   └── world_1300.geojson
 └── _archive_v1_chinaclip/       旧版（v1，基于现代省界裁剪，已弃用，保留可回溯）
 ```
 
@@ -32,10 +38,13 @@ historical/
 | periodId | 年份范围 | 标签 | 包含政权 |
 |---|---|---|---|
 | `song-1111` | 960-1126 | 北宋极盛 | 宋 / 辽 / 西夏 / 吐蕃 / 大理 / 大越 / 高棉 / 占婆 / 高丽 / 海南 |
+| `liao-1111` | 916-1125 | 辽·鼎盛 | 辽 / 宋 / 西夏 / 吐蕃 / 大理 / 大越 / 高棉 / 占婆 / 高丽 / 海南 |
 | `song-1142` | 1127-1270 | 南宋·绍兴和议 | 宋 / 金 / 西夏 / 吐蕃 / 大理 / 蒙古 / 大越 / 高棉 / 占婆 / 高丽 / 蒲甘 / 西辽 |
 | `song-1279` | 1271-1279 | 崖山·元朝建立 | 元 / 吐蕃 / 大越 / 高棉 / 占婆 / 蒲甘 / 海南 |
+| `yuan-1279` | 1271-1279 | 元·一统天下 | 元 / 吐蕃 / 大越 / 高棉 / 占婆 / 蒲甘 / 海南 |
+| `yuan-1300` | 1280-1368 | 元·大都时代 | 元 / 吐蕃 / 大越 / 高棉 / 占婆 / 蒲甘 / 海南 |
 
-注：1271 年忽必烈建元朝，1276 年临安陷落，1279 年崖山海战南宋彻底灭亡。故 1271 年后无"宋"政权。
+注：1271 年忽必烈建元朝，1276 年临安陷落，1279 年崖山海战南宋彻底灭亡。故 1271 年后无"宋"政权。辽朝与元朝分别复用 1100 / 1279、1300 年快照（同一快照可供多个朝代的时期共用）。
 
 ## 数据字段
 
@@ -57,11 +66,21 @@ node server/scripts/fetch_historical_basemaps.js
 ```
 
 脚本会：
-1. 下载（如缺失）`world_{1100,1200,1279}.geojson` 到 `source/`
+1. 下载（如缺失）`world_{1100,1200,1279,1300}.geojson` 到 `source/`
 2. 按 `PERIOD_REGIMES` 配置筛选政权、修正标签（如 1200 年 `Liao` → `Jin`）
-3. 注入中文名与配色，输出 `regimes-{1100,1200,1279}.json`
+3. 注入中文名与配色，输出 `regimes-{1100,1200,1279,1300}.json`
 
 改政权配色/中文名 → 编辑脚本顶部的 `ENTITY_STYLE`；改纳入哪些政权 → 编辑 `PERIOD_REGIMES`。
+
+## 辅助地理数据（标准 GeoJSON）
+
+`rivers.geojson` / `mountains.geojson` / `cities.geojson` / `places.geojson` 是 overlay 响应的标准辅助层：
+按 feature 的 `properties.periods` 字段过滤时期（缺省则全时期生效），路由将其转为
+`properties.rivers/mountains/cities/places` 旧格式数组（periods.json 顶层数组作缺失时的兜底）。
+
+地点要素 kind 取值：`capital`（都城）/ `battlefield`（战场）/ `academy`（书院学府）。
+新 kind 需同时加入 `server/routes/overlay.js` 的 `PLACE_KINDS` 白名单与
+`client/src/map/TerritoryOverlay.js` 的 `PLACE_KINDS`，白名单外的未知 kind 会被安全忽略（不报 500）。
 
 ## 已知数据源瑕疵
 

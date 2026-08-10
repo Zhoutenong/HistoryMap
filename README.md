@@ -41,7 +41,7 @@ npm run dev:server     # 仅后端
 npm run dev:client     # 仅前端
 npm run build          # 构建前端到 client/dist/
 npm run lint           # ESLint 静态检查（client/src + server + scripts）
-npm run test           # vitest 单元测试（client 内 11 用例）
+npm run test           # vitest 单元测试（client 内 44 用例）
 npm run check:build    # 检查 client/dist/index.html 与打包 assets
 npm run contract       # 校验历史 GeoJSON 与可选 API overlay 契约
 npm run contract:db-migration  # 校验数据库版本化 seed 迁移契约
@@ -86,7 +86,7 @@ npm run smoke
 | GET | `/api/events?dynasty=song` | 朝代全部事件（含 `place` 字段；可选 `&category=` 过滤）|
 | GET | `/api/meta?dynasty=song` | 朝代起止年 + 时期边界 periods |
 | GET | `/api/dynasties` | 全部朝代列表（顶栏下拉数据源）|
-| GET | `/api/map/overlay?dynasty=song&period=1111` | 朝代疆域叠加层（按时期；顶层 `properties` 透传 rivers/mountains）|
+| GET | `/api/map/overlay?dynasty=song&period=1111` | 朝代疆域叠加层（按时期；顶层 `properties` 透传 rivers/mountains/cities/places）|
 
 ## 项目结构
 
@@ -111,13 +111,19 @@ HistoryMap/
 
 ## 已接入朝代
 
-当前已接入宋朝（960—1279）和金朝（1115—1234）。金朝包含 25 条事件、3 个历史时期及对应疆域/辅助层数据，可通过顶栏朝代下拉切换。
+当前已接入宋朝（960—1279）、金朝（1115—1234）、辽朝（916—1125）与元朝（1271—1368）：
+
+- 金朝：24 条事件、3 个历史时期及对应疆域/辅助层数据
+- 辽朝：21 条事件、1 个历史时期（复用 1100 年疆域快照）
+- 元朝：20 条事件、2 个历史时期（1279 与 1300 年疆域快照）
+
+均可通过顶栏朝代下拉切换。地点要素（都城/战场/书院）以 `places.geojson` 提供，按时期过滤后经 overlay 响应 `properties.places` 透传渲染。
 
 新增 seed 通过版本化迁移（`schema_migrations`）在服务启动时自动应用到已有数据库，无需删除 `server/history.db`；seed 使用 `INSERT OR IGNORE` + 事件唯一索引 `(dynasty_id, year, short)` 保证幂等。
 
 ## 加新朝代
 
-1. `server/data/seed/` 加 `02-xxx.sql`（INSERT dynasties + events，含 place/category 字段）。
+1. `server/data/seed/` 加 `NN-xxx.sql`（INSERT dynasties + events，含 place/category 字段；参照 01-04 现有文件）。
 2. （可选）`server/data/geo/historical/` 加该朝代疆域文件并更新 `periods.json`。
 3. 顶栏朝代下拉会自动出现新朝代（来自 `/api/dynasties`），**无需改前端常量**。
 4. 地图/泡泡/时间轴代码无需改动。

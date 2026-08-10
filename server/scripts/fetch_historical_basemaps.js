@@ -5,8 +5,9 @@
  *   - world_1100.geojson  北宋极盛期（960-1126 用）
  *   - world_1200.geojson  南宋期（1127-1270 用）
  *   - world_1279.geojson  元朝期（1271-1279 用，此时南宋已亡）
+ *   - world_1300.geojson  元朝中期（1280-1368 用）
  *
- * 输出：server/data/geo/historical/regimes-{1100|1200|1279}.json
+ * 输出：server/data/geo/historical/regimes-{1100|1200|1279|1300}.json
  *   每个文件是 FeatureCollection，features 为筛选后的政权，
  *   properties 注入 entity(中文名) / color / fillOpacity / regime(英文原名)。
  *
@@ -55,6 +56,7 @@ const ENTITY_STYLE = {
 // 1200 南宋：宋/金(数据源标 Liao)/西夏/吐蕃/大理/蒙古/大越/高棉/占婆/蒲甘/高丽/西辽
 // 1279 元代：元(覆盖原宋金夏) / 吐蕃 / 大越 / 高棉 / 占婆 / 蒲甘 + 海南
 //   注：1279 南宋已亡（1276 临安陷落），整段属元朝。
+// 1300 元中后期：与 1279 相同的政权集合（1300 数据源无高丽/蒙古等政权）。
 const PERIOD_REGIMES = {
   1100: [
     'Song Empire', 'Liao', 'Xixia', 'Tibet', 'Nan Chao',
@@ -66,6 +68,10 @@ const PERIOD_REGIMES = {
     'Goryeo', 'Bagan', 'Kara Khitai Khaganate',
   ],
   1279: [
+    'Great Khanate', 'Tibet', 'Đại Việt', 'Khmer Empire', 'Champa',
+    'Pagan', 'Hainan',
+  ],
+  1300: [
     'Great Khanate', 'Tibet', 'Đại Việt', 'Khmer Empire', 'Champa',
     'Pagan', 'Hainan',
   ],
@@ -89,7 +95,7 @@ async function download(url, dest) {
 async function main() {
   fs.mkdirSync(SOURCE_DIR, { recursive: true });
 
-  for (const yr of [1100, 1200, 1279]) {
+  for (const yr of [1100, 1200, 1279, 1300]) {
     const srcPath = path.join(SOURCE_DIR, `world_${yr}.geojson`);
     if (!fs.existsSync(srcPath)) {
       process.stdout.write(`下载 world_${yr}.geojson ... `);

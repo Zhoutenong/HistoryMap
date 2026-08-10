@@ -11,7 +11,14 @@ const __dirname = path.dirname(__filename);
 
 // 历史边界数据目录
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
-const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson'];
+const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson'];
+
+/**
+ * 地点类要素 kind 白名单（places.geojson 中的点位要素）。
+ * 都城/战场/书院等按 kind 归入响应顶层 properties.places；
+ * 白名单之外的未知 kind 会被安全忽略（历史问题：未知 kind 直接 500）。
+ */
+const PLACE_KINDS = ['capital', 'battlefield', 'academy'];
 
 function readStandardFeatures(periodId) {
   const features = [];
@@ -128,17 +135,24 @@ router.get('/', (req, res) => {
   });
 
   // 标准化辅助地理数据优先；缺失或校验失败时保留 periods.json 旧数组兼容。
+  // 按 kind 白名单分组：未知 kind（如 typo 或未来新增类型）直接忽略，
+  // 不再像旧实现那样对未初始化的分组 push 导致 500。
   const standardFeatures = readStandardFeatures(periodDef.id);
+  const KNOWN_KINDS = ['river', 'mountain', 'city', ...PLACE_KINDS];
   const standardByKind = standardFeatures.reduce((groups, feature) => {
     const kind = feature.properties?.kind;
-    if (kind) groups[kind].push(feature);
+    if (kind && KNOWN_KINDS.includes(kind)) groups[kind].push(feature);
     return groups;
-  }, { river: [], mountain: [], city: [] });
+  }, Object.fromEntries(KNOWN_KINDS.map((kind) => [kind, []])));
   const legacy = featureCollectionToLegacy(standardFeatures);
   const legacyByKind = (kind) => legacy.filter((item) => item.kind === kind);
   const rivers = standardByKind.river.length ? legacyByKind('river') : (periodDef.rivers || periodsIndex.rivers || []);
   const mountains = standardByKind.mountain.length ? legacyByKind('mountain') : (periodDef.mountains || periodsIndex.mountains || []);
   const cities = standardByKind.city.length ? legacyByKind('city') : (periodDef.cities || periodsIndex.cities || []);
+  // 地点（都城/战场/书院等）：标准文件优先，其次 periods.json 旧数组兼容
+  const places = PLACE_KINDS.some((kind) => standardByKind[kind].length > 0)
+    ? legacy.filter((item) => PLACE_KINDS.includes(item.kind))
+    : (periodDef.places || periodsIndex.places || []);
 
   res.json({
     type: 'FeatureCollection',
@@ -150,6 +164,7 @@ router.get('/', (req, res) => {
       rivers,
       mountains,
       cities,
+      places,
     }
   });
 });

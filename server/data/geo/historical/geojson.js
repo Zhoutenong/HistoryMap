@@ -53,8 +53,8 @@ export function featureCollectionToLegacy(features) {
   return features.map(({ properties = {}, geometry }) => {
     const coords = geometry?.coordinates;
     if (properties.kind === 'river') return { ...properties, path: coords };
-    if (properties.kind === 'mountain') return { ...properties, coord: coords };
-    if (properties.kind === 'city') return { ...properties, coord: coords };
+    // 所有点位类 kind（city/mountain/capital/battlefield/academy…）统一挂 coord
+    if (geometry?.type === 'Point') return { ...properties, coord: coords };
     return properties;
   });
 }

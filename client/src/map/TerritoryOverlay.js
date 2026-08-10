@@ -311,14 +311,22 @@ function buildRegimeLabel(feature, entity) {
  * @param {object} geojson FeatureCollection
  * @returns {{ group: THREE.Group, update: (year:number)=>void }}
  */
+/**
+ * 地点类要素 kind 白名单（与 server/routes/overlay.js 的 PLACE_KINDS 一致）。
+ * 都城/战场/书院等点位在 overlay 响应顶层 properties.places 中透传，
+ * 也允许直接出现在 features 里（kind 命中白名单）。
+ */
+const PLACE_KINDS = ['capital', 'battlefield', 'academy'];
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function auxiliaryItems(geojson, kind) {
+function auxiliaryItems(geojson, kind, featureKinds = null) {
   const props = geojson?.properties || {};
   const values = asArray(props[kind]);
-  const features = asArray(geojson?.features).filter((f) => f?.properties?.kind === kind.slice(0, -1));
+  const wanted = featureKinds || [kind.slice(0, -1)];
+  const features = asArray(geojson?.features).filter((f) => wanted.includes(f?.properties?.kind));
   const items = values.length ? values : features.map((f) => ({ ...f.properties, geometry: f.geometry }));
   return items;
 }
@@ -359,14 +367,14 @@ function isVisibleAt(item, year) {
   return true;
 }
 
-function buildAuxiliaryOverlay(geojson, kind, z) {
+function buildAuxiliaryOverlay(geojson, kind, z, featureKinds = null) {
   const group = new THREE.Group();
   group.name = kind;
   group.position.z = z;
-  const items = auxiliaryItems(geojson, kind);
+  const items = auxiliaryItems(geojson, kind, featureKinds);
   items.forEach((item) => {
     const path = kind === 'rivers' ? itemPath(item) : null;
-    const coord = kind === 'mountains' || kind === 'cities' ? itemCoord(item) : null;
+    const coord = kind === 'mountains' || kind === 'cities' || kind === 'places' ? itemCoord(item) : null;
     if (kind === 'rivers' && (!path || path.length < 2)) return;
     if (kind !== 'rivers' && (!coord || coord.length < 2)) return;
     if (kind === 'rivers') {
@@ -383,7 +391,7 @@ function buildAuxiliaryOverlay(geojson, kind, z) {
     el.className = `${kind.slice(0, -1)}-label`;
     el.dataset.kind = item.kind || kind.slice(0, -1);
     if (item.rank !== undefined) el.dataset.rank = String(item.rank);
-    if (kind === 'cities' || kind === 'mountains') el.textContent = item.name || '';
+    if (kind === 'cities' || kind === 'mountains' || kind === 'places') el.textContent = item.name || '';
     const obj = new CSS2DObject(el);
     obj.userData.overlayItem = item;
     const [x, y] = project(coord);
@@ -427,7 +435,8 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   const rivers = buildAuxiliaryOverlay(geojson, 'rivers', 7.1);
   const mountains = buildAuxiliaryOverlay(geojson, 'mountains', 7.15);
   const cities = buildAuxiliaryOverlay(geojson, 'cities', 7.3);
-  root.add(rivers.group, mountains.group, cities.group);
+  const places = buildAuxiliaryOverlay(geojson, 'places', 7.32, PLACE_KINDS);
+  root.add(rivers.group, mountains.group, cities.group, places.group);
 
   const watercolor = getCachedWatercolor(geojson, renderConfig);
   if (watercolor) {
@@ -453,7 +462,7 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   });
 
   const update = (year) => {
-    [rivers, mountains, cities].forEach(({ group, items }) => {
+    [rivers, mountains, cities, places].forEach(({ group, items }) => {
       group.children.forEach((child) => { child.visible = isVisibleAt(child.userData.overlayItem, year); });
       group.visible = items.some((item) => isVisibleAt(item, year));
     });
@@ -463,6 +472,7 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     rivers.group.visible = !!settings.showRivers;
     mountains.group.visible = !!settings.showMountains;
     cities.group.visible = !!settings.showCities;
+    places.group.visible = !!settings.showPlaces;
   };
   // EventBubbles consumes these as screen-space, fixed obstacles. Return only
   // currently visible city/regime labels so hidden historical items do not
@@ -473,6 +483,11 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     if (cities.group.visible) {
       cities.group.children.forEach((child) => {
         if (child.visible && child.element && child.element.classList.contains('city-label')) obstacles.push(child.element);
+      });
+    }
+    if (places.group.visible) {
+      places.group.children.forEach((child) => {
+        if (child.visible && child.element && child.element.classList.contains('place-label')) obstacles.push(child.element);
       });
     }
     root.children.forEach((child) => {

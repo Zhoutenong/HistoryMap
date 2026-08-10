@@ -57,6 +57,18 @@ const MIGRATIONS = [
       seedFiles(db, ['02-jin-events.sql']);
     },
   },
+  {
+    version: 3,
+    apply(db) {
+      seedFiles(db, ['03-liao-events.sql']);
+    },
+  },
+  {
+    version: 4,
+    apply(db) {
+      seedFiles(db, ['04-yuan-events.sql']);
+    },
+  },
 ];
 
 function migrateData(db) {

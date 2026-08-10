@@ -7,14 +7,24 @@ test.describe('HistoryMap smoke', () => {
     await expect(page.locator('#dynasty-select')).toHaveValue('song');
   });
 
-  test('loads the map and switches between Song and Jin', async ({ page }) => {
+  test('loads the map and switches between dynasties', async ({ page }) => {
     await expect(page).toHaveTitle(/中国历史地图/);
     await expect(page.locator('#scene-container')).toBeVisible();
-    await expect(page.locator('#dynasty-select option')).toHaveCount(2);
+    // 朝代列表数据驱动（song/jin/liao/yuan…），新朝代接入后只增不减
+    const dynastyCount = await page.locator('#dynasty-select option').count();
+    expect(dynastyCount).toBeGreaterThanOrEqual(3);
 
     await page.locator('#dynasty-select').selectOption('jin');
     await expect(page.locator('#dynasty-select')).toHaveValue('jin');
     await expect(page.locator('.brand-seal')).toHaveText('金');
+
+    await page.locator('#dynasty-select').selectOption('liao');
+    await expect(page.locator('#dynasty-select')).toHaveValue('liao');
+    await expect(page.locator('.brand-seal')).toHaveText('辽');
+
+    await page.locator('#dynasty-select').selectOption('yuan');
+    await expect(page.locator('#dynasty-select')).toHaveValue('yuan');
+    await expect(page.locator('.brand-seal')).toHaveText('元');
 
     await page.locator('#dynasty-select').selectOption('song');
     await expect(page.locator('#dynasty-select')).toHaveValue('song');

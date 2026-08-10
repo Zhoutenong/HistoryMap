@@ -40,11 +40,12 @@ export const defaultSettings = {
   showOverlay: true,    // 历史疆域叠加层默认显示
   showRivers: true,
   showMountains: true,
-  showCities: true
+  showCities: true,
+  showPlaces: true      // 地点标注（都城/战场/书院等）
 };
 
 /** 布尔开关字段清单（校验时逐个规整）。 */
-const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities'];
+const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities', 'showPlaces'];
 
 /**
  * 校验并规整一份设置对象：合并默认值、过滤非法分类/速度/布尔值。

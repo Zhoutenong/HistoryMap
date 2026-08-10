@@ -1202,6 +1202,33 @@ body::before {
   box-shadow: none;
 }
 
+/* 地点标注（A1d：都城/战场/书院等点位，与城市同级的轻量信息标注；
+   kind 透传到 data-kind，便于按类细化样式） */
+.place-label {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: rgba(46, 42, 36, 0.6);
+  background: rgba(247, 242, 230, 0.5);
+  border-radius: 2px;
+  padding: 0 4px 1px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.place-label[data-kind="capital"] {
+  color: rgba(40, 34, 26, 0.78);
+  background: rgba(247, 242, 230, 0.85);
+  font-weight: 600;
+}
+.place-label[data-kind="battlefield"] {
+  color: rgba(160, 98, 45, 0.85);
+}
+.place-label[data-kind="academy"] {
+  color: rgba(70, 100, 127, 0.85);
+}
+
 /* —— 详情遮罩（B3：详情打开时压暗并锁死地图交互）—— */
 #detail-mask {
   position: fixed;

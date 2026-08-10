@@ -11,6 +11,16 @@
       ]
     },
     {
+      "id": "liao-1111",
+      "year": 1111,
+      "start": 916,
+      "end": 1125,
+      "label": "辽·鼎盛",
+      "files": [
+        "regimes-1100.json"
+      ]
+    },
+    {
       "id": "song-1142",
       "year": 1200,
       "start": 1127,
@@ -28,6 +38,26 @@
       "label": "崖山·元朝建立",
       "files": [
         "regimes-1279.json"
+      ]
+    },
+    {
+      "id": "yuan-1279",
+      "year": 1279,
+      "start": 1271,
+      "end": 1279,
+      "label": "元·一统天下",
+      "files": [
+        "regimes-1279.json"
+      ]
+    },
+    {
+      "id": "yuan-1300",
+      "year": 1300,
+      "start": 1280,
+      "end": 1368,
+      "label": "元·大都时代",
+      "files": [
+        "regimes-1300.json"
       ]
     },
     {

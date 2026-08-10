@@ -8,7 +8,7 @@ import { REQUIRED_PROPERTIES, validateGeoJSON } from '../server/data/geo/histori
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const geoDir = path.join(root, '..', 'server', 'data', 'geo', 'historical');
-const files = ['rivers.geojson', 'mountains.geojson', 'cities.geojson'];
+const files = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson'];
 for (const file of files) {
   const data = JSON.parse(fs.readFileSync(path.join(geoDir, file), 'utf8'));
   const result = validateGeoJSON(data);

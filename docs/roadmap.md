@@ -15,12 +15,14 @@
 - [x] 河流 8 条、山脉 14 个示意点、城市 14 个标注
 - [x] 事件流搜索、碰撞避让、`+N` 折叠、指向线箭头
 - [x] 移动端详情抽屉与设置全屏
-- [x] ESLint、Vitest（11 个用例）、GitHub Actions CI
+- [x] ESLint、Vitest（44 个用例）、GitHub Actions CI
 - [x] CI 已接入 npm 缓存、构建产物、GeoJSON/API contract、数据库迁移 contract、生产 smoke 检查与非阻塞 npm audit 报告
 - [x] 辅助层已拆为独立 GeoJSON，保留兼容 fallback，并完成结构与坐标范围校验
 - [x] 辅助层已支持独立 z 层级与河流/山脉/城市显隐开关
 - [x] 全量事件搜索与 debounce
 - [x] 增加第二个真实朝代数据，完成多朝代端到端验证（金朝）
+- [x] 接入辽朝、元朝两个新朝代（含辽/元时期数据与疆域快照）
+- [x] 地点要素（都城/战场/书院）与「地点」显隐开关，overlay 未知 kind 白名单修复
 - [x] Playwright 桌面/移动 smoke 与朝代切换集成测试（8 用例全绿）
 - [ ] 视觉回归截图基线（未实现：无截图基线比对机制）
 
@@ -237,10 +239,13 @@
 
 ## P5：数据与产品扩展
 
-- [ ] 增加唐、辽、元等更多朝代数据
+- [x] 增加辽、元等更多朝代数据（辽 21 条、元 20 条事件；seed 迁移 v3/v4，e2e / smoke / contract 同步覆盖）
+- [ ] 增加唐等更多朝代数据
 - [ ] 增加真实历史河流/山脉 GeoJSON 数据源
 - [ ] 记录每个地理要素的 source、license、confidence、note
-- [ ] 增加城市、都城、战场、书院等地点类型
+- [x] 增加都城、战场、书院等地点类型（`places.geojson`：kind=capital/battlefield/academy，按时期过滤经 overlay `properties.places` 透传；设置面板新增「地点」开关 `showPlaces`）
+- [x] 辽/元历史时期数据（`periods.json` 新增 `liao-1111`、`yuan-1279`、`yuan-1300`；新增 `regimes-1300.json` 元中后期疆域快照）
+- [x] 修复 overlay 未知 kind 直接 500（`server/routes/overlay.js` 按 kind 白名单过滤，未知类型安全忽略；`geojson.js` 点位类 kind 统一挂 `coord`）
 - [x] 增加事件搜索结果排序与高亮（相关度排序 + `<mark>` 高亮）
 - [x] 增加事件详情分享链接/深链接（`?dynasty=&year=&event=` + history 路由）
 - [x] 增加用户设置导入/导出（JSON 文本/文件/URL 参数三种载体）
@@ -261,6 +266,8 @@
 > 顺序更新时间：2026-08-10。P1.6 已完成，不再作为下一步事项；P2.3 事件文本安全处理已完成。
 >
 > 2026-08-10 依据代码审查与本地验证（lint / 44 单测 / Playwright 8 用例）勾选 P2.1、P1.4、P1.7、P4、P5 对应项；依赖真实数据源或外部 CI 历史的项保持未完成并注明原因。
+>
+> 2026-08-10 依据工作区代码核对勾选：辽/元朝代（seed 03/04、迁移 v3/v4）、辽/元时期（liao-1111、yuan-1279、yuan-1300、regimes-1300.json）、地点类型（places.geojson + showPlaces）与 overlay 未知 kind 白名单修复（overlay.js / geojson.js）。真实历史数据源、视觉回归基线、连续 CI 历史与全新 clone 验证仍保持未完成并注明原因。
 
 每完成一项，更新本文件对应复选框，并在提交信息中引用路线图编号，例如：
 

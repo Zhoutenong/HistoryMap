@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 const baseUrl = (process.argv[2] || 'http://localhost:3001').replace(/\/$/, '');
-const jinPeriodIds = ['jin-1120', 'jin-1142', 'jin-1200'];
-const jinMetaPeriodIds = jinPeriodIds.map((id) => id.replace('jin-', ''));
+const dynastyConfigs = [
+  { id: 'jin', name: '金朝', start: 1115, end: 1234, periodIds: ['jin-1120', 'jin-1142', 'jin-1200'] },
+  { id: 'liao', name: '辽朝', start: 916, end: 1125, periodIds: ['liao-1111'] },
+  { id: 'yuan', name: '元朝', start: 1271, end: 1368, periodIds: ['yuan-1279', 'yuan-1300'] },
+];
 
 function hasNonEmptyGeometry(geometry) {
   if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) return false;
@@ -17,51 +20,58 @@ function isFeatureCollectionWithGeometry(value) {
     && value.features.every((feature) => hasNonEmptyGeometry(feature.geometry));
 }
 
+const allPeriodIds = dynastyConfigs.flatMap((config) => config.periodIds);
+
 const checks = [
   ['production page', '/', (response) => response.headers.get('content-type')?.includes('text/html')],
   ['health API', '/api/health', async (response) => response.status === 200 && (await response.json()).ok === true],
   ['events API', '/api/events?dynasty=song', async (response) => response.status === 200 && Array.isArray(await response.json())],
-  ['Jin events API', '/api/events?dynasty=jin', async (response) => {
-    if (response.status !== 200) return false;
-    const events = await response.json();
-    return Array.isArray(events)
-      && events.length > 0
-      && events.every((event) => event.dynasty === 'jin'
-        && Number.isInteger(event.year)
-        && Number.isInteger(event.yearEnd)
-        && Array.isArray(event.coord)
-        && event.coord.length === 2);
-  }],
+  ...dynastyConfigs.flatMap((config) => [
+    [`${config.id} events API`, `/api/events?dynasty=${config.id}`, async (response) => {
+      if (response.status !== 200) return false;
+      const events = await response.json();
+      return Array.isArray(events)
+        && events.length > 0
+        && events.every((event) => event.dynasty === config.id
+          && Number.isInteger(event.year)
+          && Number.isInteger(event.yearEnd)
+          && Array.isArray(event.coord)
+          && event.coord.length === 2);
+    }],
+    [`${config.id} meta API`, `/api/meta?dynasty=${config.id}`, async (response) => {
+      if (response.status !== 200) return false;
+      const meta = await response.json();
+      const periodIds = config.periodIds.map((id) => id.replace(`${config.id}-`, ''));
+      return meta.dynasty === config.id
+        && meta.name === config.name
+        && meta.startYear === config.start
+        && meta.endYear === config.end
+        && Array.isArray(meta.periods)
+        && periodIds.every((id) => meta.periods.some((period) => period.id === id));
+    }],
+    ...config.periodIds.map((periodId) => [
+      `${config.id} overlay ${periodId}`,
+      `/api/map/overlay?dynasty=${config.id}&period=${periodId.replace(`${config.id}-`, '')}`,
+      async (response) => response.status === 200 && isFeatureCollectionWithGeometry(await response.json()),
+    ]),
+  ]),
   ['dynasties API', '/api/dynasties', async (response) => {
     if (response.status !== 200) return false;
     const dynasties = await response.json();
-    const jin = dynasties.find((dynasty) => dynasty.id === 'jin');
     return Array.isArray(dynasties)
-      && jin?.name === '金朝'
-      && jin.startYear === 1115
-      && jin.endYear === 1234;
-  }],
-  ['Jin meta API', '/api/meta?dynasty=jin', async (response) => {
-    if (response.status !== 200) return false;
-    const meta = await response.json();
-    return meta.dynasty === 'jin'
-      && meta.name === '金朝'
-      && meta.startYear === 1115
-      && meta.endYear === 1234
-      && Array.isArray(meta.periods)
-      && jinMetaPeriodIds.every((id) => meta.periods.some((period) => period.id === id));
+      && dynastyConfigs.every((config) => {
+        const found = dynasties.find((dynasty) => dynasty.id === config.id);
+        return found?.name === config.name
+          && found.startYear === config.start
+          && found.endYear === config.end;
+      });
   }],
   ['overlay periods API', '/api/map/overlay/periods', async (response) => {
     if (response.status !== 200) return false;
     const periods = await response.json();
     return Array.isArray(periods)
-      && jinPeriodIds.every((id) => periods.some((period) => period.id === id));
+      && allPeriodIds.every((id) => periods.some((period) => period.id === id));
   }],
-  ...jinPeriodIds.map((periodId) => [
-    `Jin overlay ${periodId}`,
-    `/api/map/overlay?dynasty=jin&period=${periodId.replace('jin-', '')}`,
-    async (response) => response.status === 200 && isFeatureCollectionWithGeometry(await response.json()),
-  ]),
   ['overlay API', '/api/map/overlay?dynasty=song&period=1111', async (response) => response.status === 200 && (await response.json()).type === 'FeatureCollection'],
 ];
 
