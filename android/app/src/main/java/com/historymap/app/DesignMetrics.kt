@@ -27,6 +27,12 @@ object DesignMetrics {
     const val CANVAS_HEIGHT = 2244f
     /** 设计画布密度（480dpi = 3x；设计 px → dp/sp 的基准换算） */
     const val BASE_DENSITY = 3f
+    /**
+     * 全局字体放大系数：所有文字（designSp / scaledSp / Canvas 文本）统一放大。
+     * 1.0 = 设计画布 1:1（P20 上设计 px 即物理 px）；用户反馈安卓端字偏小，
+     * 1.0 → 1.25（整体放大约 25%）。如需微调只改这一处。
+     */
+    const val FONT_SCALE = 1.25f
     /** 最小触摸区（dp） */
     const val TOUCH_MIN_DP = 44f
 
@@ -46,11 +52,11 @@ object DesignMetrics {
         designPx / BASE_DENSITY * scale
 
     /**
-     * 设计 px → sp（字体；按屏幕宽度比例缩放）。
+     * 设计 px → sp（字体；按屏幕宽度比例缩放，再乘 [FONT_SCALE] 全局放大）。
      * @param scale 宽度比例（[widthScale]）
      */
     fun designToSp(designPx: Float, scale: Float): Float =
-        designPx / BASE_DENSITY * scale
+        designPx / BASE_DENSITY * scale * FONT_SCALE
 
     /**
      * 设计 px → 屏幕 px（Canvas 原生绘制；按屏幕宽度比例缩放）。
@@ -89,6 +95,9 @@ fun designSp(designPx: Float): TextUnit {
     val screenWpx = with(density) { cfg.screenWidthDp.dp.toPx() }
     return DesignMetrics.designToSp(designPx, DesignMetrics.widthScale(screenWpx)).sp
 }
+
+/** 直接写死的 sp 值统一经此放大（与 designSp 共用同一 [DesignMetrics.FONT_SCALE]） */
+fun scaledSp(rawSp: Float): TextUnit = (rawSp * DesignMetrics.FONT_SCALE).sp
 
 /** Compose 便捷入口：设计 px → dp，保证 ≥ 44dp 最小触摸区 */
 @Composable

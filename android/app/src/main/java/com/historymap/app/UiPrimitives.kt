@@ -77,7 +77,7 @@ fun VermilionTitle(
         Text(
             text,
             fontFamily = MapFonts.Family,
-            fontSize = size.sp,
+            fontSize = scaledSp(size.toFloat()),
             fontWeight = FontWeight.Bold,
             color = MapTokens.VERMILION,
             letterSpacing = letterSpacing.sp,
@@ -91,7 +91,7 @@ fun InkSectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         fontFamily = MapFonts.Family,
-        fontSize = 12.sp,
+        fontSize = scaledSp(12f),
         color = MapTokens.INK_SOFT,
         letterSpacing = 2.sp,
         modifier = modifier.padding(top = 14.dp, bottom = 6.dp),
@@ -104,7 +104,7 @@ fun YearBadge(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         fontFamily = MapFonts.Family,
-        fontSize = 12.sp,
+        fontSize = scaledSp(12f),
         fontWeight = FontWeight.Bold,
         color = MapTokens.PAPER_CARD,
         modifier = modifier
@@ -119,7 +119,7 @@ fun CategoryBadge(text: String, color: Color = MapTokens.INK, modifier: Modifier
     Text(
         text,
         fontFamily = MapFonts.Family,
-        fontSize = 12.sp,
+        fontSize = scaledSp(12f),
         color = color,
         modifier = modifier
             .background(Color(0x0F3A3428), RoundedCornerShape(12.dp))
@@ -169,7 +169,7 @@ fun CloseButton(onClose: () -> Unit, modifier: Modifier = Modifier) {
         color = Color(0x0A3A3428),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text("✕", fontFamily = MapFonts.Family, fontSize = 14.sp, color = MapTokens.INK_SOFT)
+            Text("✕", fontFamily = MapFonts.Family, fontSize = scaledSp(14f), color = MapTokens.INK_SOFT)
         }
     }
 }

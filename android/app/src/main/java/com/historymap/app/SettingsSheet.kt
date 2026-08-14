@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * 设置面板（应用内底部抽屉）：事件分类多选 / 播放速度 / 图层显隐。
@@ -85,7 +85,7 @@ fun SettingsSheet(
                     val selected = speed == id
                     Surface(
                         onClick = { onSpeedChange(id) },
-                        modifier = Modifier.weight(1f).height(40.dp),
+                        modifier = Modifier.weight(1f).height(44.dp),
                         shape = RoundedCornerShape(999.dp),
                         color = if (selected) MapTokens.VERMILION else MapTokens.PAPER_CARD,
                     ) {
@@ -93,7 +93,7 @@ fun SettingsSheet(
                             Text(
                                 label,
                                 fontFamily = MapFonts.Family,
-                                fontSize = 13.sp,
+                                fontSize = scaledSp(13f),
                                 color = if (selected) MapTokens.PAPER_CARD else MapTokens.INK,
                             )
                         }
@@ -119,6 +119,7 @@ private fun SettingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 44.dp)
             .clickable(onClick = onToggle)
             .padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -132,7 +133,7 @@ private fun SettingRow(
         Text(
             label,
             fontFamily = MapFonts.Family,
-            fontSize = 14.sp,
+            fontSize = scaledSp(14f),
             color = MapTokens.INK,
             modifier = Modifier.weight(1f),
         )
@@ -144,7 +145,7 @@ private fun SettingRow(
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {
-                Text("✓", fontFamily = MapFonts.Family, fontSize = 13.sp, color = MapTokens.PAPER_CARD)
+                Text("✓", fontFamily = MapFonts.Family, fontSize = scaledSp(13f), color = MapTokens.PAPER_CARD)
             }
         }
     }

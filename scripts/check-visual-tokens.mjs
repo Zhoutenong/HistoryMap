@@ -11,7 +11,10 @@
  * 白名单跳过：字体 serif 标志、Compose 类型、派生比例值（Map.* 浮点参数）、
  * 兼容层别名（PAPER_MAP get() 等）——避免脆弱的正则误报。
  *
- * 输出缺失 / 不一致 / 额外 token；不一致时退出码为 1。
+ * 有意偏差管理：代码与设计不一致时查 scripts/visual-token-deviations.json——
+ * 已登记（且代码值与登记值一致）→ 输出「已登记偏差」（PASS）；未登记 → FAIL。
+ *
+ * 输出缺失 / 不一致 / 额外 token；存在未登记不一致时退出码为 1。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -162,9 +165,43 @@ for (const [designKey, name] of Object.entries(typeNames)) {
 // —— 执行校验 ——
 const failures = [];
 const missing = [];
+const deviations = JSON.parse(fs.readFileSync(path.join(root, 'visual-token-deviations.json'), 'utf8'));
+const documented = []; // 已登记偏差（不阻断）
+
+/** 提取代码当前值（alpha/尺寸取数值，字体取 "s,w,ls,lh" 元组，颜色取 RGB 串） */
+function codeValueOf(c) {
+  if (c.kind === 'color') {
+    const m = source.match(new RegExp(`val ${c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*Color\\((0x[0-9A-Fa-f]{8})\\)`));
+    return m ? m[1] : '(未找到)';
+  }
+  if (c.kind === 'type') {
+    const base = c.name.split('.')[1];
+    const m = source.match(new RegExp(`val ${base}\\s*=\\s*TypeSpec\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+)\\)`));
+    return m ? `${m[1]},${m[2]},${m[3]},${m[4]}` : '(未找到)';
+  }
+  const base = c.name.split('.')[1];
+  const m = source.match(new RegExp(`const val ${base}\\s*=\\s*(\\d+(?:\\.\\d+)?)`));
+  return m ? m[1] : '(未找到)';
+}
+
 for (const c of checks) {
+  c.kind = c.name.includes('Color') ? 'color' : /^Typography\./.test(c.name) ? 'type' : 'num';
   if (!c.re.test(source)) {
-    failures.push(`${c.path} → ${c.name} 应为 ${c.expected}，源码中未匹配`);
+    // 有意偏差登记表（按设计路径 key）：命中 → 校验代码当前值仍等于登记值
+    const dev = deviations[c.path];
+    if (dev) {
+      const codeVal = codeValueOf(c);
+      const expected = String(dev.code);
+      if (expected !== codeVal) {
+        failures.push(
+          `${c.path} → ${c.name} 设计应为 ${c.expected}，代码当前为 ${codeVal}，与偏差登记表记录 ${expected} 不一致（请更新登记表或修复代码）`,
+        );
+      } else {
+        documented.push(`${c.path} → ${c.name}：已登记偏差（design=${dev.design} code=${codeVal}）— ${dev.reason}`);
+      }
+      continue;
+    }
+    failures.push(`${c.path} → ${c.name} 应为 ${c.expected}，源码中未匹配（若为有意偏差请在 visual-token-deviations.json 登记）`);
   }
 }
 
@@ -196,6 +233,7 @@ for (const obj of coreObjects) {
 }
 
 console.log('=== check-visual-tokens ===');
+for (const d of documented) console.log(`  [已登记偏差] ${d}`);
 for (const f of failures) console.log(`  [不一致] ${f}`);
 for (const m of missing) console.log(`  [额外]   ${m}`);
 
@@ -238,7 +276,7 @@ for (const f of scannedFiles) {
 for (const h of magicHits) console.log(`  [魔法数] ${h}`);
 
 if (failures.length === 0 && missing.length === 0) {
-  console.log(`PASS ${checks.length} 项 token 与 design-tokens.json 一致`);
+  console.log(`PASS ${checks.length} 项 token 与 design-tokens.json 一致（其中已登记有意偏差 ${documented.length} 项）`);
   if (magicHits.length > 0) {
     console.log(`（软告警）${magicHits.length} 处疑似视觉魔法数，建议迁移到 MapTokens`);
   }

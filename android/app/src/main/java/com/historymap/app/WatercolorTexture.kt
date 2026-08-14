@@ -244,7 +244,15 @@ object WatercolorBuilder {
         }
     }
 
-    /** 政权色 → 水彩颜料色：降饱和、压暗（对齐 Web 版 watercolorTint） */
+    /**
+     * 政权色 → 水彩颜料色：降饱和、压明度（对齐 Web 版 TerritoryOverlay.js 的
+     * watercolorTint：HSL 亮度钳制 [0.32, 0.46]、饱和度保留 78%）。
+     *
+     * P5-修复（真机截图对照 prompt_1）：旧实现把 HSL 亮度换算成 HSV 的 V 再钳到
+     * [0.38, 0.60]，暗色政权（宋 #b03a2e）的 V 被压到 0.38，比 Web 版 tint
+     * 深 20%+，且饱和度换算路径不同导致灰感；现直接按 Web 公式输出，
+     * 宋 (176,58,46) → (133,57,49)，与参考图领土色一致。
+     */
     private fun watercolorTint(rgba: FloatArray): IntArray {
         val r = rgba[0]; val g = rgba[1]; val b = rgba[2]
         val maxC = maxOf(r, g, b)
@@ -262,11 +270,26 @@ object WatercolorBuilder {
             }
             h /= 6f
         }
-        val ns = max(0f, s * 0.98f)
-        val nl = min(0.60f, max(0.38f, l * 0.92f))
-        val hsv = floatArrayOf(h * 360f, ns, nl)
-        val rgb = Color.HSVToColor(hsv)
-        return intArrayOf(Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+        val ns = max(0f, s * 0.78f)
+        val nl = min(0.46f, max(0.32f, l * 0.82f))
+        // HSL → RGB（标准公式，与 Web 版 THREE.Color.setHSL 一致）
+        val c = (1f - kotlin.math.abs(2f * nl - 1f)) * ns
+        val hp = h * 6f
+        val x = c * (1f - kotlin.math.abs(hp % 2f - 1f))
+        val m = nl - c / 2f
+        val (rr, gg, bb) = when {
+            hp < 1f -> Triple(c, x, 0f)
+            hp < 2f -> Triple(x, c, 0f)
+            hp < 3f -> Triple(0f, c, x)
+            hp < 4f -> Triple(0f, x, c)
+            hp < 5f -> Triple(x, 0f, c)
+            else -> Triple(c, 0f, x)
+        }
+        return intArrayOf(
+            ((rr + m) * 255f).toInt().coerceIn(0, 255),
+            ((gg + m) * 255f).toInt().coerceIn(0, 255),
+            ((bb + m) * 255f).toInt().coerceIn(0, 255),
+        )
     }
 
     /** 纸张颗粒噪声 tile（256×256，纸棕色低透明噪点，design paperGrain；进程内缓存） */

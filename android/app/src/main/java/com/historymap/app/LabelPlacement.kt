@@ -33,7 +33,9 @@ private val LABEL_GAP = 5f
  * @param screenRegimes 政权屏幕域（政权名 → 外环屏幕顶点，用于域内检查；可为空）
  * @param viewW / viewH 视口（CSS 像素）
  * @param zones UI 禁区（顶栏/图例/时间轴）
- * @param maxLabels 最多放置的辅助标签数（低端机限流）
+ * @param maxAuxLabels 山脉/河流等辅助标签上限（低端机限流）
+ * @param maxCityLabels 城市标签上限（移动端紧凑，避免地名堆叠）
+ * @param maxPlaceLabels 地点标签上限（移动端计划目标约 5）
  */
 fun layoutMapLabels(
     labels: List<MapRenderer.WorldLabel>,
@@ -42,7 +44,9 @@ fun layoutMapLabels(
     viewW: Float,
     viewH: Float,
     zones: List<ScreenZone>,
-    maxLabels: Int = 40,
+    maxAuxLabels: Int = 32,
+    maxCityLabels: Int = 8,
+    maxPlaceLabels: Int = 5,
 ): List<PlacedMapLabel> {
     if (labels.isEmpty()) return emptyList()
     // 优先级：政权 > 主政权城市 > 普通城市 > 山脉 > 河流名 > 普通地点
@@ -57,6 +61,8 @@ fun layoutMapLabels(
     val placedRects = mutableListOf<Rect>()
     val result = mutableListOf<PlacedMapLabel>()
     var auxCount = 0
+    var cityCount = 0
+    var placeCount = 0
 
     for (l in sorted) {
         val paint = textPaints[l.kind] ?: continue
@@ -71,13 +77,23 @@ fun layoutMapLabels(
         val bw = w + pad * 2
         val bh = h + if (l.kind == "regime") 8f else 6f
 
-        // 辅助标签限流（政权与主城市不限）
-        if (l.kind != "regime" && l.kind != "cities") {
-            if (auxCount >= maxLabels - 8) continue
-            auxCount++
+        // 各类标签限流（移动端紧凑：政权不限；城市/地点上限收紧，避免中下部文字堆叠）
+        when (l.kind) {
+            "regime" -> { /* 政权不限 */ }
+            "cities" -> {
+                if (cityCount >= maxCityLabels) continue
+                cityCount++
+            }
+            "places" -> {
+                if (l.rank > 2) continue // 手机紧凑：次要地点默认隐藏
+                if (placeCount >= maxPlaceLabels) continue
+                placeCount++
+            }
+            else -> { // 山脉/河流等辅助
+                if (auxCount >= maxAuxLabels) continue
+                auxCount++
+            }
         }
-        // 手机紧凑：普通地点（rank > 2）默认隐藏
-        if (l.kind == "places" && l.rank > 2) continue
         if (l.kind == "rivers" && l.rank > 1) continue
         if (l.kind == "mountains" && l.rank > 2) continue
 

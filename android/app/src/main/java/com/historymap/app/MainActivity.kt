@@ -46,6 +46,22 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
+    /**
+     * Activity 级后台恢复（配合 MapScreen 的 LifecycleEventObserver）：
+     * - onPause：播放暂停由 Compose 侧 ON_PAUSE 观察者统一处理（timeline.pause()）
+     * - onResume：回到前台重新隐藏系统栏——EMUI 后台→前台时系统栏可能重新闪现，
+     *   onWindowFocusChanged 不一定再触发，此处兜底保证沉浸
+     * - 朝代/年份：经 MapScreen 的 rememberSaveable 跨进程保存与恢复
+     */
+    override fun onPause() {
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemBars()
+    }
+
     private fun hideSystemBars() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+：内容延伸到刘海区域 + 隐藏系统栏（现代设备无 EMUI10 黑条问题）

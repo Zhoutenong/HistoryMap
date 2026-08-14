@@ -86,7 +86,7 @@ fun TimelineBar(
                     fontFamily = MapFonts.Family,
                     fontSize = designSp(MapTokens.Typography.TIMELINE_RANGE.size.toFloat()),
                     letterSpacing = designSp(MapTokens.Typography.TIMELINE_RANGE.letterSpacing.toFloat()),
-                    color = Color(0xAD3A3428),
+                    color = MapTokens.INK.copy(alpha = 0.68f),
                 )
             }
             Spacer(Modifier.height(designDp(8f)))

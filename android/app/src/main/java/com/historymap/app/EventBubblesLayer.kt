@@ -74,49 +74,35 @@ fun shortEventSummary(detail: String, max: Int = 18): String {
     return if (first.length > max) first.take(max - 1) + "…" else first
 }
 
-/** 泡泡标题文字样式（设计 15px/700 衬线；textSize = 15 × scale，P20 上 1:1 对齐设计 px） */
+/** 泡泡标题文字样式（设计 15px/700 衬线；textSize = 15 × scale × FONT_SCALE，P20 上 1:1 对齐设计 px 再全局放大） */
 private fun bubbleTitlePaint(scale: Float, selected: Boolean) = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-    textSize = MapTokens.Typography.BUBBLE_TITLE.size * scale
+    textSize = MapTokens.Typography.BUBBLE_TITLE.size * scale * DesignMetrics.FONT_SCALE
     typeface = MapFonts.SerifBold
     color = if (selected) 0xFFFDF8EC.toInt() else 0xFF3A3428.toInt()
 }
 
 /** 泡泡年份文字样式（12px 朱砂） */
 private fun bubbleYearPaint(scale: Float, selected: Boolean) = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-    textSize = MapTokens.Typography.BUBBLE_BODY.size * scale
+    textSize = MapTokens.Typography.BUBBLE_BODY.size * scale * DesignMetrics.FONT_SCALE
     typeface = MapFonts.Serif
     color = if (selected) 0xE6FDF8EC.toInt() else 0xFFB03A2E.toInt()
 }
 
 /** 泡泡摘要文字样式（12px/400 衬线） */
 private fun bubbleBodyPaint(scale: Float, selected: Boolean) = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-    textSize = MapTokens.Typography.BUBBLE_BODY.size * scale
+    textSize = MapTokens.Typography.BUBBLE_BODY.size * scale * DesignMetrics.FONT_SCALE
     typeface = MapFonts.Serif
     color = if (selected) 0xE0FDF8EC.toInt() else 0xB33A3428.toInt()
 }
 
-/** 事件聚合簇：按屏幕邻近锚点分组 */
-private data class Cluster(
-    val events: MutableList<EventEntity> = mutableListOf(),
-) {
-    var ax = 0f
-        private set
-    var ay = 0f
-        private set
-
-    fun add(ev: EventEntity, sx: Float, sy: Float) {
-        events.add(ev)
-        val n = events.size
-        ax = ax + (sx - ax) / n
-        ay = ay + (sy - ay) / n
-    }
-}
-
 /**
  * 计算全部可见泡泡的推挤布局（纯计算，绘制与命中测试共用）：
- * 1. 事件 → 屏幕锚点，按邻近距离聚合为簇
+ * 1. 事件 → 屏幕锚点（不预聚合；P5 对齐 Web 版 EventBubbles._applyFolds——
+ *    先推挤，推挤后仍互相重叠的 ≥3 个才收成「+N」聚合泡泡；2 个近邻事件
+ *    由碰撞推挤分开，避免 1127 靖康之变等三事件被过早合并成单泡）
  * 2. 地图标签（PlacedMapLabel）→ 固定障碍
  * 3. 碰撞推挤 + 安全区 clamp 回收 + 二次碰撞
+ * 4. 折叠：并查集按「推挤后仍重叠」聚簇，簇 ≥3 收成聚合泡泡
  * @param safeTop / safeBottom 纵向安全区（px）：顶栏底 / 时间轴顶
  */
 fun layoutBubbles(
@@ -138,64 +124,40 @@ fun layoutBubbles(
     val scale = if (viewW > 0f) viewW / DesignMetrics.CANVAS_WIDTH else 1f
     val b = MapTokens.Bubble
 
-    // 1. 聚合：屏幕邻近事件并簇（阈值与泡泡尺寸联动）
+    // 1. 事件 → 屏幕锚点（每个事件独立泡泡，不预聚合）
     val anchors = events.map { ev ->
         val (wx, wy) = renderer.projectEvent(ev.lng, ev.lat)
         val (sx, sy) = renderer.worldToScreen(wx, wy)
         ev to (sx to sy)
     }
-    val clusters = mutableListOf<Cluster>()
-    for ((ev, pos) in anchors) {
-        var joined = false
-        for (c in clusters) {
-            val d = kotlin.math.hypot((pos.first - c.ax).toDouble(), (pos.second - c.ay).toDouble())
-            if (d < b.CLUSTER_DIST_DP * density) {
-                c.add(ev, pos.first, pos.second)
-                joined = true
-                break
-            }
-        }
-        if (!joined) clusters.add(Cluster().apply { add(ev, pos.first, pos.second) })
-    }
 
-    // 2. 簇 → 泡泡矩形（普通：标题+年份 76px；选中：+两行摘要 116px；聚合：44px 紧凑）
+    // 2. 每个事件 → 泡泡矩形（普通：标题+年份 76px；选中：+两行摘要 116px）
     val maxW = b.MAX_WIDTH * scale
     val minW = b.MIN_WIDTH * scale
-    val content = clusters.map { c ->
-        val first = c.events.first()
-        val aggregated = c.events.size > 1
-        val selected = c.events.any { it.id == selectedId }
-        val label = if (aggregated) {
-            "${first.short.ifEmpty { "未命名事件" }} +${c.events.size - 1}"
-        } else {
-            first.short.ifEmpty { "未命名事件" }
-        }
-        val year = if (aggregated) "" else "${first.year} 年"
-        // P1-移动端方案：普通泡泡不显示摘要（信息密度匹配 76px 卡片），
-        // 选中泡泡展开两行摘要（36 字上限，StaticLayout 绘制时两行截断）
-        val body = when {
-            aggregated -> ""
-            selected -> shortEventSummary(first.detail, max = 36)
-            else -> ""
-        }
-        val textMaxW = (maxW - b.TEXT_LEFT * scale - b.PAD_X * scale).coerceAtLeast(40f * scale)
+    val textMaxW = (maxW - b.TEXT_LEFT * scale - b.PAD_X * scale).coerceAtLeast(40f * scale)
+    val content = anchors.map { (ev, pos) ->
+        val selected = ev.id == selectedId
+        val label = ev.short.ifEmpty { "未命名事件" }
+        val year = "${ev.year} 年"
+        // 普通泡泡显示一行短摘要（首句 18 字）；选中泡泡展开两行摘要（36 字）
+        val body = shortEventSummary(ev.detail, if (selected) 36 else 18)
         val titleShown = ellipsize(label, titlePaint, textMaxW)
-        val yearShown = if (year.isEmpty()) "" else ellipsize(year, yearPaint, textMaxW)
+        val yearShown = ellipsize(year, yearPaint, textMaxW)
         val bodyW = if (body.isEmpty()) 0f else minOf(bodyPaint.measureText(body), textMaxW)
         val contentW = maxOf(
             titlePaint.measureText(titleShown),
-            if (yearShown.isNotEmpty()) yearPaint.measureText(yearShown) else 0f,
+            yearPaint.measureText(yearShown),
             bodyW,
         )
         val w = (contentW + b.TEXT_LEFT * scale + b.PAD_X * scale).coerceIn(minW, maxW)
+        // 高度随字号同步放大（×FONT_SCALE），避免大字号在固定卡片内挤压
         val h = when {
-            aggregated -> b.HEIGHT_COMPACT * scale
-            selected -> b.HEIGHT_SELECTED * scale
-            else -> b.HEIGHT * scale
+            selected -> b.HEIGHT_SELECTED * scale * DesignMetrics.FONT_SCALE
+            else -> b.HEIGHT * scale * DesignMetrics.FONT_SCALE
         }
         Pair(
-            ClusterContent(label = titleShown, year = yearShown, body = body, aggregated = aggregated),
-            CollisionNode(first.year, RectF2(c.ax - w / 2, c.ay - h / 2, w, h)),
+            ClusterContent(label = titleShown, year = yearShown, body = body, aggregated = false),
+            CollisionNode(ev.year, RectF2(pos.first - w / 2, pos.second - h / 2, w, h)),
         )
     }
     val nodes = content.map { it.second }
@@ -237,23 +199,82 @@ fun layoutBubbles(
         }
     }
 
-    return clusters.mapIndexed { i, c ->
-        val node = nodes[i]
-        val shift = finalShifts[i]
-        val rect = RectF2(node.rect.x + shift.dx, node.rect.y + shift.dy, node.rect.w, node.rect.h)
-        val cc = content[i].first
-        PlacedBubble(
-            events = c.events,
-            rect = rect,
-            anchor = Offset(c.ax, c.ay),
-            pushed = kotlin.math.abs(shift.dx) + kotlin.math.abs(shift.dy) > 4f,
-            selected = c.events.any { it.id == selectedId },
-            label = cc.label,
-            year = cc.year,
-            body = cc.body,
-            aggregated = cc.aggregated,
-        )
+    // 4. 折叠：并查集按「推挤后仍重叠」聚簇（对齐 Web 版 _applyFolds），簇 ≥3 收聚合
+    val rects = nodes.mapIndexed { i, node ->
+        RectF2(node.rect.x + finalShifts[i].dx, node.rect.y + finalShifts[i].dy, node.rect.w, node.rect.h)
     }
+    val parent = IntArray(rects.size) { it }
+    fun find(x: Int): Int {
+        var r = x
+        while (parent[r] != r) r = parent[r]
+        var c = x
+        while (parent[c] != c) { val n = parent[c]; parent[c] = r; c = n }
+        return r
+    }
+    for (i in rects.indices) {
+        for (j in i + 1 until rects.size) {
+            val a = rects[i]
+            val b = rects[j]
+            val ox = minOf(a.x + a.w, b.x + b.w) - maxOf(a.x, b.x)
+            val oy = minOf(a.y + a.h, b.y + b.h) - maxOf(a.y, b.y)
+            if (ox > 0f && oy > 0f) parent[find(i)] = find(j)
+        }
+    }
+    val groups = HashMap<Int, MutableList<Int>>()
+    rects.indices.forEach { i -> groups.getOrPut(find(i)) { mutableListOf() }.add(i) }
+
+    val placed = mutableListOf<PlacedBubble>()
+    for ((_, members) in groups) {
+        if (members.size < 3) {
+            // 独立泡泡（≤2 个不折叠）
+            for (i in members) {
+                val ev = anchors[i].first
+                val cc = content[i].first
+                val r = rects[i]
+                placed.add(
+                    PlacedBubble(
+                        events = listOf(ev),
+                        rect = r,
+                        anchor = Offset(anchors[i].second.first, anchors[i].second.second),
+                        pushed = kotlin.math.abs(finalShifts[i].dx) + kotlin.math.abs(finalShifts[i].dy) > 4f,
+                        selected = ev.id == selectedId,
+                        label = cc.label,
+                        year = cc.year,
+                        body = cc.body,
+                        aggregated = false,
+                    )
+                )
+            }
+        } else {
+            // 聚合泡泡：「简称 +N」紧凑卡片，位于成员锚点平均处
+            val first = anchors[members.first()].first
+            val ax = members.map { anchors[it].second.first }.average().toFloat()
+            val ay = members.map { anchors[it].second.second }.average().toFloat()
+            val label = "${first.short.ifEmpty { "未命名事件" }} +${members.size - 1}"
+            val labelShown = ellipsize(label, titlePaint, textMaxW)
+            val w = (titlePaint.measureText(labelShown) + b.TEXT_LEFT * scale + b.PAD_X * scale).coerceIn(minW, maxW)
+            val h = b.HEIGHT_COMPACT * scale * DesignMetrics.FONT_SCALE
+            // 聚合矩形中心 clamp 回可视区（顶栏/时间轴安全区内 + 屏幕内），避免出屏或压 UI；
+            // anchor 保留事件真实位置（指向线锚点）
+            val cx = ax.coerceIn(w / 2f, (viewW - w / 2f).coerceAtLeast(w / 2f))
+            val cy = ay.coerceIn(minY + h / 2f, (maxY - h / 2f).coerceAtLeast(minY + h / 2f))
+            placed.add(
+                PlacedBubble(
+                    events = members.map { anchors[it].first },
+                    rect = RectF2(cx - w / 2, cy - h / 2, w, h),
+                    anchor = Offset(ax, ay),
+                    pushed = true,
+                    selected = false,
+                    label = labelShown,
+                    year = "",
+                    body = "",
+                    aggregated = true,
+                )
+            )
+        }
+    }
+    // 保持稳定顺序：按年份升序（与 visibleEvents 一致）
+    return placed.sortedBy { it.events.first().year }
 }
 
 /** 省略号截断（测量超宽时 END 截断） */
@@ -374,35 +395,36 @@ private fun DrawScope.drawBubbleAnimated(
     if (alpha <= 0f) return
     val center = Offset(bubble.rect.x + bubble.rect.w / 2, bubble.rect.y + bubble.rect.h / 2)
     this.scale(scaleFactor, scaleFactor, center) {
+        // 指向线/锚点/箭头：在 saveLayer 外绘制——saveLayer(bounds=气泡矩形) 会裁剪
+        // 气泡矩形外的内容，导致指向线/事件点被切掉。手动给颜色乘 alpha 复刻动画淡入淡出。
+        if (bubble.pushed) {
+            drawLine(
+                color = MapTokens.VERMILION.copy(alpha = 0.55f * alpha),
+                start = bubble.anchor,
+                end = center,
+                strokeWidth = MapTokens.Bubble.STROKE_PX * scale,
+                pathEffect = PathEffect.dashPathEffect(
+                    floatArrayOf(
+                        MapTokens.Dimensions.LEADER_DASH_LENGTH * scale,
+                        MapTokens.Dimensions.LEADER_GAP * scale,
+                    ),
+                ),
+            )
+            val dotR = MapTokens.Dimensions.EVENT_POINT_DIAMETER / 2f * scale
+            drawCircle(color = MapTokens.VERMILION.copy(alpha = alpha), radius = dotR, center = bubble.anchor)
+            drawCircle(
+                color = MapTokens.PAPER_CARD.copy(alpha = alpha),
+                radius = dotR,
+                center = bubble.anchor,
+                style = Stroke(width = 2f * scale),
+            )
+            drawLeaderArrow(center, bubble.anchor, scale, alpha)
+        }
+        // 气泡卡片：saveLayer 内绘制（alpha 动画作用于卡片内容）
         drawIntoCanvas { canvas ->
             val layerPaint = androidx.compose.ui.graphics.Paint().apply { this.alpha = alpha }
             val bounds = Rect(bubble.rect.x, bubble.rect.y, bubble.rect.x + bubble.rect.w, bubble.rect.y + bubble.rect.h)
             canvas.saveLayer(bounds, layerPaint)
-            if (bubble.pushed) {
-                // 指向线：事件真实位置 → 泡泡中心（朱砂虚线 + 箭头 + 锚点事件点）
-                drawLine(
-                    color = MapTokens.VERMILION.copy(alpha = 0.55f),
-                    start = bubble.anchor,
-                    end = center,
-                    strokeWidth = MapTokens.Bubble.STROKE_PX * scale,
-                    pathEffect = PathEffect.dashPathEffect(
-                        floatArrayOf(
-                            MapTokens.Dimensions.LEADER_DASH_LENGTH * scale,
-                            MapTokens.Dimensions.LEADER_GAP * scale,
-                        ),
-                    ),
-                )
-                // 锚点事件点（10px 朱砂圆 + 米白描边）
-                val dotR = MapTokens.Dimensions.EVENT_POINT_DIAMETER / 2f * scale
-                drawCircle(color = MapTokens.VERMILION, radius = dotR, center = bubble.anchor)
-                drawCircle(
-                    color = MapTokens.PAPER_CARD,
-                    radius = dotR,
-                    center = bubble.anchor,
-                    style = Stroke(width = 2f * scale),
-                )
-                drawLeaderArrow(center, bubble.anchor, scale)
-            }
             drawBubble(bubble, titlePaint, yearPaint, bodyPaint, scale)
             canvas.restore()
         }
@@ -410,7 +432,7 @@ private fun DrawScope.drawBubbleAnimated(
 }
 
 /** 指向线箭头（泡泡端小三角，指示方向；arrow-l 8px / arrow-w 5px） */
-private fun DrawScope.drawLeaderArrow(tip: Offset, from: Offset, scale: Float) {
+private fun DrawScope.drawLeaderArrow(tip: Offset, from: Offset, scale: Float, alpha: Float = 1f) {
     val dx = tip.x - from.x
     val dy = tip.y - from.y
     val len = kotlin.math.hypot(dx.toDouble(), dy.toDouble())
@@ -422,8 +444,9 @@ private fun DrawScope.drawLeaderArrow(tip: Offset, from: Offset, scale: Float) {
     val base = Offset(tip.x - ux * len2, tip.y - uy * len2)
     val p1 = Offset(base.x - uy * size * 0.7f, base.y + ux * size * 0.7f)
     val p2 = Offset(base.x + uy * size * 0.7f, base.y - ux * size * 0.7f)
-    drawLine(color = MapTokens.VERMILION.copy(alpha = 0.55f), start = p1, end = tip, strokeWidth = MapTokens.Bubble.STROKE_PX * scale)
-    drawLine(color = MapTokens.VERMILION.copy(alpha = 0.55f), start = p2, end = tip, strokeWidth = MapTokens.Bubble.STROKE_PX * scale)
+    val c = MapTokens.VERMILION.copy(alpha = 0.55f * alpha)
+    drawLine(color = c, start = p1, end = tip, strokeWidth = MapTokens.Bubble.STROKE_PX * scale)
+    drawLine(color = c, start = p2, end = tip, strokeWidth = MapTokens.Bubble.STROKE_PX * scale)
 }
 
 /** 绘制单个泡泡（普通：标题+年份纸笺；选中：朱砂底白字+两行摘要+聚焦描边；聚合：紧凑「简称 +N」） */
@@ -482,23 +505,25 @@ private fun DrawScope.drawBubble(
     drawIntoCanvas { canvas ->
         val native = canvas.nativeCanvas
         val textX = rect.left + b.TEXT_LEFT * scale
-        var lineTop = rect.top + b.PAD_TOP * scale
+        // 行距随字号同步放大（×FONT_SCALE），与布局高度一致
+        var lineTop = rect.top + b.PAD_TOP * scale * DesignMetrics.FONT_SCALE
         // 标题
         native.drawText(bubble.label, textX, lineTop - titlePaint.fontMetrics.ascent, titlePaint)
-        lineTop += b.TITLE_LINE * scale
+        lineTop += b.TITLE_LINE * scale * DesignMetrics.FONT_SCALE
         // 年份（朱砂）
         if (bubble.year.isNotEmpty()) {
-            lineTop += b.LINE_GAP * scale
+            lineTop += b.LINE_GAP * scale * DesignMetrics.FONT_SCALE
             native.drawText(bubble.year, textX, lineTop - yearPaint.fontMetrics.ascent, yearPaint)
-            lineTop += b.YEAR_LINE * scale
+            lineTop += b.YEAR_LINE * scale * DesignMetrics.FONT_SCALE
         }
-        // 摘要（选中泡泡：StaticLayout 两行截断，自动换行 + 省略号）
+        // 摘要（StaticLayout：选中两行截断、普通一行截断，自动换行 + 省略号）
         if (bubble.body.isNotEmpty()) {
-            lineTop += b.LINE_GAP * scale
+            lineTop += b.LINE_GAP * scale * DesignMetrics.FONT_SCALE
             val maxW = (rect.width - b.TEXT_LEFT * scale - b.PAD_X * scale).toInt().coerceAtLeast(40)
+            val maxLines = if (bubble.selected) b.BODY_MAX_LINES else 1
             val layout = android.text.StaticLayout.Builder
                 .obtain(bubble.body, 0, bubble.body.length, bodyPaint, maxW)
-                .setMaxLines(b.BODY_MAX_LINES)
+                .setMaxLines(maxLines)
                 .setEllipsize(TextUtils.TruncateAt.END)
                 .build()
             native.save()

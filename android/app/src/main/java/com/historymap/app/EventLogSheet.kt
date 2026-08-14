@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
@@ -70,20 +69,32 @@ fun EventLogSheet(
     val scope = rememberCoroutineScope()
     // 自动定位开关：初始开启；用户手动滚动后关闭
     var autoScroll by remember { mutableStateOf(true) }
+    // 程序滚动标志：animateScrollToItem 期间为 true，避免把自动定位误判为用户滚动而关闭 autoScroll
+    var programmaticScroll by remember { mutableStateOf(false) }
     val isScrolling by remember { derivedStateOf { listState.isScrollInProgress } }
     LaunchedEffect(isScrolling) {
-        if (isScrolling && autoScroll) autoScroll = false
+        // 只在「非程序触发的滚动」时判定为用户手动滚动 → 关闭自动定位
+        if (isScrolling && autoScroll && !programmaticScroll) autoScroll = false
     }
     // 当前年份事件在列表中的下标（自动定位目标）
     val currentIndex = filtered.indexOfFirst { currentYear in it.year..it.yearEnd }
-    // 年份推进/回到当前：自动滚动到当前事件（仅当自动定位开启）
+    // 年份推进：自动滚动到当前事件（仅当自动定位开启）。滚动期间置 programmaticScroll，
+    // 使上面的 isScrolling effect 不会把这次自动定位误判为用户滚动。
     LaunchedEffect(currentIndex, currentYear) {
-        if (autoScroll && currentIndex >= 0) listState.animateScrollToItem(currentIndex)
+        if (autoScroll && currentIndex >= 0) {
+            programmaticScroll = true
+            listState.animateScrollToItem(currentIndex)
+            programmaticScroll = false
+        }
     }
     fun scrollToCurrent() {
         autoScroll = true
         if (currentIndex >= 0) {
-            scope.launch { listState.animateScrollToItem(currentIndex) }
+            scope.launch {
+                programmaticScroll = true
+                listState.animateScrollToItem(currentIndex)
+                programmaticScroll = false
+            }
         }
     }
 
@@ -110,7 +121,7 @@ fun EventLogSheet(
                 Text(
                     "当前 $currentYear 年 · 已出现 ${seenEvents.size} / ${allEvents.size} 个",
                     fontFamily = MapFonts.Family,
-                    fontSize = 12.sp,
+                    fontSize = scaledSp(12f),
                     color = MapTokens.INK_SOFT,
                 )
             }
@@ -118,7 +129,7 @@ fun EventLogSheet(
             TextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("搜索事件…", fontFamily = MapFonts.Family, fontSize = 13.sp) },
+                placeholder = { Text("搜索事件…", fontFamily = MapFonts.Family, fontSize = scaledSp(13f)) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -139,7 +150,7 @@ fun EventLogSheet(
                     Text(
                         "找到 ${filtered.size} 个匹配",
                         fontFamily = MapFonts.Family,
-                        fontSize = 11.sp,
+                        fontSize = scaledSp(11f),
                         color = MapTokens.INK_SOFT,
                     )
                 }
@@ -155,7 +166,7 @@ fun EventLogSheet(
                         Text(
                             "回到当前 ▾",
                             fontFamily = MapFonts.Family,
-                            fontSize = 11.sp,
+                            fontSize = scaledSp(11f),
                             color = MapTokens.VERMILION,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                         )
@@ -208,7 +219,7 @@ private fun EventLogEntry(ev: EventEntity, isCurrent: Boolean, isFuture: Boolean
         Text(
             "${ev.year} 年",
             fontFamily = MapFonts.Family,
-            fontSize = 12.sp,
+            fontSize = scaledSp(12f),
             fontWeight = FontWeight.Bold,
             color = if (isFuture) MapTokens.VERMILION.copy(alpha = 0.4f) else MapTokens.VERMILION,
             modifier = Modifier.width(58.dp),
@@ -216,7 +227,7 @@ private fun EventLogEntry(ev: EventEntity, isCurrent: Boolean, isFuture: Boolean
         Text(
             ev.short.ifEmpty { "未命名事件" },
             fontFamily = MapFonts.Family,
-            fontSize = 13.sp,
+            fontSize = scaledSp(13f),
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -155,9 +155,9 @@ async function refreshUI() {
   try { UI = locateTimeline(screenPng()); } catch { console.warn('[locate] 失败，用固定坐标'); UI = null; }
 }
 /**
- * 拖拽轨道到目标年份。注意：tap 会触发「24dp 内吸附事件点 → 打开详情」，
- * 固定年份 tap 易落在事件刻度点附近误开详情；拖拽走 dragging 路径不吸附，
- * 直接连续 setYear，是设置年份的可靠方式。
+ * @deprecated 已弃用：P20/EMUI 上 `adb shell input swipe` 向 Compose 仅传递约
+ * 37% 位移，年份无法拖到 1090 以后；改用 playForward()（自动播放 + 年份轮询）。
+ * 保留仅供未来机型回归对照。
  */
 function dragToYear(year) {
   const ty = (UI?.trackY ?? 2108) - 0;
@@ -167,6 +167,46 @@ function dragToYear(year) {
 function tapPlay() {
   const py = UI?.playY ?? 1962;
   tap(125, py);
+}
+
+/**
+ * 读取当前年份（uiautomator dump 抓取「XXXX 年」文本）。
+ *
+ * 必要性：P20/EMUI 上 `adb shell input swipe` 向 Compose pointerInput 仅传递
+ * 约 37% 的位移（大拖拽 100→970 只落到 1068 年），且 `input event` 子命令在此
+ * 机型不可用；轨道 tap 又会触发「24dp 内事件点吸附 → 打开详情」。因此无法用
+ * 纯 adb 把年份拖到 1090 以后（bubble 1130 / era-banner 1127 / complete 1278
+ * 均不可达）。改为「自动播放 + 年份轮询」推进，用本函数读取年份判断到位。
+ */
+function readYear() {
+  try {
+    adb('shell', 'uiautomator', 'dump', '/sdcard/ui.xml');
+    const xml = adbOut('shell', 'cat', '/sdcard/ui.xml').toString('utf8');
+    const m = xml.match(/(\d{3,4})\s*年/);
+    return m ? parseInt(m[1], 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 自动播放前进到目标年份（不暂停，由调用方决定后续动作）。
+ * 前置：当前为暂停态（fresh() 末尾 tapPlay 已暂停自动播放），本函数点一次
+ * 播放按钮恢复播放，然后轮询 readYear 直到到达 target 或超时。
+ * 只能前进（自动播放单向递增）；fresh() 起始年 ~990，所有目标年份均在前方。
+ */
+async function playForward(targetYear, timeoutMs = 60000) {
+  tapPlay(); // 暂停 → 播放
+  const t0 = Date.now();
+  let last = readYear();
+  while (Date.now() - t0 < timeoutMs) {
+    await sleep(600);
+    const y = readYear();
+    if (y != null) last = y;
+    if (y != null && y >= targetYear) return y;
+  }
+  console.warn(`[playForward] 超时未到达 ${targetYear}（当前 ${last}）`);
+  return last;
 }
 
 /**
@@ -236,14 +276,17 @@ async function main() {
   }
   if (want('bubble')) {
     await fresh();
-    dragToYear(1130); // 跳到 1130（靖康之变等事件窗口）
+    // EMUI 的 adb swipe 无法拖到 1090 以后（见 readYear 注释），改用自动播放
+    // 前进到 1130（靖康之变 / 南宋建立 / 岳飞北伐事件窗口），到达后暂停再截图。
+    await playForward(1130);
+    tapPlay(); // 暂停，固定画面
     await sleep(900);
     await capture('bubble');
   }
   if (want('timeline-playing')) {
     await fresh();
-    dragToYear(1000);
-    await sleep(400);
+    // 仅需「播放中」状态：fresh 已暂停，点一次恢复播放即可（无需精确年份，
+    // dragToYear 在 EMUI 失效——见 readYear 注释）。
     tapPlay(); // 开始播放
     await sleep(1200);
     await capture('timeline-playing');
@@ -252,10 +295,11 @@ async function main() {
   }
   if (want('timeline-complete')) {
     await fresh();
-    dragToYear(1278); // 拖近终点（拖拽末位 MOVE 可能略低于目标，留 1 年余量）
-    await sleep(500);
-    tapPlay();        // 播放：自然推进 1278→1279 触发 completed 横幅（仅播放路径置 true）
-    await sleep(1500);
+    // completed 仅「自然播放到达 endYear」才置 true（setYear 会置 false）。
+    // adb swipe 拖不到 1278（见 readYear 注释），改为直接自动播放到 1279，
+    // 自然走完触发 completed=true 与「本朝历史播放完毕」横幅。
+    await playForward(1279, 90000);
+    await sleep(1500); // 等 completed 横幅淡入
     await capture('timeline-complete');
   }
   if (want('detail')) {
@@ -288,10 +332,13 @@ async function main() {
   }
   if (want('era-banner')) {
     await fresh();
-    // 单次拖拽越过 1126→1127 时期边界（拖拽末位 MOVE 可能略低于目标，需明显越过）
-    dragToYear(1150);
-    await sleep(900); // 时期异步加载 ~1s 后横幅出现，持续 2.6s
+    // 跨 1126→1127 时期边界时弹出时期转场横幅（持续约 2.6s）。adb swipe 越过
+    // 1127 不可靠（见 readYear 注释），改用自动播放前进；当年份刚跨入 1127 时
+    // 横幅淡入，立即截图（轮询分辨率 ~1.5s，落在 2.6s 显示窗口内）。
+    await playForward(1127);
+    await sleep(700); // 等 AnimatedVisibility fadeIn(300ms) 完成
     await capture('era-banner');
+    tapPlay(); // 暂停，避免影响后续状态
   }
   if (want('landscape')) {
     // 横屏：先启动应用，再强制关自动旋转并设横屏（auto-rotate 会覆盖 user_rotation）
@@ -305,7 +352,11 @@ async function main() {
   }
   if (want('background-resume')) {
     await fresh();
-    dragToYear(987); await sleep(800);
+    // 前进到一个非起始年份（dragToYear 在 EMUI 失效——见 readYear 注释），
+    // 暂停后 HOME 退后台再返回，验证地图/泡泡/时间轴恢复。
+    await playForward(1005);
+    tapPlay(); // 暂停，固定年份
+    await sleep(600);
     key('HOME'); await sleep(2000);
     adb('shell', 'monkey', '-p', 'com.historymap.app', '-c', 'android.intent.category.LAUNCHER', '1');
     await sleep(3000);
@@ -314,6 +365,34 @@ async function main() {
 
   console.log(`\n完成。截图输出：${outDir.replace(/\\/g, '/')}`);
   console.log(`清单：${fs.readdirSync(outDir).filter((f) => f.endsWith('.png')).sort().join(', ')}`);
+
+  // —— 验收断言：全量运行时校验 11 张截图齐全 + 尺寸正确（横屏必须 2244×1080）——
+  if (!only || only.length === 0) {
+    const expected = [
+      'main', 'legend-expanded', 'bubble', 'timeline-playing', 'timeline-complete',
+      'detail', 'event-log', 'settings', 'era-banner', 'landscape', 'background-resume',
+    ];
+    const failures = [];
+    for (const name of expected) {
+      const file = path.join(outDir, `${name}.png`);
+      if (!fs.existsSync(file)) { failures.push(`${name}.png 缺失`); continue; }
+      try {
+        const { w, h } = decodePng(fs.readFileSync(file));
+        if (name === 'landscape') {
+          if (w !== 2244 || h !== 1080) failures.push(`landscape.png 尺寸 ${w}×${h}（期望 2244×1080）`);
+        } else if (w !== 1080 || h !== 2244) {
+          failures.push(`${name}.png 尺寸 ${w}×${h}（期望 1080×2244）`);
+        }
+      } catch (e) {
+        failures.push(`${name}.png 解析失败：${e.message}`);
+      }
+    }
+    if (failures.length > 0) {
+      console.error('\n[acceptance] FAIL:\n  - ' + failures.join('\n  - '));
+      process.exit(1);
+    }
+    console.log('[acceptance] PASS 11 张截图齐全且尺寸正确');
+  }
 }
 
 main().catch((e) => { console.error(e.message); process.exit(1); });

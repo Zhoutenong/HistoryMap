@@ -91,7 +91,6 @@ class TimelineController(
         yearState = clamped
         onYearChange?.invoke(yearState)
     }
-
     /** 当前年份窗口内的可见事件（按年份升序） */
     fun visibleEvents(): List<EventEntity> =
         events.filter { year in it.year..it.yearEnd }

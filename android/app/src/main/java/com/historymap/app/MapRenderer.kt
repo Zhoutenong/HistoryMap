@@ -73,6 +73,9 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     /** 当前叠加层模型（政权/河流/山脉，供屏幕域计算） */
     @Volatile private var overlayModel: OverlayModel? = null
 
+    /** 待在 GL 线程删除的旧纹理 ID（UI 线程入队，onDrawFrame 出队删除） */
+    private val texturesToDelete = java.util.Collections.synchronizedList(mutableListOf<Int>())
+
     /** 上次加载的水彩/山水缓存 key（GL surface 重建后恢复用） */
     @Volatile private var lastWatercolorKey: String? = null
     @Volatile private var lastTerrainKey: String? = null
@@ -94,6 +97,7 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var aPosTex = -1
     private var aUvTex = -1
     private var uTex = -1
+    private var uTexAlpha = -1 // 纹理整体 alpha（交叉淡入用：旧纹理淡出/新纹理淡入）
 
     // 宣纸背景纹理（assets/web/paper-texture.jpg + paper-grain.png，一次性上传）
     private var paperTexId = 0
@@ -109,6 +113,19 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var watercolorQuad: FloatBuffer? = null
     private var terrainTexId = 0
     private var terrainQuad: FloatBuffer? = null
+
+    /**
+     * 纹理交叉淡入（时期切换：旧纹理保留并淡出，新纹理淡入，避免硬切「啪」一下）。
+     * 仅在「新纹理到达时当前纹理仍存在」时启用——朝代切换（calibrate）会先清空
+     * 当前纹理，故无交叉淡入（由时期转场横幅覆盖），符合预期。
+     */
+    private var prevWatercolorTexId = 0
+    private var prevWatercolorQuad: FloatBuffer? = null
+    private var prevTerrainTexId = 0
+    private var prevTerrainQuad: FloatBuffer? = null
+    /** 交叉淡入起始纳秒；0 表示无进行中的过渡 */
+    private var crossfadeStartNanos = 0L
+    private val crossfadeDurationMs = 350L
 
     /** 地图标注（世界坐标），UI 线程直接读 */
     @Volatile var labels: List<WorldLabel> = emptyList()
@@ -140,6 +157,7 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         aPosTex = GLES20.glGetAttribLocation(texProgram, "aPos")
         aUvTex = GLES20.glGetAttribLocation(texProgram, "aUv")
         uTex = GLES20.glGetUniformLocation(texProgram, "uTex")
+        uTexAlpha = GLES20.glGetUniformLocation(texProgram, "uAlpha")
 
         quadBuffer = floatBufferOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
 
@@ -152,6 +170,12 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         watercolorQuad = null
         terrainTexId = 0
         terrainQuad = null
+        // 交叉淡入的 prev 纹理 ID 同样失效，重置（避免引用已失效纹理）
+        prevWatercolorTexId = 0
+        prevWatercolorQuad = null
+        prevTerrainTexId = 0
+        prevTerrainQuad = null
+        crossfadeStartNanos = 0L
         restoreCachedTexture(lastWatercolorKey) { tex, quad ->
             pendingWatercolor = PendingTexture(tex, quad)
         }
@@ -184,6 +208,14 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
 
     override fun onDrawFrame(gl: GL10?) {
+        // 释放上轮 calibrate/切换时入队的旧纹理 ID（glDeleteTextures 必须在 GL 线程调用）
+        if (texturesToDelete.isNotEmpty()) {
+            val ids = synchronized(texturesToDelete) {
+                if (texturesToDelete.isEmpty()) IntArray(0)
+                else { val c = texturesToDelete.toIntArray(); texturesToDelete.clear(); c }
+            }
+            if (ids.isNotEmpty()) GLES20.glDeleteTextures(ids.size, ids, 0)
+        }
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
         // 性能回归：每 5 秒输出一次 FPS（P20 低端机帧率观测）
@@ -199,42 +231,96 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 1. 宣纸底 + 纹理 + 颗粒 + 暗角（NDC 全屏）
         drawPaperBackground()
 
-        // 2. 水彩疆域纹理（首次绘制时懒上传，避免 UI 线程碰 GL）
-        var pending = pendingWatercolor
-        if (pending != null) {
-            pendingWatercolor = null
-            val tex = pending.texture
-            val quad = pending.quad
-            // 替换前删除旧 GL 纹理，避免朝代/时期切换长期累积
-            deleteTexture(watercolorTexId)
-            uploadTexture(tex, quad) { id ->
-                watercolorTexId = id
-                watercolorQuad = quad
+        // 2. 上传待处理纹理；若已有当前纹理则启动交叉淡入（旧→prev 淡出，新→current 淡入）
+        uploadPendingWatercolor()
+        uploadPendingTerrain()
+
+        // 3. 交叉淡入进度（0=刚开始，1=稳定；无过渡时为 1）
+        val t = crossfadeAlpha()
+        val crossfading = crossfadeStartNanos != 0L && t < 1f
+
+        // 4. 水彩疆域：过渡中先画旧（1-t）再画新（t）；稳定后只画新
+        if (showTerritory && showWatercolor) {
+            if (crossfading && prevWatercolorTexId != 0 && prevWatercolorQuad != null) {
+                drawTextureQuad(prevWatercolorTexId, prevWatercolorQuad!!, 1f - t)
             }
-            pending = null
+            val wcQuad = watercolorQuad
+            if (watercolorTexId != 0 && wcQuad != null) {
+                drawTextureQuad(watercolorTexId, wcQuad, if (crossfading) t else 1f)
+            }
         }
-        val wcQuad = watercolorQuad
-        if (showTerritory && showWatercolor && watercolorTexId != 0 && wcQuad != null) {
-            drawTextureQuad(watercolorTexId, wcQuad)
+        // 5. 山水纹理（河流水痕 + 山脉笔触）
+        if (showRivers) {
+            if (crossfading && prevTerrainTexId != 0 && prevTerrainQuad != null) {
+                drawTextureQuad(prevTerrainTexId, prevTerrainQuad!!, 1f - t)
+            }
+            val terrQuad = terrainQuad
+            if (terrainTexId != 0 && terrQuad != null) {
+                drawTextureQuad(terrainTexId, terrQuad, if (crossfading) t else 1f)
+            }
         }
 
-        // 3. 山水纹理（河流水痕 + 山脉笔触）
-        pending = pendingTerrain
-        if (pending != null) {
-            pendingTerrain = null
-            val tex = pending.texture
-            val quad = pending.quad
-            deleteTexture(terrainTexId)
-            uploadTexture(tex, quad) { id ->
-                terrainTexId = id
-                terrainQuad = quad
-            }
-            pending = null
+        // 6. 交叉淡入完成：回收旧纹理（prev），结束过渡
+        if (!crossfading && (prevWatercolorTexId != 0 || prevTerrainTexId != 0)) finishCrossfade()
+    }
+
+    /**
+     * 上传待处理水彩纹理：若当前已有纹理则把它移到 prev 并启动交叉淡入；
+     * 否则（首次加载 / 朝代切换清空后）直接作为当前纹理，无过渡。
+     */
+    private fun uploadPendingWatercolor() {
+        val pending = pendingWatercolor ?: return
+        pendingWatercolor = null
+        val quad = pending.quad
+        if (watercolorTexId != 0 && watercolorQuad != null) {
+            if (prevWatercolorTexId != 0) texturesToDelete.add(prevWatercolorTexId)
+            prevWatercolorTexId = watercolorTexId
+            prevWatercolorQuad = watercolorQuad
+            crossfadeStartNanos = System.nanoTime()
+        } else if (watercolorTexId != 0) {
+            texturesToDelete.add(watercolorTexId)
         }
-        val terrQuad = terrainQuad
-        if (showTerritory && showRivers && terrainTexId != 0 && terrQuad != null) {
-            drawTextureQuad(terrainTexId, terrQuad)
+        uploadTexture(pending.texture, quad) { id ->
+            watercolorTexId = id
+            watercolorQuad = quad
         }
+    }
+
+    /** 上传待处理山水纹理（逻辑同 [uploadPendingWatercolor]） */
+    private fun uploadPendingTerrain() {
+        val pending = pendingTerrain ?: return
+        pendingTerrain = null
+        val quad = pending.quad
+        if (terrainTexId != 0 && terrainQuad != null) {
+            if (prevTerrainTexId != 0) texturesToDelete.add(prevTerrainTexId)
+            prevTerrainTexId = terrainTexId
+            prevTerrainQuad = terrainQuad
+            crossfadeStartNanos = System.nanoTime()
+        } else if (terrainTexId != 0) {
+            texturesToDelete.add(terrainTexId)
+        }
+        uploadTexture(pending.texture, quad) { id ->
+            terrainTexId = id
+            terrainQuad = quad
+        }
+    }
+
+    /** 交叉淡入进度（0..1）；无进行中的过渡返回 1 */
+    private fun crossfadeAlpha(): Float {
+        if (crossfadeStartNanos == 0L) return 1f
+        val elapsedMs = (System.nanoTime() - crossfadeStartNanos) / 1_000_000f
+        return (elapsedMs / crossfadeDurationMs).coerceIn(0f, 1f)
+    }
+
+    /** 结束交叉淡入：把 prev 纹理排入删除队列并清空过渡状态 */
+    private fun finishCrossfade() {
+        if (prevWatercolorTexId != 0) texturesToDelete.add(prevWatercolorTexId)
+        if (prevTerrainTexId != 0) texturesToDelete.add(prevTerrainTexId)
+        prevWatercolorTexId = 0
+        prevWatercolorQuad = null
+        prevTerrainTexId = 0
+        prevTerrainQuad = null
+        crossfadeStartNanos = 0L
     }
 
     /** 删除 GL 纹理（GL 线程；id 为 0 时无操作） */
@@ -255,8 +341,11 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     fun setOverlay(model: OverlayModel, calibrate: Boolean, cacheKey: String? = null) {
         overlayModel = model
         // 切朝代（重新标定投影）：新投影坐标系与旧纹理 worldBox 不一致，
-        // 立即摘除旧水彩/山水纹理，避免「旧疆域被新相机缩放/错位」的瞬态画面
+        // 立即摘除旧水彩/山水纹理，避免「旧疆域被新相机缩放/错位」的瞬态画面。
+        // 旧 GL 纹理 ID 不能在 UI 线程 glDeleteTextures，入队由 GL 线程删除，避免泄漏。
         if (calibrate) {
+            if (watercolorTexId != 0) texturesToDelete.add(watercolorTexId)
+            if (terrainTexId != 0) texturesToDelete.add(terrainTexId)
             watercolorTexId = 0
             watercolorQuad = null
             terrainTexId = 0
@@ -311,8 +400,17 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
     /** 挂接后台生成的纹理（主线程调用；GL 线程懒上传） */
     fun setTextures(watercolor: WatercolorTexture?, terrain: WatercolorTexture?) {
+        // 替换前若旧 pending 仍存在（尚未上传）且非缓存，回收其 bitmap，避免快速切换泄漏
+        recyclePendingIfNotCached(pendingWatercolor)
+        recyclePendingIfNotCached(pendingTerrain)
         if (watercolor != null) pendingWatercolor = PendingTexture(watercolor, buildTexQuad(watercolor.worldBox))
         if (terrain != null) pendingTerrain = PendingTexture(terrain, buildTexQuad(terrain.worldBox))
+    }
+
+    /** 非缓存 pending 纹理被覆盖前回收 bitmap（缓存副本由 LRU 统一回收） */
+    private fun recyclePendingIfNotCached(pending: PendingTexture?) {
+        val tex = pending?.texture ?: return
+        if (!isCached(tex)) tex.bitmap?.recycle()
     }
 
     /** 事件经纬度 → 世界坐标（UI 线程用；投影未标定时返回原点） */
@@ -460,10 +558,12 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         GLES20.glDisableVertexAttribArray(aPosBg)
     }
 
-    /** 世界坐标纹理 quad 采样（水彩/山水共用；位置已缓存，避免每帧查询） */
-    private fun drawTextureQuad(texId: Int, quad: FloatBuffer) {
+    /** 世界坐标纹理 quad 采样（水彩/山水共用；位置已缓存，避免每帧查询）。
+     *  @param alpha 整体透明度（交叉淡入：旧纹理淡出/新纹理淡入） */
+    private fun drawTextureQuad(texId: Int, quad: FloatBuffer, alpha: Float = 1f) {
         GLES20.glUseProgram(texProgram)
         GLES20.glUniformMatrix4fv(uViewProjTex, 1, false, buildViewProjMatrix(), 0)
+        GLES20.glUniform1f(uTexAlpha, alpha)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texId)
         GLES20.glUniform1i(uTex, 0)
@@ -691,14 +791,17 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             }
         """
 
-        /** 纹理 quad：世界坐标 + UV（水彩/山水；同样乘 GL_BRIGHTNESS 对齐 Compose 亮度） */
+        /** 纹理 quad：世界坐标 + UV（水彩/山水；同样乘 GL_BRIGHTNESS 对齐 Compose 亮度；
+         *  uAlpha 用于交叉淡入，整体调制透明度） */
         private fun buildFragTex(): String = """
             precision mediump float;
             uniform sampler2D uTex;
+            uniform float uAlpha;
             varying vec2 vUv;
             void main() {
                 vec4 c = texture2D(uTex, vUv);
                 c.rgb *= ${MapTokens.MapParams.GL_BRIGHTNESS};
+                c.a *= uAlpha;
                 gl_FragColor = c;
             }
         """

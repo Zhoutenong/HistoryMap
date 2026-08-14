@@ -1,5 +1,7 @@
 package com.historymap.app
 
+import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.opengl.GLSurfaceView
@@ -42,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,15 +74,18 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 /**
  * 朝代加载结果（loadDynasty 一次性获取的数据）。
@@ -101,6 +108,9 @@ private data class DynastyLoadResult(
 @Composable
 fun MapScreen() {
     val context = LocalContext.current
+    // 横屏判定（顶栏/图例/标签密度按朝向适配，见后续 isLandscape 分支）
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     // P2-字体：初始化打包的 Noto Serif SC Canvas Typeface（Compose 侧 FontFamily 直接引用 res/font）
     remember { MapFonts.init(context.applicationContext) }
     val repo = remember { MapRepository(context.applicationContext) }
@@ -109,7 +119,13 @@ fun MapScreen() {
 
     // —— 状态 ——
     var dynasties by remember { mutableStateOf(emptyList<DynastyEntity>()) }
+    // currentDynasty 用普通 remember（每次 Activity 重建回到 ""，让 timeline 延迟到
+    // events 加载后才创建，避免空 events）；要跨进程恢复的朝代 id 用独立的 restoredDynasty
     var currentDynasty by remember { mutableStateOf("") }
+    // 跨进程/Activity 重建恢复的朝代 id（rememberSaveable；首次为 null → 默认 song）
+    var restoredDynasty by rememberSaveable { mutableStateOf<String?>(null) }
+    // 跨进程恢复的年份（持续写入；timeline 重建后 setYear 回它）。-1 表示无恢复值
+    var restoreYear by rememberSaveable { mutableStateOf(-1) }
     var dynastyName by remember { mutableStateOf("") }
     var menuOpen by remember { mutableStateOf(false) }
     // 朝代按钮的屏幕位置（内嵌下拉菜单定位用；Popup 会触发系统栏闪现，故不用 DropdownMenu）
@@ -170,6 +186,7 @@ fun MapScreen() {
         val dynasty = dynasties.firstOrNull { it.id == id } ?: return
         // 朝代代际 +1：旧朝代发起的时期切换协程在完成后将被丢弃
         dynastyGen++
+        val gen = dynastyGen
         scope.launch {
             val t0 = System.nanoTime()
             val data = withContext(Dispatchers.IO) {
@@ -183,9 +200,12 @@ fun MapScreen() {
                     json = json,
                 )
             }
+            // 朝代已切换：本次 IO 结果作废（防止旧朝代 overlay 覆盖新朝代状态）
+            if (gen != dynastyGen) return@launch
             // 数据装配（投影/标签/图例/取景，主线程状态）
             renderer.setOverlay(data.model, calibrate = true, cacheKey = data.json)
             currentDynasty = id
+            restoredDynasty = id // 持久化当前朝代 id（进程恢复/Activity 重建后回到本朝代）
             dynastyName = dynasty.name
             events = data.events
             dynastyStart = dynasty.startYear
@@ -202,6 +222,8 @@ fun MapScreen() {
             val (wc, terr) = withContext(Dispatchers.IO) {
                 renderer.buildTextures(data.model, data.json, density)
             }
+            // 纹理生成期间朝代可能再次切换：旧朝代纹理不再挂接
+            if (gen != dynastyGen) return@launch
             renderer.setTextures(wc, terr)
             val ms = (System.nanoTime() - t0) / 1_000_000
             Log.d("HistoryMap", "loadDynasty $id: ${data.events.size} events, ${data.model.regimes.size} regimes, period=${data.initialPeriod}, 耗时=${ms}ms")
@@ -210,8 +232,10 @@ fun MapScreen() {
 
     LaunchedEffect(Unit) {
         dynasties = withContext(Dispatchers.IO) { repo.getDynasties() }
-        // 默认朝代与 Web 版一致（song）；dynasties 按 start_year 升序，唐在宋前
-        val initial = dynasties.firstOrNull { it.id == "song" } ?: dynasties.firstOrNull()
+        // 优先恢复 rememberSaveable 保存的朝代（进程被杀/Activity 重建后）；否则默认 song
+        val initial = dynasties.firstOrNull { it.id == restoredDynasty }
+            ?: dynasties.firstOrNull { it.id == "song" }
+            ?: dynasties.firstOrNull()
         if (initial != null) loadDynasty(initial.id)
     }
 
@@ -230,10 +254,43 @@ fun MapScreen() {
             endYear = dynastyEnd,
             events = events,
             scope = scope,
+            // 恢复路径（restoreYear 有效）不自动播放，由下方 firstTimelineDone 设年份并保持暂停；
+            // 全新冷启动（restoreYear==-1）自动播放
+            autoplay = (restoreYear < 0),
             // 跨时期边界时重载疆域（投影保持首次标定，与 Web 版一致）
             onYearChange = { y -> ensurePeriod(y) },
             onComplete = { },
         ).also { timelineRef = it }
+    }
+
+    // 进程恢复：仅在「首个 timeline 创建时」把年份回到保存值并保持暂停，避免后台被杀
+    // 后冷启动又从起始年自动播放；后续手动切朝代不再触发（firstTimelineDone 守卫）
+    var firstTimelineDone by remember { mutableStateOf(false) }
+    LaunchedEffect(timeline) {
+        if (timeline != null && !firstTimelineDone) {
+            firstTimelineDone = true
+            val y = restoreYear
+            if (y in timeline.startYear..timeline.endYear) {
+                timeline.pause()
+                timeline.setYear(y)
+            }
+        }
+    }
+
+    // 持续保存当前年份（供进程恢复后 timeline 回到原年份）
+    LaunchedEffect(timeline?.year) {
+        if (timeline?.year != null) restoreYear = timeline.year
+    }
+
+    // Activity 级后台恢复：退后台（ON_PAUSE）暂停自动播放，避免后台空跑/回来后年份突跳；
+    // 不自动恢复播放（与「点泡泡自动暂停、关详情保持暂停」语义一致，由用户点播放恢复）
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, timeline) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) timeline?.pause()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 时期切换：异步加载 overlay 期间用 periodLoading 去重（年份逐年推进会
@@ -262,6 +319,8 @@ fun MapScreen() {
             val (wc, terr) = withContext(Dispatchers.IO) {
                 renderer.buildTextures(model, json, density)
             }
+            // 朝代已切换：旧时期纹理不再挂接，避免覆盖新朝代图层
+            if (gen != dynastyGen) return@launch
             renderer.setTextures(wc, terr)
             val ms = (System.nanoTime() - t0) / 1_000_000
             Log.d("HistoryMap", "period switch: $prevId -> ${newPeriod.id} (${newPeriod.label}), 耗时=${ms}ms")
@@ -332,8 +391,16 @@ fun MapScreen() {
     val designScale = rememberDesignScale()
     val viewW = renderer.viewportWidth().toFloat()
     val viewH = renderer.viewportHeight().toFloat()
+    // 顶栏底边 / 时间轴顶边的实际屏幕像素（onGloballyPositioned 测量），用于标签/泡泡安全区。
+    // 用实测值取代旧的 88dp/160dp 硬编码：设计顶栏 154px、时间轴 280px，在 P20(density=3)
+    // 上 88dp=264px、160dp=480px 远大于实际，导致泡泡被过度向地图中部回收。
+    var topBarBottomPx by remember { mutableStateOf(0f) }
+    var timelineTopPx by remember { mutableStateOf(0f) }
+    val bubbleSafeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
+    val bubbleSafeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
     val placedLabels = remember(
         renderer.labels, layoutRevision, renderer.zoom, renderer.cx, renderer.cy, designScale,
+        topBarBottomPx, timelineTopPx, viewH,
     ) {
         if (renderer.viewportWidth() <= 0) emptyList()
         else {
@@ -344,6 +411,8 @@ fun MapScreen() {
                 val (sx, sy) = renderer.worldToScreen(l.wx, l.wy)
                 MapRenderer.WorldLabel(l.text, sx, sy, l.kind, l.major, l.rank)
             }
+            val safeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
+            val safeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
             layoutMapLabels(
                 labels = screenLabels,
                 screenRegimes = renderer.screenRegimePolygons(),
@@ -351,13 +420,20 @@ fun MapScreen() {
                 viewW = viewW,
                 viewH = viewH,
                 zones = listOf(
-                    ScreenZone(Rect(0f, 0f, 10000f, 88f * densityPx)),                          // 顶栏
-                    ScreenZone(Rect(0f, 88f * densityPx, 100f * densityPx, 240f * densityPx)),  // 图例（朱砂小笺 + 展开卡）
-                    ScreenZone(Rect(0f, viewH - 160f * densityPx, 10000f, viewH)),              // 时间轴（含分类图例行）
+                    // 顶栏（实测底边；图例小笺落在顶栏下方，单独 zone）
+                    ScreenZone(Rect(0f, 0f, 10000f, safeTop)),
+                    // 图例（朱砂小笺 + 展开卡）：顶栏底 ~ 顶栏底+130px
+                    ScreenZone(Rect(0f, safeTop, 130f * densityPx, safeTop + 140f * densityPx)),
+                    // 时间轴（实测顶边）
+                    ScreenZone(Rect(0f, viewH - safeBottom, 10000f, viewH)),
                     // 年份水印区域（地图上方 57.9% 起，避让大字号水印）
                     ScreenZone(Rect(0.579f * viewW, 35f * densityPx, viewW, 80f * densityPx)),
                 ),
-                maxLabels = 40,
+                // 移动端紧凑：辅助/城市/地点标签收紧（政权不限），避免中下部文字堆叠。
+                // 横屏纵向地图区更窄，进一步收紧标签上限，防止地名堆叠压住事件泡泡。
+                maxAuxLabels = if (isLandscape) 14 else 24,
+                maxCityLabels = if (isLandscape) 4 else 7,
+                maxPlaceLabels = if (isLandscape) 3 else 5,
             )
         }
     }
@@ -405,9 +481,7 @@ fun MapScreen() {
         // 事件泡泡层（点击命中；按设置分类过滤；地图手势由 GLSurfaceView 自己消费）
         timeline?.let { tl ->
             val visibleEvents = tl.visibleEvents().filter { activeCategories.contains(it.category) }
-            // 泡泡纵向安全区：不进入顶栏（88dp）与时间轴（160dp，含分类图例行）
-            val bubbleSafeTop = 88f * densityPx
-            val bubbleSafeBottom = 160f * densityPx
+            // 泡泡纵向安全区：实测顶栏底 / 时间轴顶（见上方 topBarBottomPx/timelineTopPx）
             Box(modifier = Modifier.fillMaxSize().pointerInput(visibleEvents, placedLabels) {
                 detectTapGestures { pos ->
                     val ev = hitTestBubble(
@@ -435,7 +509,11 @@ fun MapScreen() {
         // 顶栏（设计比例：高度 154px；P1-字体：标题 20px/700、朝代 16px、事件 15px、
         // 设置 20px 图标；按钮触摸区 ≥44dp，保持内嵌菜单避免系统栏闪烁）
         Surface(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding(),
+            modifier = Modifier.fillMaxWidth().statusBarsPadding()
+                .onGloballyPositioned { coords ->
+                    // 实测顶栏底边（含状态栏 inset + 154px 行 + 分隔线），供标签/泡泡安全区
+                    topBarBottomPx = coords.positionInRoot().y + coords.size.height
+                },
             color = MapTokens.PAPER_BAR,
         ) {
             Column {
@@ -538,9 +616,17 @@ fun MapScreen() {
                 events = events.filter { activeCategories.contains(it.category) },
                 onEventClick = { ev ->
                     tl.pause()
+                    // P0-修复：事件刻度点点击需跳转到事件年份（原代码漏掉 setYear，
+                    // 只暂停+打开详情，水印/泡泡仍停留在旧年份）
+                    tl.setYear(ev.year)
                     selectedEvent = ev
                 },
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onGloballyPositioned { coords ->
+                        // 实测时间轴顶边（含导航栏 padding），供标签/泡泡安全区
+                        timelineTopPx = coords.positionInRoot().y
+                    },
             )
         }
 
@@ -620,6 +706,12 @@ fun MapScreen() {
                 onClose = { selectedEvent = null },
             ) {
                 EventDetailContent(ev, allEvents = events, onPickRelated = { related ->
+                    // 相关事件点击：与事件流点击一致——暂停时间轴 + 跳到相关事件年份，
+                    // 触发时期切换/年份水印/泡泡同步，再切换详情内容
+                    timeline?.let { tl ->
+                        tl.pause()
+                        tl.setYear(related.year)
+                    }
                     selectedEvent = related
                 }, onClose = { selectedEvent = null })
             }
@@ -834,15 +926,19 @@ private fun EventDetailContent(
         "invention" -> "重要发明"
         else -> ev.category
     }
+    val context = LocalContext.current
     // 相关事件：同分类、按年份远近取 3 条（增强历史浏览连续性）
     val related = allEvents
         .filter { it.id != ev.id && it.category == ev.category }
         .sortedBy { kotlin.math.abs(it.year - ev.year) }
         .take(3)
+    // 打开/切换详情时自动滚回顶部（相关事件点击会替换 ev → 重置滚动位置）
+    val scrollState = rememberScrollState()
+    LaunchedEffect(ev.id) { scrollState.scrollTo(0) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(bottom = 28.dp),
@@ -856,7 +952,18 @@ private fun EventDetailContent(
             YearBadge("${ev.year} 年")
             CategoryBadge(catLabel)
         }
-        Spacer(Modifier.height(12.dp))
+        // 分享按钮（右对齐；系统分享面板 ACTION_SEND，分享标题+年份+地点+详情）
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { shareEvent(context, ev) }) {
+                Text(
+                    "分享",
+                    fontFamily = MapFonts.Family,
+                    fontSize = scaledSp(12f),
+                    color = MapTokens.VERMILION,
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
         Text(
             ev.title.ifEmpty { "未命名事件" },
             fontFamily = MapFonts.Family,
@@ -942,7 +1049,7 @@ private fun EventDetailContent(
                     Text(
                         "${rel.year} 年",
                         fontFamily = MapFonts.Family,
-                        fontSize = 12.sp,
+                        fontSize = scaledSp(12f),
                         fontWeight = FontWeight.Bold,
                         color = MapTokens.VERMILION,
                         modifier = Modifier.width(58.dp),
@@ -950,7 +1057,7 @@ private fun EventDetailContent(
                     Text(
                         rel.short.ifEmpty { "未命名事件" },
                         fontFamily = MapFonts.Family,
-                        fontSize = 13.sp,
+                        fontSize = scaledSp(13f),
                         color = MapTokens.INK,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -988,6 +1095,30 @@ private fun loadInkLandscape(context: android.content.Context): Bitmap? {
 }
 
 /**
+ * 分享事件：弹出系统分享面板（ACTION_SEND 纯文本）。文本包含标题、年份、地点、详情，
+ * 让用户分享到微信/QQ/备忘录等。无可用分享应用时静默忽略（不崩）。
+ */
+private fun shareEvent(context: Context, ev: EventEntity) {
+    val title = ev.title.ifEmpty { ev.short }
+    val text = buildString {
+        append(title)
+        append("\n").append(ev.year).append(" 年")
+        if (ev.place.isNotEmpty()) append(" · ").append(ev.place)
+        if (ev.detail.isNotEmpty()) append("\n\n").append(ev.detail)
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    try {
+        context.startActivity(Intent.createChooser(send, "分享事件"))
+    } catch (e: android.content.ActivityNotFoundException) {
+        Log.w("HistoryMap", "无可用分享应用", e)
+    }
+}
+
+/**
  * 标签文字样式（与布局计算共用，保证测量与绘制一致；字体走 MapFonts 统一入口）。
  *
  * P0-2 修复 density 二次放大：Canvas 绘制/测量在屏幕像素空间，字号直接用
@@ -999,7 +1130,8 @@ private fun loadInkLandscape(context: android.content.Context): Bitmap? {
  */
 private fun labelTextPaints(scale: Float): Map<String, Paint> {
     fun make(designPx: Float, bold: Boolean, color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = DesignMetrics.designToPx(designPx, scale)
+        // ×FONT_SCALE：与全局字号放大一致（布局测量与绘制共用同一 paints，尺寸自动同步）
+        textSize = DesignMetrics.designToPx(designPx, scale) * DesignMetrics.FONT_SCALE
         typeface = MapFonts.of(bold)
         this.color = color
     }

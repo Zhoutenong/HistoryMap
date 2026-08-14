@@ -61,6 +61,12 @@ fun AppBottomSheet(
     var dismissed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { visible = true }
+    // 按窗口高度动态限高/阈值（取代固定 900dp / 140*density）：横屏小高度、
+    // 竖屏大高度均自适应，详情最后一项不被导航栏遮挡
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val density = LocalDensity.current.density
+    val maxSheetH = (configuration.screenHeightDp * 0.88f).dp
+    val dragThresholdPx = configuration.screenHeightDp * density * 0.20f
 
     fun requestDismiss() {
         if (dismissed) return
@@ -89,12 +95,11 @@ fun AppBottomSheet(
             )
             // 面板（跟随拖拽条位移；普通状态避免每帧协程竞争）
             var dragY by remember { mutableStateOf(0f) }
-            val density = LocalDensity.current.density
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .heightIn(max = 900.dp)
+                    .heightIn(max = maxSheetH)
                     .offset { IntOffset(0, dragY.roundToInt()) },
                 color = MapTokens.PAPER_PANEL,
                 shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
@@ -110,7 +115,7 @@ fun AppBottomSheet(
                                 },
                                 orientation = Orientation.Vertical,
                                 onDragStopped = {
-                                    if (dragY > 140f * density) {
+                                    if (dragY > dragThresholdPx) {
                                         requestDismiss()
                                     } else {
                                         dragY = 0f

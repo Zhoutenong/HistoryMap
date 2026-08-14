@@ -80,8 +80,12 @@ object MapTokens {
         const val BUBBLE_SHADOW = 35
         /** 年份水印 */
         const val YEAR_WATERMARK = 26
-        /** 水彩主体 */
-        const val WATERCOLOR_BODY = 117
+        /**
+         * 水彩主体（design 117 → 102：真机截图对照 prompt_1——主体与斑驳叠加后
+         * 有效透明度约 0.51，宋屏幕色 (155,135,115) 比参考 (185,146,113) 深；
+         * 降至 102 后有效 ~0.47，与参考 0.46 对齐。见 scripts/visual-token-deviations.json）。
+         */
+        const val WATERCOLOR_BODY = 102
         /** 水彩羽化 */
         const val WATERCOLOR_BLOOM = 82
         /** 水彩斑驳 alpha 区间（min..max） */
@@ -178,8 +182,12 @@ object MapTokens {
         /** 暗角起止（离中心距离；起点外推，减少中部压暗面积） */
         const val VIGNETTE_START = 0.45f
         const val VIGNETTE_END = 0.86f
-        /** 中心提亮强度（0..1；提亮 0.10→0.12 补偿暗角） */
-        const val CENTER_LIGHT_STRENGTH = 0.12f
+        /**
+         * 中心提亮强度（0..1；真机截图对照：0.12 + GL_BRIGHTNESS 1.08 叠加后
+         * 地图中心被推到 255 白并偏蓝（B≈218），宣纸失去暖调。降至 0.09 保留
+         * 设计 centerLight 26/255≈0.10 的语义，避免白点裁剪）。
+         */
+        const val CENTER_LIGHT_STRENGTH = 0.09f
         /** 中心提亮作用半径 */
         const val CENTER_LIGHT_RADIUS = 0.62f
         /** 纸张颗粒叠加强度（shader 内 grain * 该值） */
@@ -188,15 +196,19 @@ object MapTokens {
          * 宣纸纹理混合强度（0..1）：0 = 纯暖纸色，1 = 完全采用纹理。
          * P20 实测 paper-texture.jpg 偏冷灰（RGB≈225,219,204 vs 目标 230,216,181），
          * 完全采用纹理会让底纸变灰褐；二次调优降至 0.35 恢复暖黄。
+         * 三次调优（截图对照）：0.25 → 0.20，冷灰纹理影响进一步收窄。
          */
-        const val PAPER_TEXTURE_STRENGTH = 0.25f
+        const val PAPER_TEXTURE_STRENGTH = 0.20f
         /**
          * GL 全场景亮度补偿（>1 提亮）。P20 实测：GLSurfaceView 无 sRGB 色彩管理，
          * 同样颜色 GL 渲染比 Compose 层暗约 12%（顶栏 244,238,226 正常，地图暗）；
          * 在 paper 与 texture 两个片元着色器统一乘该系数对齐 Compose。
          * 三次调优：1.12 时纸面 R 达标但 G/B 过曝（纹理冷调被放大），降至 1.08。
+         * 四次调优（真机截图对照 prompt_1）：1.08 仍把地图中心推到 (255,255,218)
+         * 且领土色被整体提亮变灰；降回 1.0——宣纸底（设计 #E6D8B5）本就比
+         * Compose 面板（#F8F4E9）更深，GL 无需追平面板亮度。
          */
-        const val GL_BRIGHTNESS = 1.08f
+        const val GL_BRIGHTNESS = 1.0f
 
         // —— 水彩（WatercolorBuilder）——
         /** 水彩主体 alpha 分数（与 fillOpacity 联动） */
@@ -214,8 +226,10 @@ object MapTokens {
          */
         const val BOUNDARY_FRAC = 0.36f
         const val DRY_EDGE_FRAC = 0.22f
-        /** 暖色罩 alpha（0..255；110→60→40：P20 实测暖罩会把政权色统一推向米褐） */
-        const val WARM_WASH_ALPHA = 40
+        /** 暖色罩 alpha（0..255；110→60→40→10：真机截图对照 prompt_1——40 的
+         *  SRC_ATOP 暖罩把领土色整体提亮 ~20/通道、向米褐靠拢，色相被压平；
+         *  10 保留「色块与宣纸融合」的意图但不再抹掉政权色）。 */
+        const val WARM_WASH_ALPHA = 10
         /** 水彩羽化层模糊半径（相对纹理宽度的比例基数；max(基, W/除数)） */
         const val WATERCOLOR_BLOOM_BLUR_BASE = 16f
         const val WATERCOLOR_BLOOM_BLUR_DIV = 85f
@@ -233,11 +247,11 @@ object MapTokens {
         const val WATERCOLOR_DRY_EDGE_WIDTH = 1.3f
 
         /**
-         * fillOpacity → 生效 alpha 系数：下限 0.90 强化政权色相在暖纸上的可辨度
-         * （四次调优：0.74→0.84→0.90）。
+         * fillOpacity → 生效 alpha 系数：下限 0.95 强化政权色相在暖纸上的可辨度
+         * （五次调优：0.74→0.84→0.90→0.95；截图对照后确认 0.90 仍偏淡）。
          */
         fun watercolorOpacity(fillOpacity: Float): Float =
-            (0.90f + 0.10f * fillOpacity).coerceIn(0f, 1f)
+            (0.95f + 0.05f * fillOpacity).coerceIn(0f, 1f)
 
         // —— 山水（TerrainTextureBuilder）——
         /** 河流水痕 alpha 分数（design 46/110 × 系数；P1 再降一档，评审要求降 15~20%） */
@@ -304,10 +318,10 @@ object MapTokens {
         /** 泡泡最大宽度（设计 px） */
         const val MAX_WIDTH = 260
         /**
-         * 普通泡泡高度（设计 px，标题+年份，不显示摘要——P1-移动端方案：
-         * 普通泡泡信息密度低、文字可读；选中泡泡才展开摘要，见 HEIGHT_SELECTED）。
+         * 普通泡泡高度（设计 px，标题+年份+一行短摘要——对齐验收 README 的
+         * 260×112 目标：标题 + 年份 + 首句摘要，让当前事件在地图上自带语境）。
          */
-        const val HEIGHT = 76
+        const val HEIGHT = 96
         /** 选中泡泡高度（设计 px，标题+年份+两行摘要） */
         const val HEIGHT_SELECTED = 116
         /** 聚合泡泡高度（设计 px，紧凑「简称 +N」） */
