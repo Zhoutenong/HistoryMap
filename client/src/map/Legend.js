@@ -4,6 +4,8 @@
  * 从 overlay GeoJSON 的 features 中提取 entity + color，
  * 去重后渲染到 #legend 元素。
  */
+import { clearChildren } from '../dom.js';
+
 export class Legend {
   constructor() {
     this.el = document.getElementById('legend');
@@ -40,7 +42,7 @@ export class Legend {
     }
 
     // 渲染：顶部小标题「政权」（设计图风格），每行色块 + 政权名
-    this.el.replaceChildren();
+    clearChildren(this.el);
     const title = document.createElement('div');
     title.className = 'legend-title';
     title.textContent = '政权';

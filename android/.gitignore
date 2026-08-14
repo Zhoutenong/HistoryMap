@@ -1,0 +1,10 @@
+# Gradle
+.gradle/
+build/
+# 本地 SDK 路径（机器相关）
+local.properties
+# 由 scripts/prepare-android.js 同步生成的 assets（数据单一来源：server/data 与 client/dist）
+app/src/main/assets/
+# IDE
+.idea/
+*.iml

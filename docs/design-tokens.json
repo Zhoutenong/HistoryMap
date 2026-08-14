@@ -1,0 +1,107 @@
+{
+  "$schema": "design-tokens.schema.json",
+  "_meta": {
+    "source": "docs/design-preview.png 程序化采样 (scripts/analyze-image.mjs)",
+    "date": "2026-08-13",
+    "status": "superseded-by-design-optimize",
+    "deprecated": "本文件为旧像素采样草稿，已不再作为设计输入。唯一设计真相源（canonical）为 docs/design_optimize/design-tokens.json（Android 视觉优化实施计划的唯一设计输入）。Kotlin token 源与 scripts/check-visual-tokens.mjs 均只认 canonical。保留本文件仅作历史参考，勿再引用其中的数值。",
+    "note": "数值来自像素采样，可信；语义(哪个色块是哪个政权/控件)与文字类 token 待 ChatGPT 看图确认后回填。见 docs/android-visual-polish-ai-pipeline.md 第 5.2 节"
+  },
+  "colors": {
+    "paperMap": "#F8E8C8",
+    "paperMapGL": [0.973, 0.910, 0.784],
+    "paperPanel": "#F8F8E8",
+    "paperBar": "#F8E8D8",
+    "paperCard": "#F8F8E8",
+    "paperLabel": "#F8F8E8",
+    "ink": "#71614C",
+    "inkSoft": "#958060",
+    "inkFaint": "#C8B898",
+    "vermilion": "#BD664F",
+    "gold": "#E0BE73",
+    "goldDeep": "#D7AC6B",
+    "darkBrown": "#886838",
+    "category": {
+      "era": "#BD664F",
+      "figure": "#D49D87",
+      "military": "#B87662",
+      "economy": "#A09A73",
+      "invention": "#B8945C"
+    },
+    "regimeWatercolor": {
+      "west": ["#C58B6D", "#B88360", "#DEC183"],
+      "center": ["#C4815C", "#B97754", "#A09A73"],
+      "east": ["#E7D2AA", "#D8B17A", "#E0C1A8"]
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "s": 8,
+    "m": 12,
+    "l": 16,
+    "xl": 20
+  },
+  "radius": {
+    "sm": 8,
+    "md": 10,
+    "lg": 14,
+    "pill": 999,
+    "sheet": 18
+  },
+  "stroke": {
+    "hair": 1,
+    "thin": 1.2,
+    "med": 2,
+    "thumb": 3
+  },
+  "type": {
+    "title": { "size": 22, "weight": "bold", "letterSpacing": 4, "lineHeight": 30, "color": "#BD664F", "family": "serif" },
+    "body": { "size": 14, "weight": "normal", "lineHeight": 24, "color": "#71614C", "family": "serif" },
+    "caption": { "size": 12, "weight": "normal", "color": "#958060", "family": "serif" },
+    "bubble": { "size": 13, "height": 20, "sealWidth": 5, "radiusTop": 4, "radiusBottom": 10 },
+    "yearWatermark": { "size": 120, "alpha": 0.09, "letterSpacing": 8 }
+  },
+  "map": {
+    "paper": {
+      "base": [0.973, 0.910, 0.784],
+      "vignetteStrength": 0.38,
+      "vignetteStart": 0.36,
+      "vignetteEnd": 0.86,
+      "centerLight": 0.10,
+      "grainStrength": 0.10
+    },
+    "watercolor": {
+      "bloomBlur": 24,
+      "bloomAlpha": 82,
+      "bodyBlur": 6,
+      "bodyAlpha": 117,
+      "mottleCount": 60,
+      "mottleAlpha": [0.05, 0.12],
+      "edgeWidth": 1.8,
+      "edgeAlpha": 122,
+      "dryEdgeWidth": 0.8,
+      "dryEdgeAlpha": 71,
+      "warmWash": "#E0CEA8",
+      "grainAlpha": 150
+    },
+    "terrain": {
+      "riverMajor": { "washWidth": 12, "washAlpha": 46, "bodyWidth": 3.2, "bodyAlpha": 110, "spineWidth": 1.1, "spineAlpha": 140 },
+      "riverMinor": { "washWidth": 6, "washAlpha": 30, "bodyWidth": 2, "bodyAlpha": 70 },
+      "mountain": { "alpha": 96, "strokeWidth": 1.2, "peaks": [2, 3] }
+    }
+  },
+  "animation": {
+    "sheetIn": 200,
+    "bannerIn": 2600,
+    "fade": 300
+  },
+  "_pendingAiConfirm": [
+    "1. 各色块与政权的对应关系（图左侧砖红/土黄=西夏?吐蕃?；中央赭红=宋?；右/东米褐=辽?金?）",
+    "2. y≈1024~1056 的彩色圆点行是时间轴事件刻度还是泡泡/徽章",
+    "3. y≈1056~1290 的重复行列表是图例展开、事件流还是详情抽屉",
+    "4. 底部 y≈1310~1450 近白色带是时间轴卡片还是其它控件",
+    "5. 文字墨色 #71614C 是否为定稿墨色（图片中文字为 AI 模糊占位，需 AI 确认真实值）",
+    "6. 纸面是否整体从 #E6D8B5 调白到 #F8E8C8 系（采样显示是的）",
+    "7. 分类色：图中无蓝/绿/紫色，是否全部转为暖调（era 变 #BD664F 等）"
+  ]
+}

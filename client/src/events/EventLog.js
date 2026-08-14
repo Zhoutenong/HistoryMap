@@ -1,6 +1,7 @@
 // 右侧历史事件流抽屉。
 // 地图上每首次出现一个泡泡，这里就在底部追加一条记录，旧记录自动上移。
 // 抽屉可收起（.collapsed）；收起期间新增记录计入未读数，由 onUnread 通知顶栏徽标。
+import { clearChildren } from '../dom.js';
 
 /** 搜索事件的可读字段；保持纯函数，便于在无 DOM 环境下测试。 */
 export function matchesEvent(ev, query) {
@@ -181,7 +182,7 @@ export class EventLog {
     this.entries = [];
     this.events = [];
     this.seen.clear();
-    this.list.replaceChildren();
+    clearChildren(this.list);
     if (this.searchInput) {
       this.searchInput.value = '';
       this.searchInput.removeAttribute('aria-label');
@@ -224,7 +225,7 @@ export class EventLog {
         results.className = 'log-search-results';
         this.list.prepend(results);
       }
-      results.replaceChildren();
+      clearChildren(results);
       matches.forEach(({ ev }) => {
         // 搜索结果始终使用独立的结果节点，即使事件已经在时间轴播放并
         // 出现在 entries 中；这样已出现和未出现的事件具有一致的搜索交互。

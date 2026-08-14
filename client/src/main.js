@@ -11,6 +11,7 @@ import { Legend } from './map/Legend.js';
 import { getMap, getEvents, getMeta, getOverlay, getDynasties } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
 import { loadSettings, saveSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
+import { clearChildren } from './dom.js';
 import { settingsFromParam } from './settings/transfer.js';
 import { parseViewParams, viewToQuery, buildShareUrl, copyText } from './share.js';
 import { SettingsMenu } from './settings/SettingsMenu.js';
@@ -260,7 +261,7 @@ animate();
       const related = [];
       if (idx > 0) related.push(sorted[idx - 1]);
       if (idx >= 0 && idx < sorted.length - 1) related.push(sorted[idx + 1]);
-      detailPanel.replaceChildren();
+      clearChildren(detailPanel);
       const addText = (tag, className, text, parent = detailPanel) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -321,7 +322,7 @@ animate();
         detailPanel.appendChild(relatedPanel);
       }
       const art = document.createElement('img');
-      art.src = '/ink-landscape.png';
+      art.src = './ink-landscape.png';
       art.className = 'detail-ink-art';
       art.alt = '水墨山水';
       detailPanel.appendChild(art);
@@ -436,7 +437,7 @@ animate();
     const dynastySelect = document.getElementById('dynasty-select');
     getDynasties()
       .then((list) => {
-        dynastySelect.replaceChildren();
+        clearChildren(dynastySelect);
         (list || []).forEach((d) => {
           const option = document.createElement('option');
           option.value = d.id;

@@ -1,0 +1,275 @@
+package com.historymap.app
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+/**
+ * 底部时间轴（设计比例，对齐 design-tokens.json / 原型）：
+ * 第一行：播放按钮（56px 视觉 / 44dp 触摸）+ 当前年份（42px）+ 年份范围
+ * 第二行：轨道（44dp 触摸区 + 6px 视觉线 + 32px 滑块/3px 朱砂描边 + 事件刻度点）
+ * 第三行：事件分类图例（5 类均布色点 + 分类文字，窄屏随宽度自动收缩）
+ * 轨道点击/拖动定位年份；事件刻度点点击跳年（距 24dp 内吸附）。
+ */
+@Composable
+fun TimelineBar(
+    timeline: TimelineController,
+    events: List<EventEntity>,
+    onEventClick: (EventEntity) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val scale = rememberDesignScale()
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(
+                start = designDp(MapTokens.Dimensions.TIMELINE_X.toFloat()),
+                end = designDp(MapTokens.Dimensions.TIMELINE_X.toFloat()),
+                bottom = designDp(MapTokens.Dimensions.TIMELINE_BOTTOM_SAFE_AREA.toFloat()),
+            ),
+        color = MapTokens.PAPER_CARD,
+        shape = RoundedCornerShape(designDp(MapTokens.Dimensions.TIMELINE_RADIUS.toFloat())),
+        shadowElevation = 3.dp,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = designDp(18f), vertical = designDp(8f))) {
+            // 第一行：播放 + 年份 + 范围
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PlayButton(timeline)
+                Spacer(Modifier.width(designDp(16f)))
+                Text(
+                    text = "${timeline.year} 年",
+                    fontFamily = MapFonts.Family,
+                    fontWeight = FontWeight.Normal,
+                    fontSize = designSp(MapTokens.Typography.TIMELINE_YEAR.size.toFloat()),
+                    letterSpacing = designSp(MapTokens.Typography.TIMELINE_YEAR.letterSpacing.toFloat()),
+                    color = MapTokens.VERMILION,
+                )
+                Spacer(Modifier.weight(1f))
+                // P1：年份范围 13→14px、透明度 60%→68%（评审要求提高约 15%）
+                Text(
+                    text = "${timeline.startYear} — ${timeline.endYear}",
+                    fontFamily = MapFonts.Family,
+                    fontSize = designSp(MapTokens.Typography.TIMELINE_RANGE.size.toFloat()),
+                    letterSpacing = designSp(MapTokens.Typography.TIMELINE_RANGE.letterSpacing.toFloat()),
+                    color = Color(0xAD3A3428),
+                )
+            }
+            Spacer(Modifier.height(designDp(8f)))
+
+            // 第二行：轨道（44dp 触摸区）
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .pointerInput(timeline, events) {
+                        // 手写手势：短拖动（<touchSlop）判定为 tap（吸附事件点或跳年），
+                        // 超过 slop 判定为拖动（实时 setYear）。避免短拖动被 tap 误触发。
+                        val touchSlop = viewConfiguration.touchSlop
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            var dragging = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (change.positionChanged()) {
+                                    if (!dragging &&
+                                        (change.position - down.position).getDistance() > touchSlop
+                                    ) {
+                                        dragging = true
+                                        timeline.pause()
+                                    }
+                                    if (dragging) {
+                                        val pct = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                        timeline.setYear((timeline.startYear + pct * (timeline.endYear - timeline.startYear)).toInt())
+                                        change.consume()
+                                    }
+                                }
+                                if (change.changedToUp()) {
+                                    if (!dragging) {
+                                        // tap：24dp 内吸附事件点，否则跳年
+                                        val ev = nearestEventAt(events, timeline, down.position.x, size.width.toFloat(), density)
+                                        if (ev != null) onEventClick(ev)
+                                        else {
+                                            val pct = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            timeline.setYear((timeline.startYear + pct * (timeline.endYear - timeline.startYear)).toInt())
+                                        }
+                                    }
+                                    break
+                                }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                // 视觉轨道（6px）+ 渐变进度 + 32px 滑块 + 事件刻度点
+                val startYear = timeline.startYear
+                val endYear = timeline.endYear
+                val year = timeline.year
+                val progress = (year - startYear).toFloat() / (endYear - startYear).coerceAtLeast(1)
+                val markerColor = CATEGORY_COLORS
+                val trackH = DesignMetrics.designToPx(MapTokens.Timeline.TRACK_PX.toFloat(), scale)
+                val thumbR = DesignMetrics.designToPx(MapTokens.Timeline.THUMB_PX.toFloat(), scale) / 2f
+                val thumbStroke = DesignMetrics.designToPx(MapTokens.Timeline.THUMB_STROKE_PX.toFloat(), scale)
+                val dotR = DesignMetrics.designToPx(MapTokens.Timeline.EVENT_DOT_PX.toFloat(), scale) / 2f
+                Canvas(modifier = Modifier.fillMaxWidth().height(designDp(44f))) {
+                    val trackY = size.height / 2f
+                    // 轨道底（timelineTrack alpha 36/255）
+                    drawRoundRect(
+                        color = MapTokens.INK.copy(alpha = MapTokens.Alpha.TIMELINE_TRACK / 255f),
+                        topLeft = Offset(0f, trackY - trackH / 2f),
+                        size = Size(size.width, trackH),
+                        cornerRadius = CornerRadius(trackH / 2f),
+                    )
+                    // 进度（朱砂 → 金渐变，参考图风格）
+                    val progressW = size.width * progress
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(listOf(MapTokens.VERMILION, MapTokens.GOLD)),
+                        topLeft = Offset(0f, trackY - trackH / 2f),
+                        size = Size(progressW, trackH),
+                        cornerRadius = CornerRadius(trackH / 2f),
+                    )
+                    // 滑块（米白内芯 + 朱砂描边；首尾不裁切）
+                    val thumbX = (progressW).coerceIn(thumbR, size.width - thumbR)
+                    drawCircle(color = MapTokens.PAPER_CARD, radius = thumbR, center = Offset(thumbX, trackY))
+                    drawCircle(color = MapTokens.VERMILION, radius = thumbR, center = Offset(thumbX, trackY), style = Stroke(width = thumbStroke))
+                    // 事件刻度点（同年去重 + 1dp 浅色外描边；当前年份实心朱砂）。
+                    // 相近年份/同年多事件合并为单点，避免连续小圆点连成粗线（评审 P2）。
+                    val dotsByYear = events
+                        .distinctBy { it.year }
+                        .map { ev ->
+                            val x = size.width * (ev.year - startYear).toFloat() / (endYear - startYear).coerceAtLeast(1)
+                            Triple(ev, x, markerColor[ev.category] ?: markerColor["era"]!!)
+                        }
+                    for ((ev, x, col) in dotsByYear) {
+                        val isCurrentYear = ev.year == year
+                        val fill = if (isCurrentYear) MapTokens.VERMILION else col.copy(alpha = 0.85f)
+                        // 1dp 浅色外描边（米白），与轨道背景分离
+                        drawCircle(
+                            color = MapTokens.PAPER_CARD,
+                            radius = dotR + DesignMetrics.designToPx(1f, scale),
+                            center = Offset(x, trackY + dotR + 2f),
+                        )
+                        drawCircle(
+                            color = fill,
+                            radius = dotR,
+                            center = Offset(x, trackY + dotR + 2f),
+                        )
+                    }
+                }
+            }
+
+            // 第三行：事件分类图例（5 类均布，色点 + 分类文字；窄屏随 designSp 自动收缩）
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = designDp(4f)),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                listOf(
+                    "era" to "政治",
+                    "figure" to "人物",
+                    "military" to "军事",
+                    "economy" to "经济",
+                    "invention" to "文化",
+                ).forEach { (id, label) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier
+                                .size(DesignMetrics.designToDp(MapTokens.Timeline.EVENT_DOT_PX.toFloat(), density, scale).dp)
+                                .background(CATEGORY_COLORS[id] ?: CATEGORY_COLORS["era"]!!, CircleShape),
+                        )
+                        Spacer(Modifier.height(designDp(4f)))
+                        Text(
+                            label,
+                            fontFamily = MapFonts.Family,
+                            fontSize = designSp(MapTokens.Typography.TIMELINE_CATEGORY.size.toFloat()),
+                            letterSpacing = designSp(MapTokens.Typography.TIMELINE_CATEGORY.letterSpacing.toFloat()),
+                            color = MapTokens.INK_SOFT,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 播放按钮：56px 视觉圆角印章（外层 44dp 点击区，可点击 Surface 自带最小触摸尺寸） */
+@Composable
+private fun PlayButton(timeline: TimelineController) {
+    val icon = when {
+        timeline.completed -> "↻"
+        timeline.playing -> "❚❚"
+        else -> "▶"
+    }
+    Box(
+        modifier = Modifier.size(44.dp).clickable(onClick = { timeline.toggle() }),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(designDp(6f)),
+            color = MapTokens.PAPER_CARD.copy(alpha = 0.55f),
+            border = BorderStroke(1.dp, MapTokens.VERMILION),
+            modifier = Modifier.size(designDp(MapTokens.Dimensions.PLAY_BUTTON_WIDTH.toFloat())),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(icon, fontFamily = MapFonts.Family, fontSize = designSp(20f), color = MapTokens.VERMILION)
+            }
+        }
+    }
+}
+
+/** 轨道上距离 x 24dp 内的事件点（吸附跳转） */
+private fun nearestEventAt(
+    events: List<EventEntity>,
+    timeline: TimelineController,
+    x: Float,
+    trackW: Float,
+    density: Float,
+): EventEntity? {
+    if (events.isEmpty() || trackW <= 0f) return null
+    val threshold = 24f * density
+    var best: EventEntity? = null
+    var bestDist = threshold
+    for (ev in events) {
+        val px = trackW * (ev.year - timeline.startYear).toFloat() / (timeline.endYear - timeline.startYear).coerceAtLeast(1)
+        val d = kotlin.math.abs(px - x)
+        if (d < bestDist) {
+            bestDist = d
+            best = ev
+        }
+    }
+    return best
+}

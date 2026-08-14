@@ -1,0 +1,706 @@
+package com.historymap.app
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.RectF
+import android.opengl.GLES20
+import android.opengl.GLSurfaceView
+import android.opengl.GLUtils
+import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
+
+/**
+ * GLES2 渲染器（原生重构 M1-M3：渲染底座 + 数据层 + 水彩效果）。
+ *
+ * 绘制内容（渲染顺序）：
+ * 1. 宣纸底全屏 quad：paper-texture.jpg + paper-grain.png 叠加，
+ *    片元着色器加中心提亮 + 暖褐四边暗角（对齐参考图宣纸氛围）
+ * 2. 水彩疆域纹理 quad（政权色块 + 边界渗墨，含 fillOpacity 与孔洞处理）
+ * 3. 山水纹理 quad（河流宽窄水痕 + 山脉淡墨笔触，低对比辅助层）
+ *
+ * 线程模型：setOverlay() 做数据解析与 CPU 纹理生成（不调用 GL API），
+ * 可从 UI 线程直接调用；GL 线程每帧读取 @Volatile 引用并懒上传纹理。
+ * 投影在首次（或显式 calibrate）时标定一次，与 Web 版 fitProjection 单例语义一致。
+ *
+ * 相机：正交投影，世界坐标范围约 ±500×±400（Projection.fit 的 1000×800 标定），
+ * 手势（平移/缩放）从 UI 线程调用 pan/zoom；相机状态以 Compose 状态暴露，
+ * UI 层可直接观察 cx/cy/zoom 变化重算标签，GL 线程读同一份状态画帧。
+ */
+class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
+
+    /** 待上传的 CPU 纹理（UI 线程生成，GL 线程首次绘制时上传） */
+    private class PendingTexture(val texture: WatercolorTexture, val quad: FloatBuffer)
+
+    /** 水彩 CPU 生成缓存条目（按 overlay JSON + 视口尺寸做 key，进程内 LRU） */
+    private class WatercolorCacheEntry(val texture: WatercolorTexture, val quad: FloatBuffer, val key: String)
+
+    /** 地图标注（世界坐标，供 Compose 标签层定位） */
+    data class WorldLabel(
+        val text: String,
+        val wx: Float,
+        val wy: Float,
+        val kind: String,   // regime / cities / places / mountains / rivers
+        val major: Boolean,
+        val rank: Int,
+    )
+
+    // —— 相机状态（Compose 状态：UI 线程写 / GL 线程读；变化自动触发标签重算）——
+    var zoom by mutableFloatStateOf(1f)
+        private set
+    var cx by mutableFloatStateOf(0f)
+        private set
+    var cy by mutableFloatStateOf(0f)
+        private set
+
+    /** Surface 尺寸变化后回调（UI 线程）：MapScreen 用它刷新标签屏幕坐标 */
+    var onSurfaceSizeChanged: (() -> Unit)? = null
+
+    // 宣纸主题色（对齐 Web 版 theme.js：暖黄宣纸底 + 墨色）
+    private val paperColor = MapTokens.PAPER_MAP_GL
+
+    @Volatile private var viewportW = 1
+    @Volatile private var viewportH = 1
+    private var aspect = 1f
+
+    /** 当前叠加层模型（政权/河流/山脉，供屏幕域计算） */
+    @Volatile private var overlayModel: OverlayModel? = null
+
+    /** 上次加载的水彩/山水缓存 key（GL surface 重建后恢复用） */
+    @Volatile private var lastWatercolorKey: String? = null
+    @Volatile private var lastTerrainKey: String? = null
+
+    /** 首次标定的世界包围盒（相机 framing 基准） */
+    private var worldBounds: RectF? = null
+
+    // —— GL 资源 ——
+    private var bgProgram = 0    // 全屏 NDC quad：宣纸纹理 + 颗粒 + 暗角
+    private var texProgram = 0   // 世界坐标 quad + UV：水彩/山水纹理采样
+    private var quadBuffer: FloatBuffer? = null // 全屏 NDC quad
+
+    // uniform / attribute 位置（onSurfaceCreated 缓存，避免每帧查询）
+    private var uPaperTex = -1
+    private var uGrainTex = -1
+    private var uResolution = -1
+    private var uViewProjTex = -1
+    private var aPosBg = -1
+    private var aPosTex = -1
+    private var aUvTex = -1
+    private var uTex = -1
+
+    // 宣纸背景纹理（assets/web/paper-texture.jpg + paper-grain.png，一次性上传）
+    private var paperTexId = 0
+    private var grainTexId = 0
+
+    // —— 图层数据（UI 线程 setOverlay 写入 / GL 线程 onDrawFrame 读取）——
+    @Volatile private var projection: MercatorProjection? = null
+    @Volatile private var pendingWatercolor: PendingTexture? = null
+    @Volatile private var pendingTerrain: PendingTexture? = null
+
+    /** 已上传的纹理（GL 线程） */
+    private var watercolorTexId = 0
+    private var watercolorQuad: FloatBuffer? = null
+    private var terrainTexId = 0
+    private var terrainQuad: FloatBuffer? = null
+
+    /** 地图标注（世界坐标），UI 线程直接读 */
+    @Volatile var labels: List<WorldLabel> = emptyList()
+
+    /** 政权图例数据（entity → 政权色 RGBA），UI 线程直接读 */
+    @Volatile var regimeColors: List<Pair<String, FloatArray>> = emptyList()
+
+    /** 图层显隐开关（设置面板控制，GL 线程每帧读取） */
+    @Volatile var showTerritory = true      // 统一控制水彩疆域
+    @Volatile var showWatercolor = true     // 水彩疆域纹理（旧设置项兼容）
+    @Volatile var showRivers = true         // 山水纹理（河流水痕 + 山脉笔触）
+
+    /** 帧率统计（性能回归观测） */
+    private var frameCount = 0
+    private var lastFpsLog = System.nanoTime()
+
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        GLES20.glClearColor(paperColor[0], paperColor[1], paperColor[2], 1f)
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+
+        bgProgram = createProgram(VERT_NDC, buildFragBg())
+        texProgram = createProgram(VERT_TEX, buildFragTex())
+        uPaperTex = GLES20.glGetUniformLocation(bgProgram, "uPaper")
+        uGrainTex = GLES20.glGetUniformLocation(bgProgram, "uGrain")
+        uResolution = GLES20.glGetUniformLocation(bgProgram, "uResolution")
+        uViewProjTex = GLES20.glGetUniformLocation(texProgram, "uViewProj")
+        aPosBg = GLES20.glGetAttribLocation(bgProgram, "aPos")
+        aPosTex = GLES20.glGetAttribLocation(texProgram, "aPos")
+        aUvTex = GLES20.glGetAttribLocation(texProgram, "aUv")
+        uTex = GLES20.glGetUniformLocation(texProgram, "uTex")
+
+        quadBuffer = floatBufferOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+
+        // 宣纸背景纹理（assets 由 prepare-android.mjs 同步，缺失时退化为纯色）
+        paperTexId = uploadAssetTexture("web/paper-texture.jpg")
+        grainTexId = uploadAssetTexture("web/paper-grain.png")
+
+        // GL context 重建（退后台再切回）：旧纹理 ID 已失效，需从缓存重新挂 pending
+        watercolorTexId = 0
+        watercolorQuad = null
+        terrainTexId = 0
+        terrainQuad = null
+        restoreCachedTexture(lastWatercolorKey) { tex, quad ->
+            pendingWatercolor = PendingTexture(tex, quad)
+        }
+        restoreCachedTexture(lastTerrainKey) { tex, quad ->
+            pendingTerrain = PendingTexture(tex, quad)
+        }
+    }
+
+    /** 从水彩 LRU 缓存恢复待上传纹理（surface 重建后纹理 ID 失效） */
+    private fun restoreCachedTexture(key: String?, assign: (WatercolorTexture, FloatBuffer) -> Unit) {
+        if (key == null) return
+        val entry = synchronized(watercolorCache) { watercolorCache[key] } ?: return
+        if (entry.texture.bitmap == null) return // 缓存副本已被淘汰回收
+        assign(entry.texture, entry.quad)
+    }
+
+    override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+        val prevW = viewportW
+        val prevH = viewportH
+        viewportW = width
+        viewportH = height
+        aspect = if (height > 0) width.toFloat() / height else 1f
+        GLES20.glViewport(0, 0, width, height)
+        // 仅在「大变化」时重置相机（旋转/首次创建）；系统栏显隐（±128px 抖动）
+        // 不应打断用户的平移/缩放视图
+        val smallChange = prevW > 0 && prevH > 0 &&
+            kotlin.math.abs(width - prevW) < 200 && kotlin.math.abs(height - prevH) < 200
+        if (!smallChange) resetCamera()
+        onSurfaceSizeChanged?.invoke()
+    }
+
+    override fun onDrawFrame(gl: GL10?) {
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+        // 性能回归：每 5 秒输出一次 FPS（P20 低端机帧率观测）
+        frameCount++
+        val now = System.nanoTime()
+        if (now - lastFpsLog > 5_000_000_000L) {
+            val fps = frameCount * 1_000_000_000.0 / (now - lastFpsLog)
+            Log.d("HistoryMap", "fps=%.1f".format(fps))
+            frameCount = 0
+            lastFpsLog = now
+        }
+
+        // 1. 宣纸底 + 纹理 + 颗粒 + 暗角（NDC 全屏）
+        drawPaperBackground()
+
+        // 2. 水彩疆域纹理（首次绘制时懒上传，避免 UI 线程碰 GL）
+        var pending = pendingWatercolor
+        if (pending != null) {
+            pendingWatercolor = null
+            val tex = pending.texture
+            val quad = pending.quad
+            // 替换前删除旧 GL 纹理，避免朝代/时期切换长期累积
+            deleteTexture(watercolorTexId)
+            uploadTexture(tex, quad) { id ->
+                watercolorTexId = id
+                watercolorQuad = quad
+            }
+            pending = null
+        }
+        val wcQuad = watercolorQuad
+        if (showTerritory && showWatercolor && watercolorTexId != 0 && wcQuad != null) {
+            drawTextureQuad(watercolorTexId, wcQuad)
+        }
+
+        // 3. 山水纹理（河流水痕 + 山脉笔触）
+        pending = pendingTerrain
+        if (pending != null) {
+            pendingTerrain = null
+            val tex = pending.texture
+            val quad = pending.quad
+            deleteTexture(terrainTexId)
+            uploadTexture(tex, quad) { id ->
+                terrainTexId = id
+                terrainQuad = quad
+            }
+            pending = null
+        }
+        val terrQuad = terrainQuad
+        if (showTerritory && showRivers && terrainTexId != 0 && terrQuad != null) {
+            drawTextureQuad(terrainTexId, terrQuad)
+        }
+    }
+
+    /** 删除 GL 纹理（GL 线程；id 为 0 时无操作） */
+    private fun deleteTexture(texId: Int) {
+        if (texId == 0) return
+        GLES20.glDeleteTextures(1, intArrayOf(texId), 0)
+    }
+
+    // ================= 数据接入（UI 线程调用，纯数据准备） =================
+
+    /**
+     * 加载一个时期/朝代的疆域叠加层（OverlayParser 解析后的模型）。
+     * @param model OverlayParser.getOverlay 的解析结果
+     * @param calibrate 是否重新标定投影（首次加载传 true，之后传 false——
+     *                  与 Web 版 fitProjection 单例语义一致，保证切朝代后坐标不变）
+     * @param cacheKey 叠加层 JSON 原文（水彩 CPU 缓存 key；传 null 不缓存）
+     */
+    fun setOverlay(model: OverlayModel, calibrate: Boolean, cacheKey: String? = null) {
+        overlayModel = model
+        // 切朝代（重新标定投影）：新投影坐标系与旧纹理 worldBox 不一致，
+        // 立即摘除旧水彩/山水纹理，避免「旧疆域被新相机缩放/错位」的瞬态画面
+        if (calibrate) {
+            watercolorTexId = 0
+            watercolorQuad = null
+            terrainTexId = 0
+            terrainQuad = null
+        }
+        val p = if (calibrate || projection == null) {
+            MercatorProjection.fit(OverlayParser.allPoints(model)).also { projection = it }
+        } else {
+            projection!!
+        }
+        labels = model.labels.map { l ->
+            val xy = p.project(l.coord)
+            WorldLabel(l.text, xy[0], xy[1], l.kind, l.major, l.rank)
+        }
+        // 图例配色按 entity 去重：同一政权的多个 feature（按省份拆分）只保留一行
+        regimeColors = model.regimes.map { it.entity to it.color }.distinctBy { it.first }
+        // 世界包围盒（水彩/山水共用）：由模型全体要素计算
+        worldBounds = boundsOf(model, p)
+
+        val density = context.resources.displayMetrics.density
+        // 首次/朝代切换（calibrate）：数据就绪后立即取全图视野，
+        // 避免 surface 先创建（worldBounds 未就绪）时停留在 fallback 放大视图
+        if (calibrate) resetCamera()
+        Log.d(
+            "HistoryMap",
+            "setOverlay: ${model.regimes.size} regimes, ${model.rivers.size} rivers, ${model.mountains.size} mountains, ${labels.size} labels (cacheKey=${cacheKey != null})"
+        )
+    }
+
+    /**
+     * 在后台线程生成水彩/山水纹理（P3：纯 CPU，不碰 GL 与 Compose 状态，
+     * 由调用方放到 Dispatchers.IO，避免阻塞主线程）。结果经 [setTextures] 挂接。
+     */
+    fun buildTextures(
+        model: OverlayModel,
+        cacheKey: String?,
+        density: Float,
+    ): Pair<WatercolorTexture?, WatercolorTexture?> {
+        val p = projection ?: MercatorProjection.fit(OverlayParser.allPoints(model))
+        val key = if (cacheKey == null) null else "$cacheKey|${viewportW}x${viewportH}|$density"
+        lastWatercolorKey = key
+        // 水彩疆域：CPU 离屏生成（羽化 + 斑驳 + 边界 + fillOpacity），GL 上传延后
+        val watercolor = buildCachedWatercolor(key) { WatercolorBuilder.build(model, p, viewportW, viewportH, density) }
+        // 山水纹理（河流水痕 + 山脉笔触）：与水彩同包围盒，保证叠加对齐
+        val terrainKey = "$key|terrain"
+        lastTerrainKey = terrainKey
+        val terrain = buildCachedWatercolor(terrainKey) {
+            TerrainTextureBuilder.build(model, p, watercolor?.worldBox ?: boundsOf(model, p), viewportW, viewportH, density)
+        }
+        return watercolor to terrain
+    }
+
+    /** 挂接后台生成的纹理（主线程调用；GL 线程懒上传） */
+    fun setTextures(watercolor: WatercolorTexture?, terrain: WatercolorTexture?) {
+        if (watercolor != null) pendingWatercolor = PendingTexture(watercolor, buildTexQuad(watercolor.worldBox))
+        if (terrain != null) pendingTerrain = PendingTexture(terrain, buildTexQuad(terrain.worldBox))
+    }
+
+    /** 事件经纬度 → 世界坐标（UI 线程用；投影未标定时返回原点） */
+    fun projectEvent(lng: Double, lat: Double): Pair<Float, Float> {
+        val p = projection ?: return 0f to 0f
+        val xy = p.project(LngLat(lng, lat))
+        return xy[0] to xy[1]
+    }
+
+    /** 视口尺寸（UI 线程用：命中测试等） */
+    fun viewportWidth(): Int = viewportW
+
+    fun viewportHeight(): Int = viewportH
+
+    /**
+     * 政权屏幕域（政权名 → 外环屏幕顶点）：标签布局用「位于本政权域内」约束。
+     * 用当前相机状态投影，平移/缩放后调用方需重新获取。
+     *
+     * 修复：必须先把经纬度经投影转为世界坐标，再转屏幕坐标；
+     * 直接把 lng/lat 当世界坐标会得到缩在地图一角的错误小多边形，
+     * 导致 pointInPolygon 全部失败、政权名标签被整体隐藏。
+     */
+    fun screenRegimePolygons(): Map<String, List<android.graphics.PointF>> {
+        val model = overlayModel ?: return emptyMap()
+        val p = projection ?: return emptyMap()
+        val out = HashMap<String, List<android.graphics.PointF>>()
+        for (r in model.regimes) {
+            if (out.containsKey(r.entity)) continue
+            val outer = r.rings.firstOrNull() ?: continue
+            if (outer.size < 3) continue
+            val pts = outer.map { pt ->
+                val xy = p.project(pt.lng, pt.lat)
+                val (sx, sy) = worldToScreen(xy[0], xy[1])
+                android.graphics.PointF(sx, sy)
+            }
+            out[r.entity] = pts
+        }
+        return out
+    }
+
+    // ================= 水彩/山水缓存 =================
+
+    private fun boundsOf(model: OverlayModel, p: MercatorProjection): RectF {
+        var x0 = Float.POSITIVE_INFINITY
+        var y0 = Float.POSITIVE_INFINITY
+        var x1 = Float.NEGATIVE_INFINITY
+        var y1 = Float.NEGATIVE_INFINITY
+        fun acc(pt: LngLat) {
+            val xy = p.project(pt)
+            x0 = minOf(x0, xy[0]); x1 = maxOf(x1, xy[0])
+            y0 = minOf(y0, xy[1]); y1 = maxOf(y1, xy[1])
+        }
+        model.regimes.forEach { r -> r.rings.forEach { ring -> ring.forEach { acc(it) } } }
+        model.rivers.forEach { r -> r.path.forEach { acc(it) } }
+        model.mountains.forEach {
+            if (it.path != null) it.path.forEach { acc(it) } else it.coord?.let { acc(it) }
+        }
+        if (!(x0.isFinite() && y0.isFinite() && x1 > x0 && y1 > y0)) return RectF(-500f, -400f, 500f, 400f)
+        // 6% 边距（水彩晕染会超出多边形）
+        val padX = (x1 - x0) * 0.06f
+        val padY = (y1 - y0) * 0.06f
+        return RectF(x0 - padX, y0 - padY, x1 + padX, y1 + padY)
+    }
+
+    private fun buildCachedWatercolor(key: String?, build: () -> WatercolorTexture?): WatercolorTexture? {
+        if (key == null) return build()
+        synchronized(watercolorCache) {
+            watercolorCache[key]?.let { return it.texture }
+        }
+        val tex = build() ?: return null
+        synchronized(watercolorCache) {
+            watercolorCache[key]?.let { return it.texture }
+            watercolorCache[key] = WatercolorCacheEntry(tex, buildTexQuad(tex.worldBox), key)
+        }
+        return tex
+    }
+
+    private fun uploadTexture(tex: WatercolorTexture, quad: FloatBuffer, assignId: (Int) -> Unit) {
+        val bmp = tex.bitmap ?: return // 缓存副本已被上传并回收
+        val ids = IntArray(1)
+        GLES20.glGenTextures(1, ids, 0)
+        assignId(ids[0])
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0])
+        // P3：mipmap 改善缩放时水彩颗粒闪烁（GLES2 支持 GL_LINEAR_MIPMAP_LINEAR）。
+        // 但透明背景纹理做 mipmap 会渗入透明黑 → 疆域变暗；由 TEXTURE_MIPMAP 开关控制。
+        if (MapTokens.MapParams.TEXTURE_MIPMAP) {
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR)
+        } else {
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        }
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
+        if (MapTokens.MapParams.TEXTURE_MIPMAP) GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D)
+        // 非缓存纹理（临时生成）：上传后回收；缓存副本保留 bitmap，
+        // 供 GL surface 重建（退后台再切回）后重新上传，LRU 淘汰时才回收
+        if (!isCached(tex)) bmp.recycle()
+    }
+
+    /** 纹理是否来自缓存（缓存副本由 LRU 淘汰时统一回收，避免重复 recycle） */
+    private fun isCached(tex: WatercolorTexture): Boolean {
+        synchronized(watercolorCache) {
+            return watercolorCache.values.any { it.texture === tex }
+        }
+    }
+
+    // ================= GL 绘制 =================
+
+    /** 上传 assets 位图为 GL 纹理（宣纸背景用，一次性） */
+    private fun uploadAssetTexture(assetPath: String): Int {
+        return try {
+            val bytes = context.assets.open(assetPath).use { it.readBytes() }
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return 0
+            val ids = IntArray(1)
+            GLES20.glGenTextures(1, ids, 0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0])
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
+            bmp.recycle()
+            ids[0]
+        } catch (e: Exception) {
+            Log.w("HistoryMap", "load bg texture failed: $assetPath", e)
+            0
+        }
+    }
+
+    private fun drawPaperBackground() {
+        GLES20.glUseProgram(bgProgram)
+        GLES20.glUniform2f(uResolution, viewportW.toFloat(), viewportH.toFloat())
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, paperTexId)
+        GLES20.glUniform1i(uPaperTex, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, grainTexId)
+        GLES20.glUniform1i(uGrainTex, 1)
+        GLES20.glEnableVertexAttribArray(aPosBg)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        quadBuffer?.position(0)
+        GLES20.glVertexAttribPointer(aPosBg, 2, GLES20.GL_FLOAT, false, 8, quadBuffer)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPosBg)
+    }
+
+    /** 世界坐标纹理 quad 采样（水彩/山水共用；位置已缓存，避免每帧查询） */
+    private fun drawTextureQuad(texId: Int, quad: FloatBuffer) {
+        GLES20.glUseProgram(texProgram)
+        GLES20.glUniformMatrix4fv(uViewProjTex, 1, false, buildViewProjMatrix(), 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texId)
+        GLES20.glUniform1i(uTex, 0)
+        GLES20.glEnableVertexAttribArray(aPosTex)
+        GLES20.glEnableVertexAttribArray(aUvTex)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        quad.position(0)
+        GLES20.glVertexAttribPointer(aPosTex, 2, GLES20.GL_FLOAT, false, 16, quad)
+        quad.position(2)
+        GLES20.glVertexAttribPointer(aUvTex, 2, GLES20.GL_FLOAT, false, 16, quad)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPosTex)
+        GLES20.glDisableVertexAttribArray(aUvTex)
+    }
+
+    /** 纹理 quad：世界坐标 4 角 + UV（x,y,u,v 交错） */
+    private fun buildTexQuad(box: RectF): FloatBuffer {
+        val x0 = box.left
+        val y0 = box.top
+        val x1 = box.right
+        val y1 = box.bottom
+        return floatBufferOf(
+            x0, y0, 0f, 0f,
+            x1, y0, 1f, 0f,
+            x0, y1, 0f, 1f,
+            x1, y1, 1f, 1f,
+        )
+    }
+
+    // ================= 相机（UI 线程调用） =================
+
+    /** 平移（屏幕像素 → 世界单位；地图跟随手指方向） */
+    fun pan(dxPx: Float, dyPx: Float) {
+        if (viewportH <= 0) return
+        val worldPerPx = (2f * 400f * zoom) / viewportH
+        cx += dxPx * worldPerPx
+        cy -= dyPx * worldPerPx
+    }
+
+    /** 缩放：围绕屏幕焦点 (fx, fy)（viewport 内 CSS 像素） */
+    fun zoom(factor: Float, fx: Float, fy: Float) {
+        if (viewportH <= 0 || factor <= 0f) return
+        val old = zoom
+        val new = (old * factor).coerceIn(0.25f, 24f)
+        if (new == old) return
+        // 焦点世界坐标保持不变：world = center + (focus - screenCenter) * worldPerPx
+        val worldPerPx = (2f * 400f * old) / viewportH
+        val wx = cx + (fx - viewportW / 2f) * worldPerPx
+        val wy = cy - (fy - viewportH / 2f) * worldPerPx
+        zoom = new
+        val newPerPx = (2f * 400f * new) / viewportH
+        cx = wx - (fx - viewportW / 2f) * newPerPx
+        cy = wy + (fy - viewportH / 2f) * newPerPx
+    }
+
+    /**
+     * 回到全图视野：保证疆域包围盒两轴完整落入视口（含边距），兼顾横竖屏。
+     *
+     * zoom 是放大率（越大看到的世界范围越大）：视口可见世界范围 =
+     * 宽 800×zoom×aspect、高 800×zoom，须 ≥ 包围盒/边距，故取两轴
+     * 所需 zoom 的较大者，另一轴自然留白（竖屏宽度受限、横屏高度受限）。
+     *
+     * 修复（P0-2）：旧实现 zW = viewportW/boxW 单位错误且取 min，竖屏时
+     * 地图横向被裁掉一半以上（P20 实测只显示中间 45%），南北边界被
+     * 顶栏/时间轴遮挡。现改为正确公式 + max 语义 + 每侧 5% 边距。
+     */
+    fun resetCamera() {
+        val box = worldBounds
+        if (box == null || box.width() <= 0f || box.height() <= 0f) {
+            zoom = viewportH / 800f
+            cx = 0f
+            cy = 0f
+            Log.d("HistoryMap", "resetCamera(fallback) zoom=$zoom vp=${viewportW}x${viewportH}")
+            return
+        }
+        val pad = 0.90f // 每侧 5% 边距（评审要求左右 5%~8%、上下 6%）
+        val zW = (box.width() * viewportH) / (viewportW * 800f * pad)
+        val zH = box.height() / (800f * pad)
+        zoom = maxOf(zW, zH).coerceIn(0.25f, 24f)
+        cx = box.centerX()
+        cy = box.centerY()
+        Log.d("HistoryMap", "resetCamera zoom=$zoom cx=$cx cy=$cy vp=${viewportW}x${viewportH} box=${box}")
+    }
+
+    /**
+     * 世界坐标 → 屏幕像素（UI 线程用：Compose 标签/泡泡/区域层定位）。
+     *
+     * 注意 y 翻转方向：Projection 输出为「纬度越高 y 越小」（与 Web 版 d3 反号的
+     * 历史遗留），但水彩纹理管线（bitmap + quad UV + NDC）双重翻转后内容北在上。
+     * 因此这里同样翻转 sy，使 Compose 层（标签/泡泡/政权屏幕域）与纹理内容精确对齐，
+     * 镜像轴恰为地图中心（resetCamera 的 cy = 包围盒中心）。
+     */
+    fun worldToScreen(wx: Float, wy: Float): Pair<Float, Float> {
+        val halfH = 400f * zoom
+        val halfW = halfH * aspect
+        val sx = (wx - cx) / halfW * (viewportW / 2f) + viewportW / 2f
+        val sy = viewportH / 2f + (wy - cy) / halfH * (viewportH / 2f)
+        return sx to sy
+    }
+
+    // ================= 矩阵与着色器 =================
+
+    private fun buildViewProjMatrix(): FloatArray {
+        val halfH = 400f * zoom
+        val halfW = halfH * aspect
+        // NDC.x = (v.x - cx) / halfW，NDC.y = (v.y - cy) / halfH（y 向上）
+        // 与 worldToScreen() 同一套 (v - cameraCenter) 变换，平移符号保持一致
+        val m = FloatArray(16)
+        m[0] = 1f / halfW
+        m[5] = 1f / halfH
+        m[10] = -1f
+        m[12] = -cx / halfW
+        m[13] = -cy / halfH
+        m[15] = 1f
+        return m
+    }
+
+    private fun floatBufferOf(vararg values: Float): FloatBuffer {
+        val buf = ByteBuffer.allocateDirect(values.size * 4).order(ByteOrder.nativeOrder())
+        val fb = buf.asFloatBuffer()
+        fb.put(values)
+        fb.position(0)
+        return fb
+    }
+
+    private fun createProgram(vertexSrc: String, fragmentSrc: String): Int {
+        val vs = compileShader(GLES20.GL_VERTEX_SHADER, vertexSrc)
+        val fs = compileShader(GLES20.GL_FRAGMENT_SHADER, fragmentSrc)
+        val program = GLES20.glCreateProgram()
+        GLES20.glAttachShader(program, vs)
+        GLES20.glAttachShader(program, fs)
+        GLES20.glLinkProgram(program)
+        val status = IntArray(1)
+        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, status, 0)
+        if (status[0] == 0) {
+            Log.e("HistoryMap", "program link failed: ${GLES20.glGetProgramInfoLog(program)}")
+        }
+        GLES20.glDeleteShader(vs)
+        GLES20.glDeleteShader(fs)
+        return program
+    }
+
+    private fun compileShader(type: Int, src: String): Int {
+        val shader = GLES20.glCreateShader(type)
+        GLES20.glShaderSource(shader, src)
+        GLES20.glCompileShader(shader)
+        val status = IntArray(1)
+        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0)
+        if (status[0] == 0) {
+            Log.e("HistoryMap", "shader compile failed: ${GLES20.glGetShaderInfoLog(shader)}")
+        }
+        return shader
+    }
+
+    companion object {
+        /** 水彩 CPU 缓存上限（对齐 Web 版 TerritoryOverlay 的 LRU：4 项） */
+        private const val MAX_CACHE = 4
+        private val watercolorCache = object : LinkedHashMap<String, WatercolorCacheEntry>(MAX_CACHE, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, WatercolorCacheEntry>?): Boolean {
+                if (size > MAX_CACHE) {
+                    val bmp = eldest?.value?.texture?.bitmap
+                    if (bmp != null) {
+                        bmp.recycle()
+                        eldest.value.texture.bitmap = null
+                    }
+                    return true
+                }
+                return false
+            }
+        }
+
+        /** NDC 直通顶点（宣纸底用） */
+        private const val VERT_NDC = """
+            attribute vec2 aPos;
+            void main() {
+                gl_Position = vec4(aPos, 0.0, 1.0);
+            }
+        """
+
+        /**
+         * 宣纸背景片元着色器：paper 纹理 + grain 颗粒 + 中心提亮 + 暖褐暗角。
+         * 所有视觉参数来自 MapTokens.Map（design-tokens.json），只改 token 无需动 shader。
+         * - uPaper：纸张纹理（白噪声纤维感，sample 后乘暖色；缺失时 hasPaper=0 退化为纯色）
+         * - uGrain：颗粒纹理（screen 叠加，让纸面有颗粒感）
+         * - 暗角用暖褐而非纯黑，参考图边缘向棕褐色渐暗
+         */
+        private fun buildFragBg(): String {
+            val paper = MapTokens.MapParams.PAPER_RGB
+            return """
+                precision mediump float;
+                uniform sampler2D uPaper;
+                uniform sampler2D uGrain;
+                uniform vec2 uResolution;
+                void main() {
+                    vec2 uv = gl_FragCoord.xy / uResolution;
+                    // 纸张纹理作为纤维细节调制暖纸色，而不是完全取代：
+                    // 纯色 base 占 (1-STRENGTH)，纹理占 STRENGTH；纹理先暖化（去冷蓝）再混合
+                    vec3 paper = texture2D(uPaper, uv).rgb * vec3(1.02, 1.0, 0.92);
+                    float hasPaper = step(0.001, length(paper));
+                    vec3 base = mix(vec3(${paper[0]}, ${paper[1]}, ${paper[2]}), paper, hasPaper * ${MapTokens.MapParams.PAPER_TEXTURE_STRENGTH});
+                    // 颗粒层（screen 近似）
+                    float grain = texture2D(uGrain, uv * 1.2).r;
+                    base = mix(base, vec3(1.0), grain * ${MapTokens.MapParams.PAPER_GRAIN_STRENGTH});
+                    // 中心提亮
+                    float d = distance(uv, vec2(0.5));
+                    base *= 1.0 + (1.0 - smoothstep(0.0, ${MapTokens.MapParams.CENTER_LIGHT_RADIUS}, d)) * ${MapTokens.MapParams.CENTER_LIGHT_STRENGTH};
+                    // 暖褐暗角
+                    base *= 1.0 - smoothstep(${MapTokens.MapParams.VIGNETTE_START}, ${MapTokens.MapParams.VIGNETTE_END}, d) * ${MapTokens.MapParams.VIGNETTE_STRENGTH};
+                    // GL/Compose 亮度对齐（GLSurfaceView 无 sRGB 管理，整体提亮）
+                    base *= ${MapTokens.MapParams.GL_BRIGHTNESS};
+                    gl_FragColor = vec4(base, 1.0);
+                }
+            """
+        }
+
+        /** 纹理 quad：世界坐标 + UV */
+        private const val VERT_TEX = """
+            attribute vec2 aPos;
+            attribute vec2 aUv;
+            uniform mat4 uViewProj;
+            varying vec2 vUv;
+            void main() {
+                vUv = aUv;
+                gl_Position = uViewProj * vec4(aPos, 0.0, 1.0);
+            }
+        """
+
+        /** 纹理 quad：世界坐标 + UV（水彩/山水；同样乘 GL_BRIGHTNESS 对齐 Compose 亮度） */
+        private fun buildFragTex(): String = """
+            precision mediump float;
+            uniform sampler2D uTex;
+            varying vec2 vUv;
+            void main() {
+                vec4 c = texture2D(uTex, vUv);
+                c.rgb *= ${MapTokens.MapParams.GL_BRIGHTNESS};
+                gl_FragColor = c;
+            }
+        """
+    }
+}

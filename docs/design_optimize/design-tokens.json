@@ -1,0 +1,201 @@
+{
+  "canvas": {
+    "width": 1080,
+    "height": 2244,
+    "aspectRatio": "9:19.5"
+  },
+  "colors": {
+    "mapBackground": "#E6D8B5",
+    "panelBackground": "#F8F4E9",
+    "cardBackground": "#FDF8EC",
+    "ink": "#3A3428",
+    "inkSecondary": "#5B5141",
+    "inkFaint": "#807665",
+    "vermilion": "#B03A2E",
+    "gold": "#D6824A",
+    "regime": {
+      "song": "#8E2F24",
+      "liao": "#5D7F8C",
+      "westernXia": "#D6C174",
+      "jin": "#6F8BA8",
+      "dali": "#6A886E",
+      "tubo": "#A4886B"
+    },
+    "eventCategory": {
+      "politics": "#B03A2E",
+      "people": "#6E5A7E",
+      "military": "#A0622D",
+      "economy": "#5F7D4F",
+      "culture": "#46647F"
+    },
+    "mapAux": {
+      "riverWash": "#7F9BA0",
+      "riverBody": "#52767D",
+      "mountainInk": "#51483B",
+      "paperGrain": "#8A7658",
+      "warmWash": "#E0CEA8"
+    }
+  },
+  "alpha0to255": {
+    "topBar": 224,
+    "legendBackground": 184,
+    "bubbleBackground": 238,
+    "bubbleBorder": 170,
+    "bubbleShadow": 35,
+    "yearWatermark": 26,
+    "watercolorBody": 117,
+    "watercolorBloom": 82,
+    "watercolorMottleMin": 13,
+    "watercolorMottleMax": 31,
+    "boundary": 122,
+    "dryEdge": 71,
+    "majorRiverWash": 46,
+    "majorRiverBody": 110,
+    "majorRiverSpine": 140,
+    "minorRiverWash": 30,
+    "minorRiverBody": 70,
+    "mountain": 96,
+    "paperGrain": 26,
+    "vignette": 97,
+    "centerLight": 26,
+    "timelineTrack": 36,
+    "timelineShadow": 38
+  },
+  "dimensionsPx": {
+    "topBarHeight": 154,
+    "legendX": 24,
+    "legendY": 194,
+    "legendWidth": 173,
+    "legendHeight": 292,
+    "mapTop": 154,
+    "mapBottom": 1410,
+    "eventBubbleWidth": 260,
+    "eventBubbleHeight": 112,
+    "eventBubbleRadius": 8,
+    "eventBubbleBorder": 1,
+    "eventCategoryBarWidth": 6,
+    "leaderWidth": 1.2,
+    "leaderDashLength": 8,
+    "leaderGap": 7,
+    "arrowLength": 8,
+    "arrowWidth": 5,
+    "eventPointDiameter": 10,
+    "timelineX": 42,
+    "timelineY": 1410,
+    "timelineWidth": 996,
+    "timelineHeight": 280,
+    "timelineRadius": 14,
+    "timelineBottomSafeArea": 28,
+    "playButtonWidth": 56,
+    "playButtonHeight": 56,
+    "trackHeight": 6,
+    "thumbDiameter": 32,
+    "thumbStroke": 3,
+    "eventDotDiameter": 10
+  },
+  "typographyPx": {
+    "topTitle": {
+      "size": 18,
+      "weight": 400,
+      "letterSpacing": 4,
+      "lineHeight": 26,
+      "serif": true
+    },
+    "dynasty": {
+      "size": 15,
+      "weight": 700,
+      "letterSpacing": 2,
+      "lineHeight": 22,
+      "serif": true
+    },
+    "menu": {
+      "size": 14,
+      "weight": 400,
+      "letterSpacing": 2,
+      "lineHeight": 20,
+      "serif": true
+    },
+    "legendTitle": {
+      "size": 14,
+      "weight": 700,
+      "letterSpacing": 2,
+      "lineHeight": 20,
+      "serif": true
+    },
+    "legendItem": {
+      "size": 13,
+      "weight": 400,
+      "letterSpacing": 1,
+      "lineHeight": 22,
+      "serif": true
+    },
+    "mapLabel": {
+      "size": 13,
+      "weight": 400,
+      "letterSpacing": 1,
+      "lineHeight": 20,
+      "serif": true
+    },
+    "bubbleTitle": {
+      "size": 14,
+      "weight": 700,
+      "letterSpacing": 1,
+      "lineHeight": 20,
+      "serif": true
+    },
+    "bubbleBody": {
+      "size": 11,
+      "weight": 400,
+      "letterSpacing": 0,
+      "lineHeight": 18,
+      "serif": true
+    },
+    "watermark": {
+      "size": 120,
+      "weight": 400,
+      "letterSpacing": 8,
+      "lineHeight": 130,
+      "serif": true,
+      "alpha": 26
+    },
+    "timelineYear": {
+      "size": 42,
+      "weight": 400,
+      "letterSpacing": 3,
+      "lineHeight": 52,
+      "serif": true
+    },
+    "timelineRange": {
+      "size": 13,
+      "weight": 400,
+      "letterSpacing": 1,
+      "lineHeight": 18,
+      "serif": true
+    },
+    "timelineCategory": {
+      "size": 11,
+      "weight": 400,
+      "letterSpacing": 1,
+      "lineHeight": 16,
+      "serif": true
+    }
+  },
+  "androidImplementation": {
+    "externalDependencies": false,
+    "backdropFilter": false,
+    "complexSvgFilters": false,
+    "multiLayerBoxShadow": false,
+    "allowedEffects": [
+      "solidColor",
+      "alpha",
+      "linearGradient",
+      "radialGradient",
+      "singleLayerShadow",
+      "dashedLine",
+      "roundedCorner",
+      "fade",
+      "translation",
+      "scale"
+    ]
+  }
+}

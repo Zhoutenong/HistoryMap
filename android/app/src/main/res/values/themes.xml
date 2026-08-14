@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 宣纸底（对齐 MapTokens.PAPER_MAP #E6D8B5）：窗口背景与系统栏底色
+         使用宣纸色，避免沉浸式全屏过渡期间顶部/底部出现黑边或黑闪。 -->
+    <color name="paper_map">#E6D8B5</color>
+    <color name="paper_panel">#F8F4E9</color>
+
+    <!-- 历史地图主题：无 ActionBar + 宣纸窗口背景。
+         状态栏/导航栏颜色用宣纸色而非透明：华为 EMUI 在沉浸式下无法完全隐藏
+         状态栏（dumpsys isOnScreen=true），透明色会渲染成黑条（P0-1）；
+         改用宣纸色让系统栏区域与顶栏/底边视觉融合，深色图标（windowLightStatusBar）。 -->
+    <style name="HistoryMapTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/paper_map</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/paper_map</item>
+        <item name="android:navigationBarColor">@color/paper_map</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

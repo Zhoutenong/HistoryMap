@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, initial-scale=1.0">
+<title>历史地图 Android 主界面原型</title>
+<style>
+/* =========================================================
+   DESIGN TOKENS
+   固定设计画布：1080 × 2244 px
+   所有数值均为 px / rgba / hex；不依赖外部资源。
+   ========================================================= */
+:root {
+  /* colors */
+  --map-bg: #E6D8B5;
+  --panel-bg: #F8F4E9;
+  --card-bg: #FDF8EC;
+  --ink: #3A3428;
+  --ink-secondary: #5B5141;
+  --ink-faint: #807665;
+  --vermilion: #B03A2E;
+  --gold: #D6824A;
+
+  --song: #8E2F24;
+  --liao: #5D7F8C;
+  --western-xia: #D6C174;
+  --jin: #6F8BA8;
+  --dali: #6A886E;
+  --tubo: #A4886B;
+
+  --event-politics: #B03A2E;
+  --event-people: #6E5A7E;
+  --event-military: #A0622D;
+  --event-economy: #5F7D4F;
+  --event-culture: #46647F;
+
+  --river-wash: #7F9BA0;
+  --river-body: #52767D;
+  --mountain-ink: #51483B;
+  --paper-grain: #8A7658;
+  --warm-wash: #E0CEA8;
+
+  /* alpha: 0–255 expressed as rgba */
+  --topbar-bg: rgba(248,244,233,0.878431);
+  --legend-bg: rgba(253,248,236,0.721569);
+  --bubble-bg: rgba(253,248,236,0.933333);
+  --bubble-border: rgba(176,58,46,0.666667);
+  --bubble-shadow: rgba(58,52,40,0.137255);
+
+  --year-watermark: rgba(58,52,40,0.101961);
+
+  --territory-body: rgba(142,47,36,0.458824);
+  --territory-bloom: rgba(142,47,36,0.321569);
+  --territory-mottle: rgba(58,52,40,0.090196);
+  --territory-boundary: rgba(58,52,40,0.478431);
+  --territory-dry-edge: rgba(58,52,40,0.278431);
+
+  --river-major-wash: rgba(127,155,160,0.180392);
+  --river-major-body: rgba(82,118,125,0.431373);
+  --river-major-spine: rgba(82,118,125,0.549020);
+  --river-minor-wash: rgba(127,155,160,0.117647);
+  --river-minor-body: rgba(82,118,125,0.274510);
+
+  --mountain-alpha: rgba(81,72,59,0.376471);
+  --grain-alpha: rgba(138,118,88,0.101961);
+  --vignette-alpha: rgba(91,81,65,0.380392);
+  --center-light-alpha: rgba(255,248,225,0.101961);
+
+  --timeline-track: rgba(58,52,40,0.141176);
+  --timeline-shadow: rgba(58,52,40,0.149020);
+
+  /* dimensions */
+  --topbar-h: 154px;
+  --legend-x: 24px;
+  --legend-y: 194px;
+  --legend-w: 173px;
+  --legend-h: 292px;
+
+  --map-top: 154px;
+  --map-bottom: 1410px;
+
+  --bubble-w: 260px;
+  --bubble-h: 112px;
+  --bubble-radius: 8px;
+  --bubble-border-w: 1px;
+  --bubble-category-w: 6px;
+  --leader-w: 1.2px;
+  --leader-dash: 8px;
+  --leader-gap: 7px;
+  --arrow-l: 8px;
+  --arrow-w: 5px;
+  --event-point-d: 10px;
+
+  --timeline-x: 42px;
+  --timeline-y: 1410px;
+  --timeline-w: 996px;
+  --timeline-h: 280px;
+  --timeline-radius: 14px;
+  --timeline-bottom: 28px;
+
+  --play-w: 56px;
+  --play-h: 56px;
+  --play-radius: 6px;
+  --track-h: 6px;
+  --thumb-d: 32px;
+  --thumb-stroke: 3px;
+  --event-dot-d: 10px;
+
+  --title-size: 18px;
+  --dynasty-size: 15px;
+  --menu-size: 14px;
+  --legend-title-size: 14px;
+  --legend-item-size: 13px;
+  --map-label-size: 13px;
+  --bubble-title-size: 14px;
+  --bubble-body-size: 11px;
+  --watermark-size: 120px;
+  --timeline-year-size: 42px;
+  --timeline-range-size: 13px;
+  --timeline-category-size: 11px;
+}
+
+/* ---------- fixed 1080 × 2244 Android-like design surface ---------- */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-width: 1080px;
+  min-height: 2244px;
+  background: #2F2A22;
+}
+
+body {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  color: var(--ink);
+  overflow: auto;
+}
+
+.screen {
+  position: relative;
+  width: 1080px;
+  height: 2244px;
+  overflow: hidden;
+  background: var(--map-bg);
+}
+
+/* =========================================================
+   map-background
+   ========================================================= */
+.map-background {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 51% 42%, var(--center-light-alpha) 0 17%, rgba(255,248,225,0) 55%),
+    radial-gradient(circle at 50% 46%, rgba(230,216,181,0) 48%, var(--vignette-alpha) 100%),
+    var(--map-bg);
+}
+
+.map-background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .38;
+  background:
+    radial-gradient(circle at 12% 18%, var(--grain-alpha) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 64% 37%, var(--grain-alpha) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 83% 73%, var(--grain-alpha) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 31% 81%, var(--grain-alpha) 0 1px, transparent 1.5px);
+  background-size: 17px 19px, 23px 21px, 19px 25px, 29px 23px;
+}
+
+/* =========================================================
+   historical-territory
+   CSS blobs stand in for the final GeoJSON-rendered paths.
+   ========================================================= */
+.map-content {
+  position: absolute;
+  left: 0;
+  top: var(--map-top);
+  width: 1080px;
+  height: 1256px;
+  overflow: hidden;
+}
+
+.territory {
+  position: absolute;
+  border: 2px solid var(--territory-boundary);
+  border-radius: 44% 56% 52% 48% / 46% 43% 57% 54%;
+  background:
+    radial-gradient(circle at 30% 35%, var(--territory-bloom), transparent 58%),
+    radial-gradient(circle at 73% 62%, var(--territory-mottle), transparent 31%),
+    var(--territory-body);
+}
+
+.territory::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1px solid var(--territory-dry-edge);
+  border-radius: inherit;
+  opacity: .65;
+}
+
+.territory.song {
+  left: 235px; top: 425px; width: 490px; height: 480px;
+  --territory-body: rgba(142,47,36,0.458824);
+  --territory-bloom: rgba(176,58,46,0.321569);
+}
+
+.territory.liao {
+  left: 470px; top: 115px; width: 390px; height: 365px;
+  --territory-body: rgba(93,127,140,0.458824);
+  --territory-bloom: rgba(93,127,140,0.321569);
+}
+
+.territory.western-xia {
+  left: 195px; top: 270px; width: 250px; height: 265px;
+  --territory-body: rgba(214,193,116,0.458824);
+  --territory-bloom: rgba(214,193,116,0.321569);
+}
+
+.territory.jin {
+  left: 680px; top: 330px; width: 230px; height: 330px;
+  --territory-body: rgba(111,139,168,0.458824);
+  --territory-bloom: rgba(111,139,168,0.321569);
+}
+
+.territory.dali {
+  left: 115px; top: 625px; width: 245px; height: 225px;
+  --territory-body: rgba(106,136,110,0.458824);
+  --territory-bloom: rgba(106,136,110,0.321569);
+}
+
+.territory.tubo {
+  left: 35px; top: 405px; width: 300px; height: 330px;
+  --territory-body: rgba(164,136,107,0.458824);
+  --territory-bloom: rgba(164,136,107,0.321569);
+}
+
+/* =========================================================
+   rivers
+   ========================================================= */
+.river {
+  position: absolute;
+  height: 12px;
+  border-radius: 999px;
+  transform-origin: left center;
+  background: var(--river-major-wash);
+}
+
+.river::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  height: 3px;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--river-major-body);
+}
+
+.river.yangtze { left: 275px; top: 770px; width: 570px; transform: rotate(-8deg); }
+.river.yellow { left: 350px; top: 470px; width: 475px; transform: rotate(18deg); }
+.river.huai { left: 500px; top: 665px; width: 300px; transform: rotate(3deg); }
+.river.minor { height: 7px; background: var(--river-minor-wash); }
+.river.minor::after { top: 2px; height: 2px; background: var(--river-minor-body); }
+.river.minor.one { left: 310px; top: 555px; width: 310px; transform: rotate(35deg); }
+.river.minor.two { left: 610px; top: 575px; width: 220px; transform: rotate(-55deg); }
+
+/* =========================================================
+   mountains
+   ========================================================= */
+.mountains {
+  position: absolute;
+  inset: 0;
+  opacity: .9;
+}
+.mountain {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 42px solid transparent;
+  border-right: 42px solid transparent;
+  border-bottom: 120px solid rgba(81,72,59,0.376471);
+  filter: none;
+}
+.mountain::after {
+  content: "";
+  position: absolute;
+  left: -25px;
+  top: 28px;
+  width: 50px;
+  height: 1px;
+  background: rgba(81,72,59,0.376471);
+  transform: rotate(35deg);
+}
+.mountain.m1 { left: 105px; top: 210px; transform: scale(.8); }
+.mountain.m2 { left: 185px; top: 170px; transform: scale(1.05); }
+.mountain.m3 { left: 80px; top: 790px; transform: scale(.72); }
+.mountain.m4 { left: 865px; top: 840px; transform: scale(.78); }
+.mountain.m5 { left: 925px; top: 735px; transform: scale(.62); }
+
+/* =========================================================
+   labels
+   ========================================================= */
+.labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.map-label {
+  position: absolute;
+  font-size: var(--map-label-size);
+  line-height: 20px;
+  letter-spacing: 1px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.label-song { left: 530px; top: 700px; font-size: 22px; }
+.label-liao { left: 640px; top: 365px; font-size: 18px; }
+.label-xia { left: 325px; top: 465px; font-size: 18px; }
+.label-jin { left: 760px; top: 520px; font-size: 18px; }
+.label-dali { left: 210px; top: 760px; font-size: 17px; }
+.label-tubo { left: 125px; top: 555px; font-size: 17px; }
+.label-kaifeng { left: 575px; top: 655px; }
+.label-lin-an { left: 595px; top: 865px; }
+.label-yanjing { left: 700px; top: 275px; }
+.label-changjiang { left: 610px; top: 790px; color: var(--river-body); }
+.label-huanghe { left: 555px; top: 530px; color: var(--river-body); }
+
+.year-watermark {
+  position: absolute;
+  left: 625px;
+  top: 105px;
+  font-size: var(--watermark-size);
+  line-height: 130px;
+  letter-spacing: 8px;
+  color: var(--year-watermark);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   event-bubbles
+   ========================================================= */
+.event-bubbles { position: absolute; inset: 0; }
+
+.event-point {
+  position: absolute;
+  width: var(--event-point-d);
+  height: var(--event-point-d);
+  border-radius: 50%;
+  background: var(--vermilion);
+  border: 2px solid var(--card-bg);
+}
+
+.leader {
+  position: absolute;
+  height: 0;
+  border-top: var(--leader-w) dashed var(--vermilion);
+  transform-origin: left center;
+}
+
+.leader.l1 { left: 610px; top: 480px; width: 165px; transform: rotate(-56deg); }
+.leader.l2 { left: 690px; top: 865px; width: 145px; transform: rotate(-25deg); }
+.leader.l3 { left: 590px; top: 825px; width: 210px; transform: rotate(160deg); }
+
+.event-point.p1 { left: 605px; top: 475px; }
+.event-point.p2 { left: 685px; top: 860px; }
+.event-point.p3 { left: 585px; top: 820px; }
+
+.bubble {
+  position: absolute;
+  width: var(--bubble-w);
+  height: var(--bubble-h);
+  padding: 15px 14px 10px 30px;
+  border-radius: var(--bubble-radius);
+  border: var(--bubble-border-w) solid var(--bubble-border);
+  background: var(--bubble-bg);
+  box-shadow: 0 3px 6px var(--bubble-shadow);
+}
+
+.bubble::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 13px;
+  width: var(--bubble-category-w);
+  height: 78px;
+  border-radius: 2px;
+  background: var(--event-people);
+}
+
+.bubble .title {
+  font-size: var(--bubble-title-size);
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: 1px;
+}
+.bubble .body {
+  margin-top: 6px;
+  font-size: var(--bubble-body-size);
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.bubble.b1 { left: 435px; top: 355px; }
+.bubble.b2 { left: 730px; top: 805px; }
+.bubble.b3 { left: 230px; top: 925px; }
+
+.bubble.b1::before { background: var(--event-politics); }
+.bubble.b2::before { background: var(--event-military); }
+.bubble.b3::before { background: var(--event-politics); }
+
+/* =========================================================
+   top-bar
+   ========================================================= */
+.top-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: var(--topbar-h);
+  background: var(--topbar-bg);
+  border-bottom: 1px solid rgba(58,52,40,0.35);
+  z-index: 20;
+}
+
+.top-title {
+  position: absolute;
+  left: 54px;
+  top: 45px;
+  font-size: var(--title-size);
+  font-weight: 400;
+  letter-spacing: 4px;
+  line-height: 26px;
+}
+.top-action {
+  position: absolute;
+  top: 42px;
+  height: 60px;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: var(--menu-size);
+  letter-spacing: 2px;
+  color: var(--ink-secondary);
+}
+.top-dynasty { left: 610px; color: var(--vermilion); font-size: var(--dynasty-size); font-weight: 700; }
+.top-events { left: 735px; }
+.top-settings { left: 925px; font-size: 22px; letter-spacing: 0; }
+
+/* =========================================================
+   legend
+   ========================================================= */
+.legend {
+  position: absolute;
+  left: var(--legend-x);
+  top: var(--legend-y);
+  width: var(--legend-w);
+  z-index: 15;
+}
+.legend-title {
+  display: inline-flex;
+  height: 38px;
+  padding: 0 18px;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--vermilion);
+  color: var(--card-bg);
+  font-size: var(--legend-title-size);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.legend-card {
+  margin-top: 10px;
+  width: var(--legend-w);
+  height: 244px;
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: var(--legend-bg);
+  box-shadow: 0 3px 6px rgba(58,52,40,0.12);
+}
+.legend-row {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--legend-item-size);
+  letter-spacing: 1px;
+}
+.swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex: 0 0 18px;
+}
+.swatch.song { background: var(--song); }
+.swatch.liao { background: var(--liao); }
+.swatch.xia { background: var(--western-xia); }
+.swatch.jin { background: var(--jin); }
+.swatch.dali { background: var(--dali); }
+.swatch.tubo { background: var(--tubo); }
+
+/* =========================================================
+   timeline
+   ========================================================= */
+.timeline {
+  position: absolute;
+  left: var(--timeline-x);
+  top: var(--timeline-y);
+  width: var(--timeline-w);
+  height: var(--timeline-h);
+  border-radius: var(--timeline-radius);
+  background: var(--card-bg);
+  box-shadow: 0 3px 6px var(--timeline-shadow);
+  z-index: 30;
+}
+
+.play-button {
+  position: absolute;
+  left: 32px;
+  top: 30px;
+  width: var(--play-w);
+  height: var(--play-h);
+  border: 1px solid var(--vermilion);
+  border-radius: var(--play-radius);
+  background: rgba(253,248,236,0.55);
+}
+.play-button::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  top: 16px;
+  border-left: 20px solid var(--vermilion);
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+}
+
+.timeline-year {
+  position: absolute;
+  left: 330px;
+  top: 25px;
+  font-size: var(--timeline-year-size);
+  line-height: 52px;
+  letter-spacing: 3px;
+  color: var(--vermilion);
+}
+.timeline-range {
+  position: absolute;
+  right: 48px;
+  top: 42px;
+  font-size: var(--timeline-range-size);
+  line-height: 18px;
+  letter-spacing: 1px;
+}
+
+.track {
+  position: absolute;
+  left: 42px;
+  top: 138px;
+  width: 912px;
+  height: var(--track-h);
+  border-radius: 999px;
+  background: var(--timeline-track);
+}
+.track-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 440px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vermilion), var(--gold));
+}
+.thumb {
+  position: absolute;
+  left: 425px;
+  top: -13px;
+  width: var(--thumb-d);
+  height: var(--thumb-d);
+  border-radius: 50%;
+  border: var(--thumb-stroke) solid var(--vermilion);
+  background: var(--card-bg);
+}
+
+.category-dots {
+  position: absolute;
+  left: 42px;
+  top: 185px;
+  width: 912px;
+  height: 72px;
+  display: flex;
+  justify-content: space-between;
+}
+.category {
+  width: 110px;
+  text-align: center;
+  font-size: var(--timeline-category-size);
+  line-height: 16px;
+  letter-spacing: 1px;
+}
+.category .dot {
+  width: var(--event-dot-d);
+  height: var(--event-dot-d);
+  margin: 0 auto 12px;
+  border-radius: 50%;
+}
+.category.politics .dot { background: var(--event-politics); }
+.category.people .dot { background: var(--event-people); }
+.category.military .dot { background: var(--event-military); }
+.category.economy .dot { background: var(--event-economy); }
+.category.culture .dot { background: var(--event-culture); }
+
+/* safe area: no controls inside the last 28px */
+.safe-area {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1080px;
+  height: 28px;
+  z-index: 100;
+  pointer-events: none;
+}
+</style>
+</head>
+
+<body>
+<div class="screen">
+
+  <!-- map-background -->
+  <div class="map-background"></div>
+
+  <div class="map-content">
+    <!-- historical-territory -->
+    <div class="territory tubo"></div>
+    <div class="territory western-xia"></div>
+    <div class="territory liao"></div>
+    <div class="territory jin"></div>
+    <div class="territory song"></div>
+    <div class="territory dali"></div>
+
+    <!-- mountains -->
+    <div class="mountains">
+      <div class="mountain m1"></div>
+      <div class="mountain m2"></div>
+      <div class="mountain m3"></div>
+      <div class="mountain m4"></div>
+      <div class="mountain m5"></div>
+    </div>
+
+    <!-- rivers -->
+    <div class="river yellow"></div>
+    <div class="river yangtze"></div>
+    <div class="river huai"></div>
+    <div class="river minor one"></div>
+    <div class="river minor two"></div>
+
+    <!-- labels -->
+    <div class="labels">
+      <div class="map-label label-song">宋</div>
+      <div class="map-label label-liao">辽</div>
+      <div class="map-label label-xia">西夏</div>
+      <div class="map-label label-jin">金</div>
+      <div class="map-label label-dali">大理</div>
+      <div class="map-label label-tubo">吐蕃</div>
+      <div class="map-label label-kaifeng">东京（开封）</div>
+      <div class="map-label label-lin-an">临安</div>
+      <div class="map-label label-yanjing">燕京</div>
+      <div class="map-label label-changjiang">长江</div>
+      <div class="map-label label-huanghe">黄河</div>
+    </div>
+
+    <div class="year-watermark">1127 年</div>
+
+    <!-- event-bubbles -->
+    <div class="event-bubbles">
+      <div class="event-point p1"></div>
+      <div class="event-point p2"></div>
+      <div class="event-point p3"></div>
+
+      <div class="leader l1"></div>
+      <div class="leader l2"></div>
+      <div class="leader l3"></div>
+
+      <div class="bubble b1">
+        <div class="title">靖康之变</div>
+        <div class="body">1127年，金军攻破东京，北宋灭亡。</div>
+      </div>
+
+      <div class="bubble b2">
+        <div class="title">绍兴和议</div>
+        <div class="body">南宋与金议和，宋金关系进入新的阶段。</div>
+      </div>
+
+      <div class="bubble b3">
+        <div class="title">陈桥兵变</div>
+        <div class="body">960年，赵匡胤发动兵变，建立宋朝。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- top-bar -->
+  <div class="top-bar">
+    <div class="top-title">历史地图</div>
+    <div class="top-action top-dynasty">宋 ▾</div>
+    <div class="top-action top-events">☰ 事件</div>
+    <div class="top-action top-settings">⚙</div>
+  </div>
+
+  <!-- legend -->
+  <div class="legend">
+    <div class="legend-title">政权</div>
+    <div class="legend-card">
+      <div class="legend-row"><span class="swatch song"></span><span>宋</span></div>
+      <div class="legend-row"><span class="swatch liao"></span><span>辽</span></div>
+      <div class="legend-row"><span class="swatch xia"></span><span>西夏</span></div>
+      <div class="legend-row"><span class="swatch jin"></span><span>金</span></div>
+      <div class="legend-row"><span class="swatch dali"></span><span>大理</span></div>
+      <div class="legend-row"><span class="swatch tubo"></span><span>吐蕃</span></div>
+    </div>
+  </div>
+
+  <!-- timeline -->
+  <div class="timeline">
+    <div class="play-button" aria-label="播放"></div>
+    <div class="timeline-year">1127 年</div>
+    <div class="timeline-range">960 — 1279</div>
+
+    <div class="track">
+      <div class="track-progress"></div>
+      <div class="thumb"></div>
+    </div>
+
+    <div class="category-dots">
+      <div class="category politics"><div class="dot"></div>政治</div>
+      <div class="category people"><div class="dot"></div>人物</div>
+      <div class="category military"><div class="dot"></div>军事</div>
+      <div class="category economy"><div class="dot"></div>经济</div>
+      <div class="category culture"><div class="dot"></div>文化</div>
+    </div>
+  </div>
+
+  <div class="safe-area"></div>
+</div>
+</body>
+</html>

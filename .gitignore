@@ -15,6 +15,8 @@ server/server/
 # 设计参考/临时截图不入库；但 client/public 下的 PNG 是页面必需资源（纸颗粒、水墨插画），强制保留
 *.png
 !client/public/*.png
+# 验收基线截图（11 状态，scripts/capture-acceptance.mjs 生成）——进版本库形成稳定基线
+!artifacts/acceptance/*.png
 
 # 可再生成的历史疆域原始全球文件（重跑脚本自动重新下载）
 server/data/geo/historical/source/

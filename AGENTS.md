@@ -14,7 +14,7 @@
 - 点击泡泡查看事件详情。
 - 顶栏朝代下拉可在已播种的朝代间切换（数据驱动，前端无需改常量）。
 
-**前后端解耦**：后端 Node + Express + SQLite 提供 JSON API，前端 three.js 通过 `fetch` 消费。后端契约平台无关，未来可整体用 Kotlin/Room 重写为原生 Android，前端零改动。
+**前后端解耦**：后端 Node + Express + SQLite 提供 JSON API，前端 three.js 通过 `fetch` 消费。后端契约平台无关，**Android 原生版已落地**（Kotlin + Compose + GLES2 自研渲染器，数据层 Room + assets GeoJSON，与 Web 版同契约），详见「Android 原生版」章节。
 
 ## 目录结构
 
@@ -26,6 +26,34 @@ HistoryMap/
 ├── eslint.config.mjs               # ESLint 扁平配置（client + server）
 ├── start-dev.bat / start-dev.ps1   # Windows 双击启动器（环境检查 + 拉起前后端）
 ├── stop-dev.bat  / stop-dev.ps1    # Windows 双击停止器
+├── scripts/
+│   ├── prepare-android.mjs         # 同步 client/dist + 后端数据 → android assets
+│   ├── gen-android-icons.mjs       # 生成启动图标 fallback PNG（一次性）
+│   └── …（check-build / contract / smoke 等）
+├── android/                        # Android 原生版（Kotlin + Compose + GLES2，已弃用 WebView）
+│   ├── build.gradle.kts            # AGP 8.7.3 / Kotlin 2.0.21 / Compose BOM 2024.12.01 / KSP
+│   ├── gradlew / gradle/wrapper/   # Gradle 8.9 wrapper
+│   └── app/src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/com/historymap/app/
+│       │   ├── MainActivity.kt     # Compose 入口 + 沉浸式全屏
+│       │   ├── MapScreen.kt        # 主界面：顶栏/地图/泡泡/时间轴/图例/详情/事件流/设置
+│       │   ├── MapRenderer.kt      # GLES2 渲染器：宣纸底/水彩纹理/河流/相机/标签数据
+│       │   ├── Projection.kt       # d3-geo geoMercator + fitSize 的 Kotlin 翻译（与 Web 版坐标一致）
+│       │   ├── WatercolorTexture.kt# 水彩离屏生成（羽化/斑驳/边界/颗粒，对齐 TerritoryOverlay.js）
+│       │   ├── OverlayParser.kt    # overlay JSON → 渲染模型（政权/河流/标签）
+│       │   ├── MapRepository.kt    # 数据仓储（Room + OverlayLoader，等价 api.js 职责）
+│       │   ├── TimelineController.kt # 「当前年份」唯一状态源（播放/暂停/拖动/完成）
+│       │   ├── TimelineBar.kt      # 时间轴组件（两行布局/手势/刻度吸附）
+│       │   ├── EventBubblesLayer.kt# 事件泡泡层（碰撞推挤/指向线/命中测试）
+│       │   ├── Collisions.kt       # 碰撞推挤纯函数（翻译 collisions.js）
+│       │   ├── EventLogSheet.kt    # 事件流抽屉（已出现列表/搜索）
+│       │   ├── SettingsSheet.kt    # 设置面板（分类/速度/显隐）
+│       │   ├── SettingsStore.kt    # 设置持久化（SharedPreferences）
+│       │   ├── HistoryDb.kt        # Room（dynasties/events 对齐 schema.sql）+ seed 重放器
+│       │   └── OverlayLoader.kt    # org.json 复刻 overlay.js 合并逻辑
+│       ├── res/                    # 启动图标（adaptive + fallback PNG）
+│       └── assets/                 # 数据（seed SQL + geo JSON，由 prepare-android.mjs 同步，gitignore）
 ├── server/                         # 后端（独立 package.json）
 │   ├── index.js                    # Express 入口，挂载路由（含 /api/dynasties）
 │   ├── db.js                       # better-sqlite3 连接 + 建表 + seed + 自动迁移
@@ -41,12 +69,13 @@ HistoryMap/
 │   │   │   └── 01-song-events.sql  # 宋朝 seed（30 条事件，换朝代加新文件）
 │   │   └── geo/china.json          # 基础地图（静态托管）
 │   └── history.db                  # SQLite 持久化文件（gitignore，自动生成）
-└── client/                         # 前端（独立 package.json）
+└── client/                         # 前端（独立 package.json，Web + Android WebView 双端共用）
     ├── index.html                  # 含顶栏朝代下拉、事件流抽屉、设置面板
-    ├── vite.config.js              # 含 /api → localhost:3001 代理
+    ├── vite.config.js              # base './' + target 'chrome83'；/api → localhost:3001 代理
     └── src/
         ├── main.js                 # 装配入口（loadDynasty 装配函数 + 相机取景/聚焦）
-        ├── api.js                  # 【数据层】封装所有 fetch（含 getDynasties）
+        ├── api.js                  # 【数据层】封装所有数据访问（fetch / Android bridge 自动切换）
+        ├── dom.js                  # 旧 WebView 兼容工具（clearChildren 等）
         ├── theme.js                # 古典水墨·宣纸主题
         ├── styles.css              # 含移动端 @media (max-width:640px) 适配
         ├── map/
@@ -90,9 +119,15 @@ npm run lint
 
 # 单元测试（vitest，client 内 11 个用例：collisions 7 + calc 4）
 npm run test
+
+# ===== Android（详见 README「Android 版」章节）=====
+npm run build                    # 先构建前端（base './' 相对路径产物）
+node scripts/prepare-android.mjs # 同步 dist + 数据 → android/app/src/main/assets/
+cd android && ./gradlew assembleDebug   # 构建 APK（Gradle 8.9 wrapper）
+adb install -r app/build/outputs/apk/debug/app-debug.apk   # 安装到真机
 ```
 
-## API 契约（平台无关 — 未来 Kotlin/Room 重写后端按此实现）
+## API 契约（平台无关 — Web 后端 / Android bridge 双实现）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -178,14 +213,27 @@ npm run test
 - **顶层 await**：esbuild 默认 target 不支持顶层 await，main.js 用 async IIFE 启动。
 - **OrbitControls**：地图锁定旋转、只保留缩放/平移；事件泡泡是 HTML 层，拖动/缩放时标签会跟随相机重投影（debounce 150ms 后重排碰撞）。不要禁用 `CSS2DRenderer` 的更新循环。
 - **CSS2DObject 残留**：时期切换/朝代切换清空 overlay group 时，`CSS2DObject` 缓存不会自动清理已从 scene 移除对象的 DOM，需手动摘除（见 `clearOverlayGroup`），否则旧政权名标签残留。
+- **WebView 兼容（Android 真机）**：部分真机自带 WebView 很旧（华为 P20 = Chrome 83）。前端因此做了两处兼容：① vite `build.target: 'chrome83'`（产物语法层面）；② `Element.replaceChildren()`（Chrome 86+）在 `client/src/dom.js` 提供 `clearChildren()` 兼容实现，禁止再引入 Chrome 86+ 的 DOM API 到业务代码。
+- **Kotlin 注释陷阱**：KDoc 里写 `assets/seed/*.sql`、`/api/*` 会触发 Kotlin 嵌套块注释解析错误（Unclosed comment），文案改为「seed 目录的 .sql 文件」。
+- **Android 本地构建**：机器需有 `android/local.properties`（sdk.dir 用正斜杠 `D:/Android/SDK`，反斜杠转义会致 `SdkLocator` 抛 IOException）；Gradle 8.9 + AGP 8.7.3 + Kotlin 2.0.21 + KSP 2.0.21-1.0.28 组合与本地缓存匹配，可离线构建。
 
-## Android 移植指南（未来）
+## Android 原生版（已落地，见 `android/`；2026-08 由 WebView 壳重构而来）
 
-后端契约平台无关，移植步骤：
+与 Web 版同数据契约、同交互语义，渲染与 UI 全部原生实现：
 
-1. **后端**：用 Kotlin + Ktor（或 Retrofit 服务端）+ Room(SQLite) 重写全部 `/api/*` 接口，返回完全相同的 JSON。
-2. **前端**：three.js 代码用 Android `WebView` 加载。把 `client/src/api.js` 整体替换为 WebView JavaScript Interface（原生 bridge 调用 Room），其余前端代码零改动。
-3. **数据**：Room schema 对齐 `server/data/schema.sql`，seed 数据导入相同事件。
+1. **渲染层**：GLSurfaceView + 自研 GLES2 渲染器（`MapRenderer.kt`）——宣纸底/暗角（片元着色器）、
+   政权水彩纹理 quad（`WatercolorTexture.kt` 离屏生成：羽化/斑驳/边界/颗粒）、河流线（GL_LINE_STRIP）。
+   投影（`Projection.kt`）翻译 d3-geo geoMercator + fitSize([1000,800])，与 Web 版 `project()` 输出完全一致。
+2. **数据层**：`MapRepository.kt`（Room + OverlayLoader）等价 Web 版 api.js 职责；Room schema 与
+   seed 重放机制同 WebView 时代（`HistoryDb.kt` 不变）；assets 数据由 `scripts/prepare-android.mjs` 同步。
+3. **UI 层**：Compose——时间轴（`TimelineController` 是「当前年份」唯一状态源，播放/暂停/拖动/播放完毕/重播）、
+   事件泡泡（碰撞推挤翻译 collisions.js + 指向线 + 出屏回收）、详情/事件流/设置（ModalBottomSheet）、
+   图例、时期切换（跨年自动重载疆域，投影首次标定后不再变）。
+4. **交互**：单指平移/双指缩放/双击复位；返回键由 sheet 优先消费（详情→设置→事件流→退出）；
+   设置持久化 SharedPreferences；沉浸式全屏（focus 后重新隐藏系统栏）。
+5. **性能**：P20 实测 55-59fps（自动播放全功能），渲染器每 5 秒输出 FPS 日志（`adb logcat -s HistoryMap`）。
+6. **构建**：`cd android && ./gradlew assembleDebug`（离线可构建，依赖与本地缓存匹配）。
+7. **数据更新**：改后端 seed / GeoJSON 后重跑 `node scripts/prepare-android.mjs` 重装即可。
 
 ## 扩展指南（后续加朝代）
 

@@ -53,6 +53,10 @@ export function featureCollectionToLegacy(features) {
   return features.map(({ properties = {}, geometry }) => {
     const coords = geometry?.coordinates;
     if (properties.kind === 'river') return { ...properties, path: coords };
+    // 山脊线（LineString 山脉）：path 供渲染连续山脊，coord 取首点供山名标签（Web/Android 兼容）
+    if (properties.kind === 'mountain' && geometry?.type === 'LineString') {
+      return { ...properties, path: coords, coord: coords[0] };
+    }
     // 所有点位类 kind（city/mountain/capital/battlefield/academy…）统一挂 coord
     if (geometry?.type === 'Point') return { ...properties, coord: coords };
     return properties;

@@ -1,1 +1,113 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","id":"mountain-taihang","geometry":{"type":"Point","coordinates":[113.5,36.5]},"properties":{"id":"mountain-taihang","name":"太行山","kind":"mountain","rank":1,"style":"ink-mountain","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期示意点位","periods":["song-1111","song-1142","song-1279","jin-1142","jin-1200"]}},{"type":"Feature","id":"mountain-yanshan","geometry":{"type":"Point","coordinates":[117,40.5]},"properties":{"id":"mountain-yanshan","name":"燕山","kind":"mountain","rank":1,"style":"ink-mountain","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金宋对峙时期示意点位","periods":["song-1142","jin-1142"]}},{"type":"Feature","id":"mountain-changbai","geometry":{"type":"Point","coordinates":[128.1,42]},"properties":{"id":"mountain-changbai","name":"长白山","kind":"mountain","rank":1,"style":"ink-mountain","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金前期示意点位","periods":["jin-1120"]}}]}
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "mountain-range-taihang",
+      "geometry": { "type": "LineString", "coordinates": [[114.8, 39.2], [114.1, 38.2], [113.5, 37.0], [113.0, 35.9], [113.3, 34.9]] },
+      "properties": { "id": "mountain-range-taihang", "name": "太行山", "kind": "mountain", "rank": 1, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "太行山脊线示意（P1-2 连续山脊）" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-yanshan",
+      "geometry": { "type": "LineString", "coordinates": [[115.0, 40.7], [116.4, 40.9], [117.8, 40.7], [119.2, 41.0]] },
+      "properties": { "id": "mountain-range-yanshan", "name": "燕山", "kind": "mountain", "rank": 1, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "燕山山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-qinling",
+      "geometry": { "type": "LineString", "coordinates": [[106.6, 34.0], [108.3, 33.8], [110.0, 33.9], [111.6, 34.3]] },
+      "properties": { "id": "mountain-range-qinling", "name": "秦岭", "kind": "mountain", "rank": 1, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "秦岭山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-kunlun",
+      "geometry": { "type": "LineString", "coordinates": [[76.0, 37.6], [78.5, 36.6], [81.0, 36.2], [84.0, 36.6], [87.0, 36.3], [90.0, 36.5]] },
+      "properties": { "id": "mountain-range-kunlun", "name": "昆仑山", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "昆仑山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-tianshan",
+      "geometry": { "type": "LineString", "coordinates": [[76.0, 42.3], [78.5, 43.0], [81.0, 43.4], [83.5, 43.0], [86.0, 42.6], [88.5, 42.6]] },
+      "properties": { "id": "mountain-range-tianshan", "name": "天山", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "天山山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-yinshan",
+      "geometry": { "type": "LineString", "coordinates": [[107.5, 41.0], [110.0, 41.3], [112.5, 41.6], [115.0, 41.9]] },
+      "properties": { "id": "mountain-range-yinshan", "name": "阴山", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "阴山山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-qilian",
+      "geometry": { "type": "LineString", "coordinates": [[96.5, 39.2], [98.5, 38.5], [100.5, 38.2], [102.5, 38.7]] },
+      "properties": { "id": "mountain-range-qilian", "name": "祁连山", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "祁连山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-daxinganling",
+      "geometry": { "type": "LineString", "coordinates": [[119.5, 48.5], [120.5, 46.5], [121.5, 44.5], [122.5, 42.5], [123.5, 40.5]] },
+      "properties": { "id": "mountain-range-daxinganling", "name": "大兴安岭", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "大兴安岭山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-changbai",
+      "geometry": { "type": "LineString", "coordinates": [[126.2, 42.6], [127.6, 42.1], [128.6, 42.6], [129.6, 41.9]] },
+      "properties": { "id": "mountain-range-changbai", "name": "长白山", "kind": "mountain", "rank": 1, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "长白山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-hengduan",
+      "geometry": { "type": "LineString", "coordinates": [[99.2, 29.5], [99.8, 27.8], [100.4, 26.2]] },
+      "properties": { "id": "mountain-range-hengduan", "name": "横断山脉", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "横断山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-nanling",
+      "geometry": { "type": "LineString", "coordinates": [[110.2, 25.3], [111.8, 25.0], [113.5, 25.2], [115.2, 24.8]] },
+      "properties": { "id": "mountain-range-nanling", "name": "南岭", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "南岭山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-wuyi",
+      "geometry": { "type": "LineString", "coordinates": [[117.4, 27.9], [117.9, 26.7], [118.3, 25.4]] },
+      "properties": { "id": "mountain-range-wuyi", "name": "武夷山", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "武夷山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-altai",
+      "geometry": { "type": "LineString", "coordinates": [[87.5, 49.0], [89.5, 48.2], [91.5, 47.3]] },
+      "properties": { "id": "mountain-range-altai", "name": "阿尔泰山", "kind": "mountain", "rank": 3, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "low", "note": "阿尔泰山脊线示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-range-himalaya",
+      "geometry": { "type": "LineString", "coordinates": [[79.5, 28.8], [82.0, 28.2], [85.0, 28.3], [88.0, 28.0]] },
+      "properties": { "id": "mountain-range-himalaya", "name": "喜马拉雅", "kind": "mountain", "rank": 2, "style": "ink-ridge", "source": "hand-drawn ridge (approximate)", "license": "CC-BY-4.0", "confidence": "low", "note": "喜马拉雅南缘山脊示意" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-taishan",
+      "geometry": { "type": "Point", "coordinates": [117.2, 36.3] },
+      "properties": { "id": "mountain-taishan", "name": "泰山", "kind": "mountain", "rank": 3, "style": "ink-mountain", "source": "hand-drawn (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "孤立山峰（glyph fallback 示例）" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-huashan",
+      "geometry": { "type": "Point", "coordinates": [110.1, 34.5] },
+      "properties": { "id": "mountain-huashan", "name": "华山", "kind": "mountain", "rank": 3, "style": "ink-mountain", "source": "hand-drawn (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "孤立山峰（glyph fallback 示例）" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-songshan",
+      "geometry": { "type": "Point", "coordinates": [113.0, 34.4] },
+      "properties": { "id": "mountain-songshan", "name": "嵩山", "kind": "mountain", "rank": 3, "style": "ink-mountain", "source": "hand-drawn (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "孤立山峰（glyph fallback 示例）" }
+    },
+    {
+      "type": "Feature",
+      "id": "mountain-emeishan",
+      "geometry": { "type": "Point", "coordinates": [103.4, 29.5] },
+      "properties": { "id": "mountain-emeishan", "name": "峨眉山", "kind": "mountain", "rank": 3, "style": "ink-mountain", "source": "hand-drawn (approximate)", "license": "CC-BY-4.0", "confidence": "medium", "note": "孤立山峰（glyph fallback 示例）" }
+    }
+  ]
+}

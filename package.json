@@ -15,6 +15,7 @@
     "lint": "eslint client/src server scripts",
     "test": "npm --prefix client run test",
     "check:build": "node scripts/check-build.mjs",
+    "check:tokens": "node scripts/check-visual-tokens.mjs",
     "e2e": "playwright test"
   },
   "devDependencies": {
