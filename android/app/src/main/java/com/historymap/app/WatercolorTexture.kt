@@ -216,11 +216,42 @@ object WatercolorBuilder {
             canvas.drawPath(path, dryEdgePaint)
         }
 
-        // 4e. 暖色罩：soft-light 低透明暖褐罩层（只作用于已有 alpha 区域，避免矩形脏块）
+        // 4e. 州府边界（元丰九域志基准，Voronoi 近似面）：仅墨色细描边，不填充。
+        // 对齐 Web 版 buildPrefectureCanvas（rgba(58,52,40,0.36)，1.1px）；画在政权色之上。
+        if (model.prefectures.isNotEmpty()) {
+            val prefPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                isAntiAlias = true
+                style = Paint.Style.STROKE
+                strokeWidth = max(1f, W / 1000f) // ~1.1px@1024 宽，随纹理缩放
+                strokeJoin = Paint.Join.ROUND
+                color = Color.argb(92, INK_RGB[0], INK_RGB[1], INK_RGB[2]) // 0.36 alpha
+            }
+            for (pref in model.prefectures) {
+                val path = Path()
+                for (ring in pref.rings) {
+                    if (ring.size < 3) continue
+                    var first = true
+                    for (p in ring) {
+                        val xy = projection.project(p)
+                        val px = toPx(xy[0], xy[1])
+                        if (first) {
+                            path.moveTo(px[0], px[1])
+                            first = false
+                        } else {
+                            path.lineTo(px[0], px[1])
+                        }
+                    }
+                    path.close()
+                }
+                if (!path.isEmpty) canvas.drawPath(path, prefPaint)
+            }
+        }
+
+        // 4f. 暖色罩：soft-light 低透明暖褐罩层（只作用于已有 alpha 区域，避免矩形脏块）
         val warm = MapTokens.Colors.WARM_WASH
         softLightFill(canvas, Color.argb(m.WARM_WASH_ALPHA, (warm.red * 255).toInt(), (warm.green * 255).toInt(), (warm.blue * 255).toInt()))
 
-        // 4f. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）
+        // 4g. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）
         canvas.drawBitmap(noiseTile, null, RectF(0f, 0f, W.toFloat(), H.toFloat()), Paint().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 blendMode = BlendMode.SOFT_LIGHT

@@ -100,8 +100,13 @@ function overlayCacheKey(geojson, config) {
     const featureProps = feature?.properties || {};
     return `${featureProps.entity || ''}:${featureProps.color || ''}:${feature.geometry?.type || ''}:${JSON.stringify(feature.geometry?.coordinates || '')}`;
   }).join('|');
+  // 州府面（properties.prefectures）参与水彩缓存签名：州府描边 canvas 与政权水彩共用同一纹理
+  const prefectures = Array.isArray(props.prefectures) ? props.prefectures : [];
+  const prefectureSignature = prefectures.map((feature) => {
+    return `${feature.geometry?.type || ''}:${JSON.stringify(feature.geometry?.coordinates || '')}`;
+  }).join('|');
   return [config.period || props.period || props.periodId || props.id || props.year || '', featureSignature,
-    config.viewW, config.viewH, config.dpr, config.lowEnd, config.layerConfig].join('~');
+    prefectureSignature, config.viewW, config.viewH, config.dpr, config.lowEnd, config.layerConfig].join('~');
 }
 
 function recordOverlayMetric(name, value) {
@@ -429,6 +434,105 @@ function getCachedWatercolor(geojson, renderConfig) {
   return watercolor;
 }
 
+/**
+ * 州府边界层：独立 canvas 仅画淡墨描边（元丰九域志基准，Voronoi 近似面）。
+ * 独立 plane（z=7.02，政权水彩 7 之上、河流 7.1 之下），由「州府边界」开关单独控制。
+ * 复用 buildWatercolorCanvas 的包围盒与投影换算逻辑（同一 toPx 映射）。
+ */
+function buildPrefectureCanvas(geojson, renderConfig = {}) {
+  const prefectures = Array.isArray(geojson?.properties?.prefectures) ? geojson.properties.prefectures : [];
+  if (prefectures.length === 0) return null;
+
+  // 与政权水彩同款包围盒（州府面被政权轮廓裁剪，bbox 一致；加 6% 边距）
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  geojson.features.forEach((feature) => {
+    normalizePolygons(feature.geometry).forEach((rings) => {
+      rings.forEach((ring) => ring.forEach(([lng, lat]) => {
+        const [x, y] = project([lng, lat]);
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+      }));
+    });
+  });
+  if (![xmin, xmax, ymin, ymax].every(Number.isFinite) || xmax <= xmin || ymax <= ymin) return null;
+  const padX = (xmax - xmin) * 0.06 || 1;
+  const padY = (ymax - ymin) * 0.06 || 1;
+  xmin -= padX; xmax += padX;
+  ymin -= padY; ymax += padY;
+
+  const { dpr, viewW, lowEnd } = getViewportConfig(renderConfig);
+  const W = Math.max(1024, Math.min(2048, Math.round(viewW * dpr * (lowEnd ? 0.6 : 1.2))));
+  const H = Math.max(256, Math.round((W * (ymax - ymin)) / (xmax - xmin)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const toPx = (lng, lat) => {
+    const [x, y] = project([lng, lat]);
+    return [
+      ((x - xmin) / (xmax - xmin)) * W,
+      ((ymax - y) / (ymax - ymin)) * H,
+    ];
+  };
+
+  prefectures.forEach((feature) => {
+    const polygons = normalizePolygons(feature.geometry);
+    polygons.forEach((rings) => {
+      tracePath(ctx, rings, toPx);
+      ctx.save();
+      ctx.filter = 'none';
+      ctx.lineWidth = 1.1;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(58, 52, 40, 0.36)';
+      ctx.stroke();
+      ctx.restore();
+    });
+  });
+
+  return { canvas, width: W, height: H, worldBox: { xmin, xmax, ymin, ymax } };
+}
+
+/**
+ * 州府治所标注层：CSS2D 标签（class prefecture-label，rank<=2 加 major）。
+ * 点击回调 onPick（「州府详情面板」入口）——CSS2D 事件须 stopPropagation 防地图拾取冲突。
+ */
+function buildPrefectureSeats(geojson, onPick) {
+  const group = new THREE.Group();
+  group.name = 'prefectureSeats';
+  group.position.z = 7.25;
+  const items = auxiliaryItems(geojson, 'prefectureSeats', ['prefecture-seat']);
+  items.forEach((item) => {
+    const coord = itemCoord(item);
+    if (!coord || coord.length < 2) return;
+    const el = document.createElement('div');
+    el.className = Number(item.rank) <= 2 ? 'prefecture-label major' : 'prefecture-label';
+    el.dataset.kind = 'prefecture-seat';
+    el.dataset.rank = String(item.rank ?? 9);
+    el.textContent = item.name || '';
+    if (typeof onPick === 'function') {
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      el.title = `查看${item.name || ''}详情`;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation(); // AGENTS.md CSS2D 事件约束
+        onPick({
+          name: item.name, rank: item.rank, coord,
+          route: item.route, type: item.type, grade: item.grade,
+        });
+      });
+    }
+    const obj = new CSS2DObject(el);
+    obj.userData.overlayItem = item;
+    const [x, y] = project(coord);
+    obj.position.set(x, y, 0);
+    group.add(obj);
+  });
+  return { group, items };
+}
+
 export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   const root = new THREE.Group();
   root.name = 'TerritoryOverlay';
@@ -436,7 +540,8 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   const mountains = buildAuxiliaryOverlay(geojson, 'mountains', 7.15);
   const cities = buildAuxiliaryOverlay(geojson, 'cities', 7.3);
   const places = buildAuxiliaryOverlay(geojson, 'places', 7.32, PLACE_KINDS);
-  root.add(rivers.group, mountains.group, cities.group, places.group);
+  const prefectureSeats = buildPrefectureSeats(geojson, renderConfig.onPickPrefecture);
+  root.add(rivers.group, mountains.group, cities.group, places.group, prefectureSeats.group);
 
   const watercolor = getCachedWatercolor(geojson, renderConfig);
   if (watercolor) {
@@ -452,6 +557,22 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     root.add(washMesh);
   }
 
+  // 州府边界描边 plane（独立开关 showPrefectures 控制）
+  let prefectureMesh = null;
+  const prefectureCanvas = buildPrefectureCanvas(geojson, renderConfig);
+  if (prefectureCanvas) {
+    const { canvas, worldBox } = prefectureCanvas;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const box = worldBox;
+    const planeGeo = new THREE.PlaneGeometry(box.xmax - box.xmin, box.ymax - box.ymin);
+    const planeMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide });
+    prefectureMesh = new THREE.Mesh(planeGeo, planeMat);
+    prefectureMesh.name = 'prefecture-strokes';
+    prefectureMesh.position.set((box.xmin + box.xmax) / 2, (box.ymin + box.ymax) / 2, 7.02);
+    root.add(prefectureMesh);
+  }
+
   const seen = new Set();
   asArray(geojson?.features).forEach((feature) => {
     const entity = (feature.properties || {}).entity;
@@ -461,22 +582,41 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     if (label) root.add(label);
   });
 
-  const update = (year) => {
-    [rivers, mountains, cities, places].forEach(({ group, items }) => {
-      group.children.forEach((child) => { child.visible = isVisibleAt(child.userData.overlayItem, year); });
-      group.visible = items.some((item) => isVisibleAt(item, year));
+  // 辅助层显隐状态（settings 驱动）+ 时间窗口可见性（年份驱动）合并管理：
+  // CSS2DRenderer 只检查 CSS2DObject.visible（不传播 group.visible），
+  // 且 update(year) 每帧轮询——两处必须合并，否则设置开关被年份轮询覆盖。
+  const visibility = { rivers: true, mountains: true, cities: true, places: true, prefectures: true };
+  let lastYear = 0;
+  const applyVisibility = () => {
+    const layers = [
+      [rivers, 'rivers'], [mountains, 'mountains'], [cities, 'cities'],
+      [places, 'places'], [prefectureSeats, 'prefectures'],
+    ];
+    layers.forEach(([{ group, items }, key]) => {
+      group.children.forEach((child) => {
+        child.visible = visibility[key] && isVisibleAt(child.userData.overlayItem, lastYear);
+      });
+      group.visible = items.some((item) => isVisibleAt(item, lastYear));
     });
+    if (prefectureMesh) prefectureMesh.visible = visibility.prefectures;
   };
-  update(Number.isFinite(Number(geojson?.properties?.year)) ? Number(geojson.properties.year) : 0);
+  const update = (year) => {
+    lastYear = Number.isFinite(Number(year)) ? Number(year) : lastYear;
+    applyVisibility();
+  };
+  lastYear = Number.isFinite(Number(geojson?.properties?.year)) ? Number(geojson.properties.year) : 0;
+  applyVisibility();
   const setAuxiliaryVisibility = (settings) => {
-    rivers.group.visible = !!settings.showRivers;
-    mountains.group.visible = !!settings.showMountains;
-    cities.group.visible = !!settings.showCities;
-    places.group.visible = !!settings.showPlaces;
+    visibility.rivers = !!settings.showRivers;
+    visibility.mountains = !!settings.showMountains;
+    visibility.cities = !!settings.showCities;
+    visibility.places = !!settings.showPlaces;
+    visibility.prefectures = !!settings.showPrefectures;
+    applyVisibility();
   };
   // EventBubbles consumes these as screen-space, fixed obstacles. Return only
   // currently visible city/regime labels so hidden historical items do not
-  // reserve space for events.
+  // reserve space for events. 州府治所 rank>3 不参与（避免小州标签过度占位）。
   const getCollisionObstacles = () => {
     if (!root.visible) return [];
     const obstacles = [];
@@ -488,6 +628,12 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     if (places.group.visible) {
       places.group.children.forEach((child) => {
         if (child.visible && child.element && child.element.classList.contains('place-label')) obstacles.push(child.element);
+      });
+    }
+    if (prefectureSeats.group.visible) {
+      prefectureSeats.group.children.forEach((child) => {
+        if (child.visible && child.element && child.element.classList.contains('prefecture-label')
+          && Number(child.element.dataset.rank) <= 3) obstacles.push(child.element);
       });
     }
     root.children.forEach((child) => {

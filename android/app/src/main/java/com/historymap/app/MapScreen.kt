@@ -1138,6 +1138,7 @@ private fun labelTextPaints(scale: Float): Map<String, Paint> {
     return mapOf(
         "regime" to make(16f, true, 0xF03A3428.toInt()),
         "cities" to make(14f, false, 0xD43A3428.toInt()),
+        "prefecture" to make(13.5f, false, 0xBF3A3428.toInt()), // 州府治所（元丰九域志基准）
         "mountains" to make(13f, false, 0xB83A3428.toInt()),
         "rivers" to make(13f, false, 0xB83A3428.toInt()),
         "places" to make(13f, false, 0xB83A3428.toInt()),

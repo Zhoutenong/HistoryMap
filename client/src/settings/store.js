@@ -41,11 +41,13 @@ export const defaultSettings = {
   showRivers: true,
   showMountains: true,
   showCities: true,
-  showPlaces: true      // 地点标注（都城/战场/书院等）
+  showPlaces: true,     // 地点标注（都城/战场/书院等）
+  showPrefectures: true, // 州府边界 + 治所标注（元丰九域志基准）
+  showCounties: false    // 县治标注（数据量 1100+，默认关闭防拥挤）
 };
 
 /** 布尔开关字段清单（校验时逐个规整）。 */
-const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities', 'showPlaces'];
+const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities', 'showPlaces', 'showPrefectures', 'showCounties'];
 
 /**
  * 校验并规整一份设置对象：合并默认值、过滤非法分类/速度/布尔值。

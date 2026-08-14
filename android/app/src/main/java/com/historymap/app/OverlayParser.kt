@@ -1,5 +1,6 @@
 package com.historymap.app
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -42,6 +43,14 @@ data class OverlayLabel(
 )
 
 /**
+ * 州府多边形（元丰九域志基准，Voronoi 近似边界）：仅描边不填充。
+ */
+data class PrefecturePolygon(
+    val name: String,
+    val rings: List<List<LngLat>>,
+)
+
+/**
  * OverlayLoader.getOverlay() 输出（与 GET /api/map/overlay 契约一致）的解析模型。
  */
 data class OverlayModel(
@@ -49,6 +58,7 @@ data class OverlayModel(
     val rivers: List<RiverPath>,
     val mountains: List<MountainFeature>,
     val labels: List<OverlayLabel>,
+    val prefectures: List<PrefecturePolygon> = emptyList(),
 )
 
 /**
@@ -113,7 +123,31 @@ object OverlayParser {
             if (r.name.isNotEmpty()) labels.add(OverlayLabel(r.name, r.path.first(), "rivers", major = false, rank = r.rank))
         }
 
-        return OverlayModel(regimes, rivers, mountains, labels)
+        // 州府级（元丰九域志基准）：
+        // - properties.prefectures：面（保留完整 feature，对齐 overlay.js 新通道）→ 仅描边
+        // - properties.prefectureSeats：治所点（legacy）→ Compose 标签（kind=prefecture，
+        //   rank<=2 时 major 大字——与 Web 版 prefecture-label.major 语义一致）
+        val prefectures = parsePrefectures(props.optJSONArray("prefectures"))
+        val prefectureLabels = parseLabels(props, "prefectureSeats").map {
+            it.copy(kind = "prefecture", major = it.rank <= 2)
+        }
+        labels.addAll(prefectureLabels)
+
+        return OverlayModel(regimes, rivers, mountains, labels, prefectures)
+    }
+
+    /** 州府面：properties.prefectures 的完整 feature（Polygon/MultiPolygon）→ 环列表 */
+    private fun parsePrefectures(arr: JSONArray?): List<PrefecturePolygon> {
+        if (arr == null) return emptyList()
+        val out = mutableListOf<PrefecturePolygon>()
+        for (i in 0 until arr.length()) {
+            val feat = arr.optJSONObject(i) ?: continue
+            val props = feat.optJSONObject("properties")
+            val name = props?.optString("name").orEmpty()
+            val rings = extractRings(feat.optJSONObject("geometry"))
+            if (rings.isNotEmpty()) out.add(PrefecturePolygon(name, rings))
+        }
+        return out
     }
 
     /** 提取几何的所有环（Polygon → 每 polygon 的环；MultiPolygon → 全部环） */

@@ -22,7 +22,7 @@ export class SettingsMenu {
   }
 
   _render() {
-    const { categories, speed, autoplay, showBaseMap, showOverlay, showRivers, showMountains, showCities, showPlaces } = this.settings;
+    const { categories, speed, autoplay, showBaseMap, showOverlay, showRivers, showMountains, showCities, showPlaces, showPrefectures, showCounties } = this.settings;
     const allChecked = CATEGORIES.every((c) => categories.includes(c.id));
 
     const catRows = CATEGORIES.map((c) => {
@@ -95,6 +95,14 @@ export class SettingsMenu {
         <label class="settings-row">
           <input type="checkbox" id="settings-places" ${showPlaces ? 'checked' : ''}>
           <span class="settings-label">地点</span>
+        </label>
+        <label class="settings-row">
+          <input type="checkbox" id="settings-prefectures" ${showPrefectures ? 'checked' : ''}>
+          <span class="settings-label">州府边界</span>
+        </label>
+        <label class="settings-row">
+          <input type="checkbox" id="settings-counties" ${showCounties ? 'checked' : ''}>
+          <span class="settings-label">县治</span>
         </label>
       </div>
 
@@ -199,6 +207,8 @@ export class SettingsMenu {
       'settings-mountains': 'showMountains',
       'settings-cities': 'showCities',
       'settings-places': 'showPlaces',
+      'settings-prefectures': 'showPrefectures',
+      'settings-counties': 'showCounties',
     };
     if (auxiliarySettings[t.id]) this._patch({ [auxiliarySettings[t.id]]: t.checked });
   }

@@ -205,6 +205,8 @@ animate();
 
     // 深链接路由状态：当前详情面板打开的事件（URL ?event= 与详情同步）
     let detailOpenEvent = null;
+    // 当前 overlay 原始数据（含 properties.prefectures 州府详情；时期切换时更新）
+    let currentOverlayData = null;
 
     /** 构建视图 URL（相对路径，供 history pushState/replaceState 使用）。 */
     function buildViewHref(view) {
@@ -382,6 +384,124 @@ animate();
       showDetail(ev);
     };
 
+    /**
+     * 州府详情面板：点击州府治所标注打开（元丰九域志基准——户口/土贡/属县 +
+     * 舆地广记沿革 + 相关事件）。复用 showDetail 的暂停/遮罩/取景框架，
+     * 关闭统一走 closeDetail（Esc/遮罩/空白点击）。
+     * @param {{name:string, coord:[number,number], rank?:number}} pref
+     */
+    function showPlaceDetail(pref) {
+      detailReturnFocus = document.activeElement;
+      resumePlayback = timeline.playing;
+      timeline.pause();
+      // 从 overlay 原始数据找完整州府信息（prefecture 面 feature 的属性）
+      const full = (currentOverlayData?.properties?.prefectures || [])
+        .find((f) => f.properties.name === pref.name);
+      const props = full?.properties || {};
+      const hh = props.households || {};
+      const total = (hh.main || 0) + (hh.guest || 0);
+      // 相关事件：事件 place 与州府名匹配（place 前缀如「澶州（今濮阳）」）
+      const related = currentEvents.filter((e) => {
+        if (!e.place) return false;
+        const prefix = e.place.split(/[（(]/)[0].trim();
+        if (!prefix) return false;
+        return prefix.includes(pref.name) || (prefix.length >= 2 && pref.name.includes(prefix.slice(0, 2)));
+      }).slice(0, 6);
+
+      clearChildren(detailPanel);
+      const addText = (tag, className, text, parent = detailPanel) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = text;
+        parent.appendChild(node);
+        return node;
+      };
+      const closeButton = addText('button', 'detail-close', '×');
+      closeButton.type = 'button';
+      closeButton.title = '关闭详情';
+      closeButton.setAttribute('aria-label', '关闭详情');
+      const head = document.createElement('div');
+      head.className = 'detail-head';
+      addText('span', 'detail-year', `${props.route || ''} · ${props.type || '州'}`, head);
+      if (props.grade) addText('span', 'detail-cat', props.grade, head);
+      detailPanel.appendChild(head);
+      const detailTitle = addText('h2', '', `${pref.name} · 府州详情`);
+      detailTitle.id = 'detail-title';
+      if (props.seat) addText('div', 'detail-meta', `治所 ${props.seat}${props.seatCoord ? `（${props.seatCoord[1].toFixed(2)}°N, ${props.seatCoord[0].toFixed(2)}°E）` : ''}`);
+      addText('div', 'detail-divider', '');
+
+      if (hh.main) {
+        const box = document.createElement('div');
+        box.className = 'detail-impact';
+        addText('div', 'detail-impact-title', '户 口 · 元丰九域志', box);
+        addText('p', '', `主户 ${hh.main.toLocaleString()} 户 · 客户 ${(hh.guest || 0).toLocaleString()} 户 · 合计 ${total.toLocaleString()} 户`, box);
+        detailPanel.appendChild(box);
+      }
+      if (props.tribute) {
+        const box = document.createElement('div');
+        box.className = 'detail-impact';
+        addText('div', 'detail-impact-title', '土 贡 · 元丰九域志', box);
+        addText('p', '', props.tribute, box);
+        detailPanel.appendChild(box);
+      }
+      if (props.evolution) {
+        const box = document.createElement('div');
+        box.className = 'detail-impact';
+        addText('div', 'detail-impact-title', '沿 革 · 舆地广记', box);
+        addText('p', '', `${props.evolution}…`, box);
+        detailPanel.appendChild(box);
+      }
+      if (props.countyCount !== null && props.countyCount !== undefined) {
+        const countyNames = (props.counties || []);
+        const shown = countyNames.length > 14 ? `${countyNames.slice(0, 14).join('、')}…` : countyNames.join('、');
+        const box = document.createElement('div');
+        box.className = 'detail-impact';
+        addText('div', 'detail-impact-title', `属 县 · ${props.countyCount}`, box);
+        if (shown) addText('p', '', shown, box);
+        detailPanel.appendChild(box);
+      }
+      if (related.length) {
+        const relatedPanel = document.createElement('div');
+        relatedPanel.className = 'detail-related';
+        addText('div', 'detail-related-title', '相关事件', relatedPanel);
+        const relatedList = document.createElement('div');
+        relatedList.className = 'detail-related-list';
+        related.forEach((r) => {
+          const button = addText('button', 'detail-related-item', `${r.year} · ${r.short || '未命名事件'}`, relatedList);
+          button.type = 'button';
+          button.dataset.id = String(r.id);
+        });
+        relatedPanel.appendChild(relatedList);
+        detailPanel.appendChild(relatedPanel);
+      }
+      addText('div', 'detail-note', `${props.confidence === 'medium' ? '治所坐标已人工校订' : '边界为 Voronoi 近似'} · 数据源 ${props.source || '元丰九域志'}`);
+      const art = document.createElement('img');
+      art.src = './ink-landscape.png';
+      art.className = 'detail-ink-art';
+      art.alt = '水墨山水';
+      detailPanel.appendChild(art);
+      // 相关事件点击：跳到该事件并刷新详情
+      detailPanel.querySelectorAll('.detail-related-item').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const target = currentEvents.find((x) => x.id === Number(btn.dataset.id));
+          if (target) jumpToEvent(target);
+        });
+      });
+      detailPanel.classList.remove('hidden');
+      detailPanel.setAttribute('aria-hidden', 'false');
+      detailMask.classList.remove('hidden');
+      detailMask.setAttribute('aria-hidden', 'false');
+      controls.enabled = false;
+      detailPanel.querySelector('.detail-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeDetail();
+      });
+      closeButton.focus();
+      frameMap({ scale: 1.28, shiftX: -0.16 });
+      focusOn(pref.coord);
+    }
+
     // 朝代更替全屏转场横幅（跨过时期边界时短暂压暗 + 时期名），约 2.6s 后自动消失
     let bannerTimer = null;
     function showEraBanner(year, prevLabel, nextLabel) {
@@ -536,7 +656,12 @@ animate();
       // 疆域叠加层：清旧建新；纹理按时期/视口配置复用
       const overlayBuildStarted = performance.now();
       if (territoryOverlay) clearOverlayGroup(territoryOverlay.group);
-      territoryOverlay = buildTerritoryOverlay(overlayGeojson, { period: initialPeriod, layerConfig: 'default' });
+      currentOverlayData = overlayGeojson;
+      territoryOverlay = buildTerritoryOverlay(overlayGeojson, {
+        period: initialPeriod,
+        layerConfig: 'default',
+        onPickPrefecture: (pref) => showPlaceDetail(pref),
+      });
       const overlayDurationMs = performance.now() - overlayBuildStarted;
       performance.mark('map-initialization-overlay-end');
       console.info('[overlay] 地图初始化', {
@@ -623,8 +748,13 @@ animate();
                 if (requestSeq !== overlayRequestSeq || dynastySeq !== dynastyRequestSeq
                   || overlayLoadingPeriod !== newPeriod) return;
                 clearOverlayGroup(territoryOverlay.group);
+                currentOverlayData = freshOverlay;
                 // 重建新 overlay
-                const newOverlay = buildTerritoryOverlay(freshOverlay, { period: newPeriod, layerConfig: 'default' });
+                const newOverlay = buildTerritoryOverlay(freshOverlay, {
+                  period: newPeriod,
+                  layerConfig: 'default',
+                  onPickPrefecture: (pref) => showPlaceDetail(pref),
+                });
                 // 把新 group 的资源迁移到旧 group
                 while (newOverlay.group.children.length > 0) {
                   territoryOverlay.group.add(newOverlay.group.children[0]);

@@ -21,9 +21,10 @@ class OverlayLoader(private val context: Context) {
         readJson("geo/historical/periods.json") ?: JSONObject()
     }
 
-    /** 标准辅助地理文件（河流/山脉/城市/地点） */
+    /** 标准辅助地理文件（河流/山脉/城市/地点/州府级数据） */
     private val standardGeoFiles = listOf(
         "rivers.geojson", "mountains.geojson", "cities.geojson", "places.geojson",
+        "prefectures.geojson",
     )
 
     /** 地点类要素 kind 白名单：都城/战场/书院等归入响应顶层 properties.places */
@@ -128,6 +129,15 @@ class OverlayLoader(private val context: Context) {
                 "places",
                 if (hasPlace) JSONArray(standardList.filter { placeKinds.contains(it.optJSONObject("properties")?.optString("kind")) }.map { toLegacy(it) })
                 else periodDef.optJSONArray("places") ?: periodsIndex.optJSONArray("places") ?: JSONArray(),
+            )
+            // 州府级（元丰九域志基准，对齐 overlay.js）：
+            // prefectures 面**保留完整 feature**（geometry 供渲染，不走 toLegacy 剥 geometry 通道）；
+            // prefectureSeats 治所点走 legacy（coord 供 Compose 标签层）
+            put("prefectures", JSONArray(byKind("prefecture")))
+            put(
+                "prefectureSeats",
+                if (byKind("prefecture-seat").isNotEmpty()) JSONArray(byKind("prefecture-seat").map { toLegacy(it) })
+                else JSONArray(),
             )
         }
 

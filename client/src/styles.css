@@ -1229,6 +1229,46 @@ body::before {
   color: rgba(70, 100, 127, 0.85);
 }
 
+/* —— 州府治所标注（A2：元丰九域志基准，州府名小字；rank<=2（京府/次府）加大字）——
+   可点击打开州府详情面板（pointer-events 由 TerritoryOverlay 按需开启）。
+   注意：不能写 transform 动画（CSS2DRenderer 每帧用它定位） */
+.prefecture-label {
+  font-family: var(--font-serif);
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  color: rgba(46, 42, 36, 0.66);
+  background: rgba(247, 242, 230, 0.35);
+  border-radius: 2px;
+  padding: 0 4px 1px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.prefecture-label.major {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(40, 34, 26, 0.85);
+  background: rgba(247, 242, 230, 0.78);
+  letter-spacing: 1px;
+}
+/* hover 墨色加深（可点击时由 JS 开启 pointer-events；不可点击时无 hover） */
+.prefecture-label:hover {
+  color: var(--accent);
+  background: rgba(247, 242, 230, 0.92);
+}
+
+/* —— 县治标注（A2b：元丰九域志属县，默认关闭；数据量大，样式最轻）—— */
+.county-label {
+  font-family: var(--font-serif);
+  font-size: 9.5px;
+  color: rgba(46, 42, 36, 0.42);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
 /* —— 详情遮罩（B3：详情打开时压暗并锁死地图交互）—— */
 #detail-mask {
   position: fixed;

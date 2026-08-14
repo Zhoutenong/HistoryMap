@@ -49,10 +49,11 @@ fun layoutMapLabels(
     maxPlaceLabels: Int = 5,
 ): List<PlacedMapLabel> {
     if (labels.isEmpty()) return emptyList()
-    // 优先级：政权 > 主政权城市 > 普通城市 > 山脉 > 河流名 > 普通地点
+    // 优先级：政权 > 主政权城市/京府次府 > 普通城市/州府 > 山脉 > 河流名 > 普通地点
     fun priority(l: MapRenderer.WorldLabel): Int = when (l.kind) {
         "regime" -> if (l.major) 0 else 1
         "cities" -> if (l.rank <= 2) 2 else 3
+        "prefecture" -> if (l.rank <= 2) 2 else 3 // 与城市同级，靠 rank 排序（京府/次府优先）
         "mountains" -> 4
         "rivers" -> if (l.rank <= 1) 5 else 8
         else -> 7
