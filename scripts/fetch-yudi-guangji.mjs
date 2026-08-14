@@ -171,8 +171,10 @@ function buildEntry(nameRaw, nameRawFull, grade, route, juan, restText) {
     route: route ? toSimplified(route) : null,
     juan: Number(juan),
     countyCount: countyMatch ? toCnNum(countyMatch[1]) : null,
-    // 沿革摘要：取「今治…」前的内容（历代沿革主体），截前 120 字
+    // 沿革摘要（详情面板用）：取「今治…」前的内容（历代沿革主体），截前 120 字
     evolution: body.slice(0, 120),
+    // 沿革全文（时空库变更事件提取用）：38 卷缓存完整，未被截断
+    fullEvolution: body,
   };
 }
 

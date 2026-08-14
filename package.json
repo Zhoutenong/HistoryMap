@@ -20,6 +20,9 @@
     "data:seats": "node scripts/fetch-chgis-song.mjs",
     "data:prefectures": "node scripts/build-song-prefectures.mjs",
     "data:check": "node scripts/check-prefectures.mjs",
+    "data:songshi": "node scripts/fetch-songshi-dili.mjs && node scripts/extract-place-events.mjs",
+    "data:temporal": "node scripts/build-temporal-db.mjs",
+    "data:temporal:check": "node scripts/check-temporal.mjs",
     "e2e": "playwright test"
   },
   "devDependencies": {
@@ -32,5 +35,8 @@
     "globals": "^17.9.0",
     "opencc-js": "^1.4.1",
     "polygon-clipping": "^0.15.7"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }

@@ -188,3 +188,18 @@ Android 原生版的全部视觉参数以 **`docs/design_optimize/design-tokens.
 - 前端：three.js + d3-geo + Vite；测试 vitest
 - 后端：Express + better-sqlite3（原生同步驱动，Windows 预编译二进制免编译）；ESLint 静态检查
 - Android：Kotlin + Room（KSP）+ WebView；Gradle 8.9 / AGP 8.7.3
+
+## 宋代时空数据库（PostgreSQL + PostGIS，时间版本化）
+
+在州府渲染数据之上，另有一套**逐实体时间版本化**的时空库（`docs/temporal-db-plan.md`）：
+每个州府实体带 `valid_from/valid_to` 生命周期（升府/废州/新置/复置/改名切分）、PostGIS 几何、
+史料 Source（元丰九域志/舆地广记/宋史·地理志）、数值化 Confidence。
+
+```bash
+npm run data:songshi         # 宋史·地理志（ctext）+ 变更事件提取（年号表+动作词规则）
+npm run data:temporal        # 三源合并 → 写入 PostgreSQL（需 server/.env 的 DATABASE_URL）
+npm run data:temporal:check  # 时间线一致性校验
+```
+
+查询示例：`GET /api/places?year=1100&name=拱州` → 返回 1100 年有效的实体版本
+（几何/史料/置信度）。时空库未配置时该端点返回 503，不影响地图与事件等基础功能。

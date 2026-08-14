@@ -275,3 +275,23 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 
 - **Lint**：`npm run lint`（ESLint flat config，扫描 `client/src` 与 `server`；`no-unused-vars` 为 warn，`_` 前缀变量/参数忽略）。测试文件目录（`__tests__/**`）被忽略。
 - **单测**：`npm run test`（vitest，client 内 11 用例：`events/__tests__/collisions.test.js` 7 个 + `timeline/__tests__/calc.test.js` 4 个）。纯函数（`collisions.js` / `calc.js`）已从业务模块抽出，便于复用与测试。改算法时同步更新对应测试。
+
+## 时空数据库（PostgreSQL + PostGIS，时间版本化）
+
+与渲染数据（overlay GeoJSON）平行的一套**逐实体时间版本化**体系（`docs/temporal-db-plan.md`）：
+
+- **存储**：本机 PostgreSQL 16.4（`C:/pg16`，数据目录 `C:/pgdata`）+ PostGIS 3.6.2，库 `historymap`；
+  连接串在 `server/.env` 的 `DATABASE_URL`（gitignore）。启动：
+  `C:/pg16/bin/pg_ctl.exe -D C:/pgdata -l C:/pgdata/server.log -o "-p 5432" start`
+- **Schema**（`server/data/schema-temporal.sql`）：`sources`（史料源）/ `places`（实体稳定身份）/
+  `place_versions`（valid_from/valid_to 生命周期 + PostGIS geom，版本不重叠 trigger）/
+  `place_events`（变更事件，可溯源）
+- **管线**：`npm run data:songshi`（宋史·地理志 ctext + 事件提取）→ `npm run data:temporal`
+  （三源合并写 PG）→ `npm run data:temporal:check`（时间线一致性校验）。
+  事件提取规则经验（年号表/县级甄别/军额vs政区/快照优先）见 `docs/temporal-db-plan.md` §四。
+- **API**：`GET /api/places`（按年/类型/名称/路查有效版本）、`/api/places/:id`（详情+事件时间线）、
+  `/api/places/sources`。时空库未启用（无 DATABASE_URL）时返回 503，**不影响** SQLite 既有 API。
+- **前端**：`api.js` 的 `getPlaces/getPlace/getPlaceSources`；州府详情面板异步加载
+  生命周期/史料/置信度（503 时静默降级）。
+- **许可**：古籍解析（九域志/舆地广记/宋史）为公版可提交；治所坐标来自 CHGIS TGaz 查询
+  （非商业学术，本地派生不入库）；`_generated/` 与 `prefectures.geojson` gitignore。

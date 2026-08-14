@@ -31,3 +31,4 @@ server/data/geo/historical/_generated/
 
 # 州府级数据生成物（含 CHGIS 派生坐标，不可再分发——本地生成，见 docs/data-improvement-plan.md）
 server/data/geo/historical/prefectures.geojson
+server/.env
