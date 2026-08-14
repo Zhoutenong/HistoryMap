@@ -25,3 +25,9 @@ server/data/geo/historical/source/
 .zcode/
 server/history.db-shm
 server/history.db-wal
+
+# 州府级数据管线（P0-P3）：CHGIS 原始包/派生坐标/生成的州府 GeoJSON 成品均本地生成，不入库
+server/data/geo/historical/_generated/
+
+# 州府级数据生成物（含 CHGIS 派生坐标，不可再分发——本地生成，见 docs/data-improvement-plan.md）
+server/data/geo/historical/prefectures.geojson

@@ -155,9 +155,36 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk   # 安装到真机
 
 `category` 取值：`era` 时代格局 / `figure` 名人轨迹 / `military` 军事·领土 / `economy` 经济变革 / `invention` 重要发明。
 
-`/api/map/overlay` 响应顶层 `properties` 透传 `rivers`（河流示意）、`mountains`（山脉示意），供前端水彩辅助层叠加绘制。
+`/api/map/overlay` 响应顶层 `properties` 透传 `rivers`（河流示意）、`mountains`（山脉示意）、`cities`、`places`，供前端水彩辅助层叠加绘制；另透传 `prefectures`（州府面**完整 Feature 数组**，Polygon 保留 geometry）与 `prefectureSeats`（州府治所 legacy 点数组）——**州府级数据（元丰九域志基准）**，详见「州府级数据」章节。
 
 **约定**：`coord` 为 `[lng, lat]`（经度在前，与 GeoJSON 一致）。事件在 `[year, yearEnd]` 时间窗口内显示，过期消失。
+
+## 州府级数据（元丰九域志基准，北宋 song-1111）
+
+数据管线（scripts/，均为幂等可重跑）：
+
+```bash
+npm run data:classics     # 古籍解析：元丰九域志（kanripo KR2k0005）→ server/data/geo/song/jiuyuzhi-1080.json
+                          #            + 舆地广记（维基文库四库本 38 卷）→ yudi-guangji.json（含政和改名交叉比对）
+npm run data:seats        # 治所坐标：复旦 TGaz（CHGIS）按治所县名查询 yr=1080 + scripts/manual-seats.song.json
+                          #   人工标定兜底 → _generated/song-seats-1080.json（gitignore）
+npm run data:prefectures  # Voronoi 近似州府面（d3-delaunay + polygon-clipping 与宋政权轮廓求交）
+                          #   → server/data/geo/historical/prefectures.geojson（gitignore）
+npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称交叉
+```
+
+**许可红线**：`prefectures.geojson` 含 CHGIS 派生坐标（不可再分发、非商用），**不入 git**——`server/data/geo/historical/_generated/` 已 gitignore，克隆后需本地重跑上述管线。古籍解析结果（九域志/舆地广记 JSON）与人工标定坐标表（manual-seats.song.json）为公版/事实数据，**随仓库提交**。
+
+数据要点：
+- 州府面 `kind: prefecture`（`style: stroke-only`，Voronoi 近似边界，`confidence: low/medium`）；
+  治所点 `kind: prefecture-seat`（CHGIS/人工标定坐标）。`rank`：1 京府 / 2 次府 / 3 户口≥5万 / 4 ≥1万 / 5 其他。
+- properties 含 `route`（路）、`type`（府州军监）、`grade`、`households`（主/客户，元丰九域志）、
+  `tribute`（土贡）、`seat`/`seatCoord`、`countyCount`/`counties`（属县）、`evolution`（舆地广记沿革）。
+- 渲染：Web 端州府描边走独立 canvas plane（z=7.02，「州府边界」开关独立控制），治所标注为
+  `.prefecture-label`（rank<=2 加 `.major`，可点击打开府州详情面板）；Android 端 WatercolorBuilder
+  同款仅描边分支 + Compose 标签层。
+- 四库本底本缺文记录：九域志缺邢州头行（占位州已定名）、部分州缺「縣N」行/治所注記（warning 输出）；
+  岳州/万州为四库本误刻（峽州巴陵郡/方州南浦郡），已按舆地广记校正并保留 `sourceFix`。
 
 ## 架构边界（重要，改动时务必遵守）
 

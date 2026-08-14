@@ -87,6 +87,27 @@ node server/scripts/fetch_historical_basemaps.js
 新 kind 需同时加入 `server/routes/overlay.js` 的 `PLACE_KINDS` 白名单与
 `client/src/map/TerritoryOverlay.js` 的 `PLACE_KINDS`，白名单外的未知 kind 会被安全忽略（不报 500）。
 
+## 州府级数据（元丰九域志基准，二期扩展）
+
+`prefectures.geojson` 是北宋元丰（1080）州府级数据（`server/data/geo/song/jiuyuzhi-1080.json`
+古籍解析 + CHGIS 治所坐标 + Voronoi 近似边界），由 `scripts/build-song-prefectures.mjs` 生成：
+
+- **本地生成**：文件含 CHGIS 派生坐标（不可再分发），**不入 git**（见
+  `docs/data-improvement-plan.md` 许可矩阵）；克隆后需先跑
+  `npm run data:classics && npm run data:seats && npm run data:prefectures`。
+- **kind 取值**：
+  - `prefecture`：州府面（Polygon，Voronoi 近似 + 宋政权轮廓裁剪，`style: stroke-only`）
+  - `prefecture-seat`：州府治所点（Point，CHGIS/人工标定）
+- **properties**（对齐 `REQUIRED_PROPERTIES`）：`id/name/kind/rank/style/source/license/confidence/note`
+  之外含 `route`（路）、`type`（府州军监）、`grade`、`households`（主/客户，元丰九域志）、
+  `tribute`（土贡）、`seat`/`seatCoord`、`countyCount`/`counties`（属县）、`evolution`（舆地广记沿革）、
+  `periods`（当前 `song-1111`）。
+- **overlay 响应**：`properties.prefectures`（**保留 geometry 的完整 Feature 数组**——Polygon 不能走
+  `featureCollectionToLegacy` 通道，该通道会剥掉 geometry）与 `properties.prefectureSeats`（legacy 点数组）。
+- **rank**：1 京府 / 2 次府 / 3 户口≥5万 / 4 ≥1万 / 5 其他（前端按 rank 控制字号与碰撞优先级）。
+- **精度**：边界为 Voronoi 近似（confidence low/medium），治所为真实坐标；重点州府人工校正清单见
+  `_generated/correction-checklist.md`（生成物）。
+
 ## 已知数据源瑕疵
 
 - **800 年命名与 1100+ 不同**：唐朝快照里吐蕃叫 `Tibetan Empire`（1100+ 叫 `Tibet`），回鹘拼作 `Ouighurs`，新罗为 `Silia`，真腊为 `Chen-La`；且 800 年的 `Nan Chao` 是云南的南诏政权，而 1100/1200 年的 `Nan Chao` 实为大理前身。脚本用 `STYLE_OVERRIDE_BY_YEAR` 按年份覆盖，避免错标。

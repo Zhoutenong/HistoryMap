@@ -77,6 +77,19 @@ npm run e2e            # Playwright 桌面/移动 smoke（需先 npm run build �
 npm audit              # 查看根目录依赖安全报告（CI 以 high 级别报告，不阻塞）
 ```
 
+## 州府级数据管线（北宋州府边界 + 治所标注 + 府州详情）
+
+地图的北宋州府级数据（元丰九域志 1080 基准：287 个州府近似边界 + 290 个治所 + 户口/土贡/沿革）由古籍与 CHGIS 派生，**克隆后需先本地生成**（含 CHGIS 派生坐标的文件不入 git，见 `docs/data-improvement-plan.md` 许可矩阵）：
+
+```bash
+npm run data:classics     # ① 古籍解析：元丰九域志（kanripo）+ 舆地广记（维基文库，交叉比对）
+npm run data:seats        # ② 治所坐标：复旦 TGaz（CHGIS）查询 + 人工标定兜底
+npm run data:prefectures  # ③ Voronoi 近似州府面 + 宋政权轮廓裁剪 → prefectures.geojson
+npm run data:check        # ④ 数据校验（数量/坐标/名称交叉）
+```
+
+生成后重启后端即可在 Web 与 Android 双端看到：州府淡墨边界、治所名标注（点击打开府州详情面板：户口/土贡/沿革/属县）、设置面板「州府边界」开关。
+
 CI 依次执行三处依赖安装、lint、Vitest、生产构建、构建产物检查、GeoJSON/API contract 检查和生产服务 smoke；同时报告根目录、client、server 的 `npm audit --audit-level=high` 结果。npm 缓存命中状态会在 CI 日志中输出。
 
 ## 生产部署

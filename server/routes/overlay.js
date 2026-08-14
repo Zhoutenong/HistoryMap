@@ -11,7 +11,8 @@ const __dirname = path.dirname(__filename);
 
 // 历史边界数据目录
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
-const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson'];
+// prefectures.geojson：州府级数据（元丰九域志基准，本地生成，含 CHGIS 派生坐标——见 docs/data-improvement-plan.md）
+const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson', 'prefectures.geojson'];
 
 /**
  * 地点类要素 kind 白名单（places.geojson 中的点位要素）。
@@ -138,7 +139,7 @@ router.get('/', (req, res) => {
   // 按 kind 白名单分组：未知 kind（如 typo 或未来新增类型）直接忽略，
   // 不再像旧实现那样对未初始化的分组 push 导致 500。
   const standardFeatures = readStandardFeatures(periodDef.id);
-  const KNOWN_KINDS = ['river', 'mountain', 'city', ...PLACE_KINDS];
+  const KNOWN_KINDS = ['river', 'mountain', 'city', 'prefecture', 'prefecture-seat', ...PLACE_KINDS];
   const standardByKind = standardFeatures.reduce((groups, feature) => {
     const kind = feature.properties?.kind;
     if (kind && KNOWN_KINDS.includes(kind)) groups[kind].push(feature);
@@ -153,6 +154,12 @@ router.get('/', (req, res) => {
   const places = PLACE_KINDS.some((kind) => standardByKind[kind].length > 0)
     ? legacy.filter((item) => PLACE_KINDS.includes(item.kind))
     : (periodDef.places || periodsIndex.places || []);
+  // 州府级（元丰九域志基准）：
+  // - prefectures：Polygon 面**保留完整 feature**（geometry 供前端画边界，
+  //   featureCollectionToLegacy 会剥掉 Polygon 的 geometry，不能走 legacy 通道）
+  // - prefectureSeats：治所 Point → legacy（coord 供前端 CSS2D 标注）
+  const prefectures = standardByKind.prefecture;
+  const prefectureSeats = legacyByKind('prefecture-seat');
 
   res.json({
     type: 'FeatureCollection',
@@ -165,6 +172,8 @@ router.get('/', (req, res) => {
       mountains,
       cities,
       places,
+      prefectures,
+      prefectureSeats,
     }
   });
 });
