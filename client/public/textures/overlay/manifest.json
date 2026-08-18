@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "bakedAt": "2026-08-17",
+  "status": "penpot",
+  "width": 2048,
+  "fitBoxLngLat": [
+    53.20941070030476,
+    8.474970422942064,
+    141.99851516197467,
+    59.8183896994711
+  ],
+  "byPeriod": {
+    "song-1111": "regimes-1100.png",
+    "liao-1111": "regimes-1100.png",
+    "song-1142": "regimes-1200.png",
+    "song-1279": "regimes-1279.png",
+    "yuan-1279": "regimes-1279.png",
+    "yuan-1300": "regimes-1300.png",
+    "jin-1120": "jin-1120.png",
+    "jin-1142": "jin-1142.png",
+    "jin-1200": "jin-1200.png",
+    "tang-800": "regimes-800.png"
+  },
+  "files": {
+    "regimes-1100.png": {
+      "status": "penpot-v1",
+      "source": "regimes-1100.json",
+      "periods": [
+        "song-1111",
+        "liao-1111"
+      ],
+      "periodLabels": [
+        "北宋极盛",
+        "辽·鼎盛"
+      ],
+      "size": [
+        2048,
+        1679
+      ],
+      "worldBox": {
+        "xmin": 170.1632887543323,
+        "xmax": 304.31786652341196,
+        "ymin": 13.010957532383358,
+        "ymax": 122.98308944973952
+      },
+      "featureCount": 10,
+      "sizeKb": 886,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "regimes-1200.png": {
+      "status": "penpot-v1",
+      "source": "regimes-1200.json",
+      "periods": [
+        "song-1142"
+      ],
+      "periodLabels": [
+        "南宋·绍兴和议"
+      ],
+      "size": [
+        2048,
+        1556
+      ],
+      "worldBox": {
+        "xmin": 106.5581357742368,
+        "xmax": 324.6781192594591,
+        "ymin": 10.023940846050277,
+        "ymax": 175.75371757495734
+      },
+      "featureCount": 12,
+      "sizeKb": 987,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "regimes-1279.png": {
+      "status": "penpot-v1",
+      "source": "regimes-1279.json",
+      "periods": [
+        "song-1279",
+        "yuan-1279"
+      ],
+      "periodLabels": [
+        "崖山·元朝建立",
+        "元·一统天下"
+      ],
+      "size": [
+        2048,
+        2077
+      ],
+      "worldBox": {
+        "xmin": 169.1568749250691,
+        "xmax": 322.0978441737285,
+        "ymin": 10.59394655309104,
+        "ymax": 165.6836167505705
+      },
+      "featureCount": 7,
+      "sizeKb": 991,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "regimes-1300.png": {
+      "status": "penpot-v1",
+      "source": "regimes-1300.json",
+      "periods": [
+        "yuan-1300"
+      ],
+      "periodLabels": [
+        "元·大都时代"
+      ],
+      "size": [
+        2048,
+        2077
+      ],
+      "worldBox": {
+        "xmin": 169.1568749250691,
+        "xmax": 322.0978441737285,
+        "ymin": 10.59394655309104,
+        "ymax": 165.6836167505705
+      },
+      "featureCount": 7,
+      "sizeKb": 991,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "jin-1120.png": {
+      "status": "penpot-v1",
+      "source": "jin-1120.json",
+      "periods": [
+        "jin-1120"
+      ],
+      "periodLabels": [
+        "金·灭辽前期"
+      ],
+      "size": [
+        2048,
+        1541
+      ],
+      "worldBox": {
+        "xmin": 224.90805217768352,
+        "xmax": 299.5362455998743,
+        "ymin": 75.05396111464539,
+        "ymax": 131.22473128621206
+      },
+      "featureCount": 15,
+      "sizeKb": 1182,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "jin-1142.png": {
+      "status": "penpot-v1",
+      "source": "jin-1142.json",
+      "periods": [
+        "jin-1142"
+      ],
+      "periodLabels": [
+        "金·南北对峙"
+      ],
+      "size": [
+        2048,
+        1541
+      ],
+      "worldBox": {
+        "xmin": 224.90805217768352,
+        "xmax": 299.5362455998743,
+        "ymin": 75.05396111464539,
+        "ymax": 131.22473128621206
+      },
+      "featureCount": 15,
+      "sizeKb": 1182,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "jin-1200.png": {
+      "status": "penpot-v1",
+      "source": "jin-1200.json",
+      "periods": [
+        "jin-1200"
+      ],
+      "periodLabels": [
+        "金·大定至灭亡"
+      ],
+      "size": [
+        2048,
+        1541
+      ],
+      "worldBox": {
+        "xmin": 224.90805217768352,
+        "xmax": 299.5362455998743,
+        "ymin": 75.05396111464539,
+        "ymax": 131.22473128621206
+      },
+      "featureCount": 15,
+      "sizeKb": 1182,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    },
+    "regimes-800.png": {
+      "status": "penpot-v1",
+      "source": "regimes-800.json",
+      "periods": [
+        "tang-800"
+      ],
+      "periodLabels": [
+        "唐·盛唐气象"
+      ],
+      "size": [
+        2048,
+        1578
+      ],
+      "worldBox": {
+        "xmin": 158.08227861496837,
+        "xmax": 324.4656508568989,
+        "ymin": 12.035775262394967,
+        "ymax": 140.21130955286776
+      },
+      "featureCount": 10,
+      "sizeKb": 988,
+      "rendered": "2026-08-18",
+      "styleSource": "styles.json"
+    }
+  }
+}

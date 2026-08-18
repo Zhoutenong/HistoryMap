@@ -1,0 +1,5 @@
+[
+  { "entity": "宋", "layer": "edge", "fill": "#9a4a3a", "fillOpacity": 0.25, "blur": 0, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 },
+  { "entity": "宋", "layer": "body", "fill": "#9a4a3a", "fillOpacity": 0.82, "blur": 4, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 },
+  { "entity": "宋", "layer": "bloom", "fill": "#9a4a3a", "fillOpacity": 0.38, "blur": 22, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 }
+]

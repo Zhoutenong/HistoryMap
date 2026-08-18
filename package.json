@@ -19,6 +19,10 @@
     "data:classics": "node scripts/fetch-jiuyuzhi.mjs && node scripts/fetch-yudi-guangji.mjs",
     "data:seats": "node scripts/fetch-chgis-song.mjs",
     "data:prefectures": "node scripts/build-song-prefectures.mjs",
+    "bake:textures": "node scripts/bake-overlay-textures.mjs",
+    "penpot:svg": "node scripts/penpot-prepare-svg.mjs",
+    "penpot:render": "node scripts/penpot-render-textures.mjs",
+    "masks:generate": "node scripts/generate-masks.mjs",
     "data:check": "node scripts/check-prefectures.mjs",
     "data:songshi": "node scripts/fetch-songshi-dili.mjs && node scripts/extract-place-events.mjs",
     "data:temporal": "node scripts/build-temporal-db.mjs",
@@ -27,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@napi-rs/canvas": "^1.0.6",
     "@playwright/test": "^1.62.1",
     "concurrently": "^9.0.0",
     "d3-delaunay": "^6.0.4",

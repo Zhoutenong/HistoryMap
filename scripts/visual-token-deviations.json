@@ -1,83 +1,28 @@
 {
   "_comment": "MapVisualTokens.kt 与 design-tokens.json 的有意偏差登记表。key 为 design-tokens.json 的路径（与 scripts/check-visual-tokens.mjs 的 path 字段一致）；code 为代码当前值（alpha/尺寸为数值，字体为 size,weight,letterSpacing,lineHeight 元组）；design 为设计规范值。新偏差必须在此登记并写明原因，否则校验脚本 FAIL。",
   "alpha0to255.watercolorBody": {
-    "code": 102,
+    "code": 137,
     "design": 117,
-    "reason": "真机截图对照 prompt_1：主体与斑驳叠加后有效透明度约 0.51，宋屏幕色 (155,135,115) 比参考 (185,146,113) 深约 30；117→102 校准至有效 ~0.47 与参考 0.46 对齐"
-  },
-  "alpha0to255.majorRiverWash": {
-    "code": 38,
-    "design": 46,
-    "reason": "P1-河流：评审要求主/支流水痕、主体、脊线 alpha 整体降 15~25%，河流是辅助层，不应与政权边界竞争视觉层级"
+    "reason": "向效果图靠拢（R2 两轮真机对照）：117 有效覆盖仅 ~46%，六政权呈粉彩态、色相区分不足；137 后宋砖红/辽灰蓝/西夏土黄在暖纸上可分。此前 102 是 tint 深压（l×0.82/s×0.78）时期的补偿值，tint 放宽后作废"
   },
   "alpha0to255.majorRiverBody": {
-    "code": 90,
+    "code": 96,
     "design": 110,
-    "reason": "P1-河流：评审要求主/支流 alpha 整体降 15~25%（同上）"
+    "reason": "M1 温和回调：R4 降至 88 后实机偏灰，回提至 96，取 R4 偏硬偏深调优与设计饱和度之间的中间值"
   },
   "alpha0to255.majorRiverSpine": {
-    "code": 115,
+    "code": 124,
     "design": 140,
-    "reason": "P1-河流：主脊线 alpha 降档，避免深色主轴抢视觉"
-  },
-  "alpha0to255.minorRiverWash": {
-    "code": 24,
-    "design": 30,
-    "reason": "P1-河流：支流水痕 alpha 降档（同上）"
+    "reason": "M1 温和回调：R4 降至 118 后实机偏灰，回提至 124，取 R4 偏硬偏深调优与设计饱和度之间的中间值"
   },
   "alpha0to255.minorRiverBody": {
-    "code": 55,
+    "code": 60,
     "design": 70,
-    "reason": "P1-河流：支流主体 alpha 降档（同上）"
+    "reason": "M1 温和回调：支流主体从 56 回提至 60，与主线同步取中间值"
   },
   "dimensionsPx.timelineBottomSafeArea": {
-    "code": 18,
+    "code": 24,
     "design": 28,
-    "reason": "P1：底部安全区 28→18，压缩时间轴占屏高度约 10%"
-  },
-  "typographyPx.topTitle": {
-    "code": "20,700,4,28",
-    "design": "18,400,4,26",
-    "reason": "P1-字体：评审要求放大顶栏标题并加重字重（Medium/Bold，打包字体仅 400/700）"
-  },
-  "typographyPx.dynasty": {
-    "code": "16,700,2,24",
-    "design": "15,700,2,22",
-    "reason": "P1-字体：朝代按钮字号 15→16 放大"
-  },
-  "typographyPx.menu": {
-    "code": "15,400,2,22",
-    "design": "14,400,2,20",
-    "reason": "P1-字体：菜单文字 14→15 放大"
-  },
-  "typographyPx.legendItem": {
-    "code": "14,400,1,26",
-    "design": "13,400,1,22",
-    "reason": "P1-字体：图例条目 13→14 放大、行高 22→26"
-  },
-  "typographyPx.mapLabel": {
-    "code": "16,400,1,24",
-    "design": "13,400,1,20",
-    "reason": "P1-字体：地图地名 13→16 放大（评审：地图标签需足够清楚）"
-  },
-  "typographyPx.bubbleTitle": {
-    "code": "15,700,1,22",
-    "design": "14,700,1,20",
-    "reason": "P1-字体：泡泡标题 14→15 放大"
-  },
-  "typographyPx.bubbleBody": {
-    "code": "12,400,0,20",
-    "design": "11,400,0,18",
-    "reason": "P1-字体：泡泡年份/摘要 11→12 放大"
-  },
-  "typographyPx.timelineRange": {
-    "code": "14,400,1,20",
-    "design": "13,400,1,18",
-    "reason": "P1-字体：时间轴年份范围 13→14 放大"
-  },
-  "typographyPx.timelineCategory": {
-    "code": "12,400,1,18",
-    "design": "11,400,1,16",
-    "reason": "P1-字体：时间轴分类文字 11→12 放大"
+    "reason": "M1：原 28→18 压缩后分类行被底部导航栏遮挡，折中回 24"
   }
 }

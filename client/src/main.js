@@ -8,7 +8,7 @@ import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
 import { buildTerritoryOverlay, fadeIn, getOverlayCacheStats } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
-import { getMap, getEvents, getMeta, getOverlay, getDynasties } from './api.js';
+import { getMap, getEvents, getMeta, getOverlay, getDynasties, getPlace } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
 import { loadSettings, saveSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
 import { clearChildren } from './dom.js';
@@ -249,6 +249,9 @@ animate();
     // 详情打开时加半透明遮罩并锁死地图交互（读详情时防止误触旋转/拾取）。
     let resumePlayback = false;
     let detailReturnFocus = null;
+    // 详情面板代际计数器：每次打开/关闭详情面板自增。异步追加（如时空库详情）返回时
+    // 校验代际，防止「先打开 A 后打开 B」时 A 的迟到响应污染 B 的面板。
+    let detailPanelGen = 0;
     function showDetail(ev) {
       detailReturnFocus = document.activeElement;
       resumePlayback = timeline.playing;
@@ -264,6 +267,7 @@ animate();
       if (idx > 0) related.push(sorted[idx - 1]);
       if (idx >= 0 && idx < sorted.length - 1) related.push(sorted[idx + 1]);
       clearChildren(detailPanel);
+      detailPanelGen++;
       const addText = (tag, className, text, parent = detailPanel) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -357,6 +361,7 @@ animate();
     }
 
     function closeDetail() {
+      detailPanelGen++;
       detailPanel.classList.add('hidden');
       detailPanel.setAttribute('aria-hidden', 'true');
       detailMask.classList.add('hidden');
@@ -409,6 +414,7 @@ animate();
       }).slice(0, 6);
 
       clearChildren(detailPanel);
+      detailPanelGen++;
       const addText = (tag, className, text, parent = detailPanel) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -480,6 +486,62 @@ animate();
       art.className = 'detail-ink-art';
       art.alt = '水墨山水';
       detailPanel.appendChild(art);
+
+      // 时空库增强（PostgreSQL + PostGIS，/api/places）：生命周期/史料/变更事件。
+      // 时空库未启用（503）时静默跳过，不影响基础详情。
+      const placeId = `song-${pref.name}`;
+      const panelGen = detailPanelGen;
+      getPlace(placeId).then((detail) => {
+        // 面板可能已关闭或已切换到其他详情（防竞态：代际不匹配直接丢弃迟到响应）
+        if (panelGen !== detailPanelGen || detailPanel.classList.contains('hidden')) return;
+        const title = detailPanel.querySelector('#detail-title');
+        if (title && detail.title) title.textContent = `${pref.name} · ${detail.title || ''}`.trim();
+        // 生命周期（全部时间版本）
+        if (Array.isArray(detail.versions) && detail.versions.length) {
+          const box = document.createElement('div');
+          box.className = 'detail-impact';
+          addText('div', 'detail-impact-title', '生命周期 · 时间版本', box);
+          detail.versions.forEach((v) => {
+            const from = v.validFrom;
+            const to = v.validTo ?? '宋亡(1279)';
+            const range = v.validFrom === v.validTo ? `${from}` : `${from} — ${to}`;
+            addText('p', '', `${range}${v.nameAtTime && v.nameAtTime !== pref.name ? `（${v.nameAtTime}）` : ''}`, box);
+          });
+          detailPanel.appendChild(box);
+        }
+        // 变更事件时间线（升/废/置/改…）
+        if (Array.isArray(detail.events) && detail.events.length) {
+          const box = document.createElement('div');
+          box.className = 'detail-impact';
+          addText('div', 'detail-impact-title', `变更事件 · ${detail.events.length}`, box);
+          detail.events.slice(0, 8).forEach((e) => {
+            const yr = e.year ?? '年代不详';
+            addText('p', 'detail-event', `${yr} ${e.eventType}${e.yearApprox ? '（约）' : ''} — ${e.detail}`, box);
+          });
+          if (detail.events.length > 8) addText('p', 'detail-event', `…共 ${detail.events.length} 条`, box);
+          detailPanel.appendChild(box);
+        }
+        // 史料源 + 置信度
+        if (Array.isArray(detail.sources) && detail.sources.length) {
+          const box = document.createElement('div');
+          box.className = 'detail-impact';
+          addText('div', 'detail-impact-title', '史料来源', box);
+          addText('p', '', detail.sources.map((s) => `${s.title}${s.juan ? `（${s.juan}）` : ''}`).join(' · '), box);
+          detailPanel.appendChild(box);
+        }
+        if (detail.confidence !== undefined && detail.confidence !== null) {
+          const box = document.createElement('div');
+          box.className = 'detail-impact';
+          addText('div', 'detail-impact-title', '数据置信度', box);
+          addText('p', '', `整体 ${(detail.confidence * 100).toFixed(0)}% · 州府面为 Voronoi 近似（见版本 note）`, box);
+          detailPanel.appendChild(box);
+        }
+      }).catch((err) => {
+        // 503（时空库未启用）或网络错误：静默降级，基础详情已足够
+        if (!(err instanceof Error && /503|404/.test(err.message))) {
+          console.debug('[places] 时空库详情加载失败:', err.message);
+        }
+      });
       // 相关事件点击：跳到该事件并刷新详情
       detailPanel.querySelectorAll('.detail-related-item').forEach((btn) => {
         btn.addEventListener('click', (e) => {
@@ -611,7 +673,21 @@ animate();
     });
 
     // —— 核心装配：加载朝代数据并重建可切换图层（初始加载与朝代切换共用）——
+    // 统一投影标定：资源贴图（bake-overlay-textures.mjs 产出）按「全时期包围盒」
+    // 渲染，浏览器端必须用同一份数据标定（fit-geojson.json），贴图才能精确对齐。
+    // 缺失/加载失败时回落「用当前 overlay 标定」（功能正常，贴图可能错位）。
+    let projectionEnsured = false;
+    async function ensureProjection() {
+      if (projectionEnsured) return;
+      projectionEnsured = true;
+      try {
+        const res = await fetch('./textures/overlay/fit-geojson.json', { cache: 'force-cache' });
+        if (res.ok) fitProjection(await res.json());
+      } catch { /* 回落 loadDynasty 兜底标定 */ }
+    }
+
     async function loadDynasty(dynastyId) {
+      await ensureProjection();
       const requestSeq = ++dynastyRequestSeq;
       dynastyController?.abort();
       overlayController?.abort();
@@ -642,8 +718,8 @@ animate();
       currentEvents = events;
       overlayRequestSeq++;
 
-      // 标定投影：用历史疆域（覆盖中国及周边）做 fitSize，
-      // 保证现代底图即使隐藏，投影仍然有效。必须在任何 project() 调用前完成（单例，只标定一次）。
+      // 兜底标定：ensureProjection 已用 fit-geojson.json 标定过则此调用幂等跳过；
+      // 仅在标定文件缺失/失败时用当前 overlay 标定（单例，只标定一次）。
       fitProjection(overlayGeojson);
 
       // 现代底图：与朝代无关，只建一次

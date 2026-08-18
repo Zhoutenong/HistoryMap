@@ -3,7 +3,33 @@
 > 依据 `docs/android-visual-polish-ai-pipeline.md` 第二阶段 P4 建立。
 > 设计目标：`docs/design_optimize/design-tokens.json`（唯一设计输入）+ `history_map_android_prototype.html` + `prompt_1/4/5.png`。
 
+## R6 地图描画向效果图靠拢（2026-08-14，本轮）
+
+以 picture-reg 逐轮对照 `prompt_1.png` + PNG 像素采样定位根因，共 10 轮真机校准：
+
+| 差距 | 根因 | 修复 |
+|---|---|---|
+| 地图横条带、上下留白大、辽/金出屏 | resetCamera 全景 contain 拟合到整屏（疆域投影约 2:1 宽扁） | contain 到**地图区矩形**（token mapTop 154/mapBottom 1410）后 ×`CAMERA_FIT_BOOST 1.4`，水平锚定宋域中心（`anchorBoundsOf`），clamp 不出包围盒；横屏保持 contain |
+| 政权水彩浑浊（六政权全土色） | `watercolorTint` s×0.78、l×0.82 钳 [0.32,0.46] + 暖罩 SRC_ATOP | tint 放宽 s×0.95/l×0.92 钳 [0.28,0.55]（token 化）；暖罩移除（WARM_WASH_ALPHA=0）；body alpha 102→137（登记偏差） |
+| 水彩平板无渗化 | 无边缘积色、斑驳单 variant 且过淡 | 新增 pooling 边缘积色（内侧加深晕 6px/α38）；斑驳明（向纸色混）/暗（×0.78）双 variant、α 区间 0.10-0.20、数量对齐 design 60 |
+| 山脉笔触几乎不可见 | R3 前 alpha 系数削过头（24-43/255） | 山脊/皴法/glyph 全套回提（token 逐轮记录）；**沿山脊撒山形 glyph**（连绵山体、随机跳过 25% 打散等距感）；皴法 ±25° 角度抖动 |
+| 山脉被水彩盖住、层级乱 | terrain 单层画在水彩之上 | **TerrainTexture 拆 mountains/rivers 两层**：paper < mountains < watercolor < rivers（design 图层序）；LRU 4→6 项（3 纹理/时期）；peekCache/putCache 辅助 |
+| 东西向山脊 halo 横贯屏幕被误读为「纸面断层」 | 阴山—燕山等山系 halo 连续描边成带 | halo 改干笔长虚线（dash W/30,W/55）+ α 0.45→0.40 |
+| 河流细弱/后偏硬 | 硬编码除数 + alpha 折减、未用 token | 恢复 design 宽度体系（wash 12/6、body 3.2/2、spine 1.1 设计px 换算除数）；body/spine 真机降 ~20%（110→88 等，登记偏差）；Chaikin 二次平滑 |
+| 州府 Voronoi 网格读作数据网格 | 墨线 0.36 alpha 实线 | α 26→16 + 干笔虚线（隐约肌理，放大可辨） |
+| 宣纸偏白均匀、暗角不自然 | 纹理混合 0.20、暗角 0.28 以屏幕中心 | 纹理 0.24+暖化 ×vec3(1.03,1,0.90)；暗角 0.34 起止回 design，**径向中心改地图区中心**（uCenter uniform，纵横比校正防横向色阶） |
+| grain 采样越界条带 | `uv×1.2` 采样 + CLAMP_TO_EDGE 拉伸边缘 | grain 纹理改 **GL_REPEAT**（512×512 POT） |
+| 标签卡片 UI 感强 | 米白圆角卡+朱砂描边 | 撤卡片：深墨字直书 + 1.2px 纸色 halo 双 pass；城市「墨点+纸色细环」靶心标记 |
+| **府县标签整体漂到地图上方数百像素**（R1 取景改动的回归） | `worldToScreen` 的 sy 公式隐含「镜像轴 = cy = 包围盒中心」前提；相机 cy 南移 243 世界单位后标签层未跟随（另发现纹理 worldBox 只含政权、worldBounds 含山河，中心本就有历史偏差） | 镜像轴改由**纹理 worldBox** 推导（`textureWorldBox.top+bottom−cy`），新增 `textureWorldBox` 字段在 setTextures 时记录；cy=中心时与旧公式完全等价 |
+| **登州/莱州治所"在海里"** | aourednik 源数据山东半岛北岸整体画低 ~0.1-0.2°（渤海海峡切入过深），蓬莱(37.81°N)落在宋多边形外；州府 Voronoi 面同被裁进海 | `fetch_historical_basemaps.js` 加 `SHANDONG_NORTH_COAST_FIX` 顶点补丁（精确旧顶点做锚、幂等，把北岸抬到蓬莱—烟台—威海—成山头真实一线），重跑 regimes + `data:prefectures`；Web/Android 双端同源受益 |
+| **山形笔触呈"∨"箭头朝下** | 山形 glyph 峰顶画向 bitmap −y 方向，而 bitmap 相对屏幕纵向翻转（内容镜像链路），显示成朝下 | 峰顶改画向 +y（`cy+h`），屏幕上呈"∧" |
+
+校准回路：`gradlew assembleDebug --offline` → `adb install` → screencap → picture-reg 对照 + 像素采样。
+已知残留（识别 agent 轮次间评价震荡，供下轮参考）：政权边界为真实数据折线（设计稿手绘毛边感）、
+辽/金等浅色政权填充与纸面对比弱、山体 glyph 疏密仍偏规则。
+
 ## 测试环境
+
 
 | 项 | 值 |
 |---|---|
@@ -11,7 +37,7 @@
 | Android | 10（API 29，EMUI 10） |
 | 屏幕 | 1080 × 2244 px @ 480dpi（与设计画布 1:1） |
 | APK | `android/app/build/outputs/apk/debug/app-debug.apk`（debug，约 10.8 MB） |
-| 截图时间 | 2026-08-13 |
+| 截图时间 | 2026-08-14（R6 地图描画靠拢轮） |
 | 数据 | assets 本地同步（`node scripts/prepare-android.mjs`） |
 
 ## 截图清单

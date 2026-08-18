@@ -109,6 +109,47 @@ const NAME_OVERRIDE = {
   1200: { 'Liao': 'Jin' },
 };
 
+// ── 海岸线修正（数据源粗稿的定向补丁） ─────────────────────────────
+// aourednik/historical-basemaps 的多边形在山东半岛北部把海岸画低了 ~0.1-0.2°
+// （渤海海峡切入过深），登州治所（蓬莱 ≈120.76,37.81）落在宋多边形外的"海"里。
+// 按下表把北岸顶点抬到真实海岸（蓬莱—烟台—威海—成山头一线）。
+// 以精确旧顶点为锚（容差 0.005）：幂等，修正后锚点不复存在，重跑无操作；
+// 且只命中画该段海岸的政权（1100 宋 / 1279 元等），不影响其他轮廓。
+const SHANDONG_NORTH_COAST_FIX = [
+  { at: [120.79, 37.7], to: [120.78, 37.74], insert: [[120.7, 37.83], [120.78, 37.86], [120.92, 37.85], [121.05, 37.76]] },
+  { at: [121.19, 37.43], to: [121.19, 37.6] },
+  { at: [121.43, 37.34], to: [121.43, 37.54] },
+  { at: [121.89, 37.38], to: [121.89, 37.5] },
+  { at: [122.06, 37.36], to: [122.06, 37.51] },
+  { at: [122.27, 37.3], to: [122.27, 37.45] },
+  { at: [122.39, 37.3], to: [122.42, 37.4] },
+];
+
+function patchShandongNorthCoast(features) {
+  let patchCount = 0;
+  const near = (a, b) => Math.abs(a[0] - b[0]) < 0.005 && Math.abs(a[1] - b[1]) < 0.005;
+  const patchRing = (ring) => {
+    const out = [];
+    for (const v of ring) {
+      const rule = SHANDONG_NORTH_COAST_FIX.find((r) => near(r.at, v));
+      if (!rule) {
+        out.push(v);
+        continue;
+      }
+      out.push(rule.to);
+      if (rule.insert) out.push(...rule.insert);
+      patchCount++;
+    }
+    return out;
+  };
+  const walk = (coords) => {
+    if (typeof coords[0][0][0] === 'number') return coords.map(patchRing); // Polygon
+    return coords.map(walk); // MultiPolygon / 嵌套
+  };
+  for (const f of features) f.geometry.coordinates = walk(f.geometry.coordinates);
+  return patchCount;
+}
+
 // ── 下载工具 ──────────────────────────────────────────────────────
 async function download(url, dest) {
   const res = await fetch(url);
@@ -192,6 +233,8 @@ async function main() {
       features,
       properties: { year, source: 'historical-basemaps (GPL-3.0)' },
     };
+    const patched = patchShandongNorthCoast(out.features);
+    if (patched > 0) console.log(`  [补丁] 山东半岛北岸海岸线修正：${patched} 处顶点`);
     const outPath = path.join(HISTORICAL_DIR, `regimes-${year}.json`);
     fs.writeFileSync(outPath, JSON.stringify(out));
     console.log(

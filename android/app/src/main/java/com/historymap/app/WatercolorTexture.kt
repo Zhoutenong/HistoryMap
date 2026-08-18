@@ -1,6 +1,8 @@
 package com.historymap.app
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.BlendMode
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -13,6 +15,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
+import android.util.Log
 import java.util.Random
 import kotlin.math.max
 import kotlin.math.min
@@ -47,6 +50,70 @@ fun mapTextureSize(viewW: Int, density: Float, boxAspect: Float): Pair<Int, Int>
     return w to h
 }
 
+/**
+ * 水彩 worldBox：模型全体政权投影包围盒 + 6% 边距（与 Web 版 buildWatercolorCanvas、
+ * scripts/bake-overlay-textures.mjs 完全一致——贴图只提供像素，位置永远由它决定）。
+ */
+fun watercolorWorldBox(model: OverlayModel, projection: MercatorProjection): RectF? {
+    var x0 = Double.POSITIVE_INFINITY
+    var y0 = Double.POSITIVE_INFINITY
+    var x1 = Double.NEGATIVE_INFINITY
+    var y1 = Double.NEGATIVE_INFINITY
+    for (regime in model.regimes) {
+        for (ring in regime.rings) {
+            for (p in ring) {
+                val xy = projection.project(p)
+                if (xy[0] < x0) x0 = xy[0].toDouble()
+                if (xy[0] > x1) x1 = xy[0].toDouble()
+                if (xy[1] < y0) y0 = xy[1].toDouble()
+                if (xy[1] > y1) y1 = xy[1].toDouble()
+            }
+        }
+    }
+    if (!(x0.isFinite() && y0.isFinite() && x1.isFinite() && y1.isFinite()) || x1 <= x0 || y1 <= y0) return null
+    val padX = (x1 - x0) * 0.06
+    val padY = (y1 - y0) * 0.06
+    return RectF((x0 - padX).toFloat(), (y0 - padY).toFloat(), (x1 + padX).toFloat(), (y1 + padY).toFloat())
+}
+
+/**
+ * 资源贴图加载器（烘焙优先策略）：从 assets 读取预生成的疆域水彩贴图
+ * （scripts/bake-overlay-textures.mjs 产出，Web / Android 共用同一份，
+ * 由 prepare-android.mjs 同步）。任何失败（无 periodId / 缺 manifest / 缺文件 /
+ * 解码失败）返回 null，调用方回退程序化 WatercolorBuilder。
+ */
+object BakedWatercolorLoader {
+    @Volatile private var manifest: org.json.JSONObject? = null
+
+    private fun manifestJson(context: Context): org.json.JSONObject? {
+        manifest?.let { return it }
+        val parsed = try {
+            val bytes = context.assets.open("web/textures/overlay/manifest.json").use { it.readBytes() }
+            org.json.JSONObject(String(bytes, Charsets.UTF_8))
+        } catch (_: Exception) {
+            null
+        }
+        manifest = parsed
+        return parsed
+    }
+
+    fun load(context: Context, model: OverlayModel, projection: MercatorProjection): WatercolorTexture? {
+        val periodId = model.periodId ?: return null
+        val m = manifestJson(context) ?: return null
+        val file = m.optJSONObject("byPeriod")?.optString(periodId, "") ?: return null
+        if (file.isEmpty()) return null
+        val worldBox = watercolorWorldBox(model, projection) ?: return null
+        val bytes = try {
+            context.assets.open("web/textures/overlay/$file").use { it.readBytes() }
+        } catch (_: Exception) {
+            return null
+        }
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        Log.d("HistoryMap", "baked watercolor: $file ${bmp.width}x${bmp.height} (period=$periodId)")
+        return WatercolorTexture(bmp, worldBox)
+    }
+}
+
 object WatercolorBuilder {
 
     /**
@@ -61,27 +128,11 @@ object WatercolorBuilder {
         val m = MapTokens.MapParams
 
         // 1. 世界坐标包围盒（+6% 边距，水彩晕染会超出多边形）
-        var x0 = Double.POSITIVE_INFINITY
-        var y0 = Double.POSITIVE_INFINITY
-        var x1 = Double.NEGATIVE_INFINITY
-        var y1 = Double.NEGATIVE_INFINITY
-        for (regime in model.regimes) {
-            for (ring in regime.rings) {
-                for (p in ring) {
-                    val xy = projection.project(p)
-                    if (xy[0] < x0) x0 = xy[0].toDouble()
-                    if (xy[0] > x1) x1 = xy[0].toDouble()
-                    if (xy[1] < y0) y0 = xy[1].toDouble()
-                    if (xy[1] > y1) y1 = xy[1].toDouble()
-                }
-            }
-        }
-        if (!(x0.isFinite() && y0.isFinite() && x1.isFinite() && y1.isFinite()) || x1 <= x0 || y1 <= y0) return null
-        val padX = (x1 - x0) * 0.06
-        val padY = (y1 - y0) * 0.06
-        x0 -= padX; x1 += padX
-        y0 -= padY; y1 += padY
-        val worldBox = RectF(x0.toFloat(), y0.toFloat(), x1.toFloat(), y1.toFloat())
+        val worldBox = watercolorWorldBox(model, projection) ?: return null
+        val x0 = worldBox.left.toDouble()
+        val x1 = worldBox.right.toDouble()
+        val y0 = worldBox.top.toDouble()
+        val y1 = worldBox.bottom.toDouble()
 
         // 2. 纹理尺寸（统一计算，与山水纹理同规则）
         val (W, H) = mapTextureSize(viewW, density, ((y1 - y0) / (x1 - x0)).toFloat())
@@ -127,6 +178,13 @@ object WatercolorBuilder {
             pathEffect = android.graphics.DashPathEffect(
                 floatArrayOf(max(6f, W / 240f), max(5f, W / 320f)), 0f,
             )
+        }
+        // 边缘积色（水彩渗化 pooling）：clip 内沿边界加深的柔化描边
+        val poolingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = m.WATERCOLOR_POOLING_WIDTH
+            strokeJoin = Paint.Join.ROUND
+            maskFilter = BlurMaskFilter(m.WATERCOLOR_POOLING_BLUR, BlurMaskFilter.Blur.NORMAL)
         }
         val mottlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -176,23 +234,53 @@ object WatercolorBuilder {
             canvas.drawPath(path, bodyPaint)
             bodyPaint.xfermode = null
 
-            // 4c. 水彩斑驳：clip 组合路径内撒低透明径向色斑（孔洞不撒）
+            // 4b2. 边缘积色：clip 到政权内画加深描边，只留内侧柔化晕（水彩渗化 pooling）
+            canvas.save()
+            canvas.clipPath(path)
+            poolingPaint.color = Color.argb(
+                (MapTokens.MapParams.WATERCOLOR_POOLING_ALPHA * opacity).toInt(),
+                (tint[0] * m.WATERCOLOR_POOLING_DARK).toInt().coerceIn(0, 255),
+                (tint[1] * m.WATERCOLOR_POOLING_DARK).toInt().coerceIn(0, 255),
+                (tint[2] * m.WATERCOLOR_POOLING_DARK).toInt().coerceIn(0, 255),
+            )
+            canvas.drawPath(path, poolingPaint)
+            canvas.restore()
+
+            // 4c. 水彩斑驳：clip 组合路径内撒径向色斑（孔洞不撒）；
+            // 明/暗双 variant（明 = tint 向纸色混、暗 = tint 加深），呈现浓淡叠染
             val bounds = RectF()
             path.computeBounds(bounds, true)
             canvas.save()
             canvas.clipPath(path)
+            val paper = MapTokens.Colors.PAPER_MAP
+            val paperR = (paper.red * 255).toInt()
+            val paperG = (paper.green * 255).toInt()
+            val paperB = (paper.blue * 255).toInt()
             val blobCount = (m.WATERCOLOR_MOTTLE_COUNT_MIN + rng.nextInt(m.WATERCOLOR_MOTTLE_COUNT_RANGE)) *
                 if (rawOpacity >= 0.36f) 2 else 1 // 主政权斑驳更丰富
             for (k in 0 until blobCount) {
                 val cx = bounds.left + rng.nextFloat() * bounds.width()
                 val cy = bounds.top + rng.nextFloat() * bounds.height()
                 val r = m.WATERCOLOR_MOTTLE_RADIUS_BASE + rng.nextFloat() * m.WATERCOLOR_MOTTLE_RADIUS_RANGE
+                val (mr, mg, mb) = if (rng.nextBoolean()) {
+                    Triple(
+                        (tint[0] + (paperR - tint[0]) * m.WATERCOLOR_MOTTLE_LIGHT_MIX).toInt(),
+                        (tint[1] + (paperG - tint[1]) * m.WATERCOLOR_MOTTLE_LIGHT_MIX).toInt(),
+                        (tint[2] + (paperB - tint[2]) * m.WATERCOLOR_MOTTLE_LIGHT_MIX).toInt(),
+                    )
+                } else {
+                    Triple(
+                        (tint[0] * m.WATERCOLOR_POOLING_DARK).toInt(),
+                        (tint[1] * m.WATERCOLOR_POOLING_DARK).toInt(),
+                        (tint[2] * m.WATERCOLOR_POOLING_DARK).toInt(),
+                    )
+                }
                 val g = RadialGradient(
                     cx, cy, r,
                     intArrayOf(
                         Color.argb(
                             (mottleMinF + rng.nextFloat() * (mottleMaxF - mottleMinF)).times(255).toInt(),
-                            tint[0], tint[1], tint[2],
+                            mr.coerceIn(0, 255), mg.coerceIn(0, 255), mb.coerceIn(0, 255),
                         ),
                         0,
                     ),
@@ -217,14 +305,19 @@ object WatercolorBuilder {
         }
 
         // 4e. 州府边界（元丰九域志基准，Voronoi 近似面）：仅墨色细描边，不填充。
-        // 对齐 Web 版 buildPrefectureCanvas（rgba(58,52,40,0.36)，1.1px）；画在政权色之上。
+        // 干笔虚线 + 极低 alpha：大色块内不被读作数据网格，仅作隐约肌理（放大细看可辨）。
         if (model.prefectures.isNotEmpty()) {
             val prefPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 isAntiAlias = true
                 style = Paint.Style.STROKE
-                strokeWidth = max(1f, W / 1000f) // ~1.1px@1024 宽，随纹理缩放
+                strokeWidth = max(1f, W / m.PREFECTURE_STROKE_WIDTH_DIV)
                 strokeJoin = Paint.Join.ROUND
-                color = Color.argb(92, INK_RGB[0], INK_RGB[1], INK_RGB[2]) // 0.36 alpha
+                pathEffect = android.graphics.DashPathEffect(
+                    floatArrayOf(max(5f, W / 200f), max(7f, W / 140f)), 0f,
+                )
+                color = Color.argb(
+                    m.PREFECTURE_STROKE_ALPHA, INK_RGB[0], INK_RGB[1], INK_RGB[2],
+                )
             }
             for (pref in model.prefectures) {
                 val path = Path()
@@ -247,11 +340,7 @@ object WatercolorBuilder {
             }
         }
 
-        // 4f. 暖色罩：soft-light 低透明暖褐罩层（只作用于已有 alpha 区域，避免矩形脏块）
-        val warm = MapTokens.Colors.WARM_WASH
-        softLightFill(canvas, Color.argb(m.WARM_WASH_ALPHA, (warm.red * 255).toInt(), (warm.green * 255).toInt(), (warm.blue * 255).toInt()))
-
-        // 4g. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）
+        // 4f. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）
         canvas.drawBitmap(noiseTile, null, RectF(0f, 0f, W.toFloat(), H.toFloat()), Paint().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 blendMode = BlendMode.SOFT_LIGHT
@@ -264,27 +353,12 @@ object WatercolorBuilder {
     }
 
     /**
-     * soft-light 混合（暖色罩）：API 29+ 用 BlendMode（PorterDuff.Mode.SOFT_LIGHT
-     * 已在 compileSdk 34 移除），旧设备用 OVERLAY 近似。
-     */
-    private fun softLightFill(canvas: Canvas, color: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            canvas.drawColor(color, BlendMode.SRC_ATOP) // 只作用在已有 alpha 区域
-        } else {
-            canvas.drawColor(color, PorterDuff.Mode.SRC_ATOP)
-        }
-    }
-
-    /**
-     * 政权色 → 水彩颜料色：降饱和、压明度（对齐 Web 版 TerritoryOverlay.js 的
-     * watercolorTint：HSL 亮度钳制 [0.32, 0.46]、饱和度保留 78%）。
-     *
-     * P5-修复（真机截图对照 prompt_1）：旧实现把 HSL 亮度换算成 HSV 的 V 再钳到
-     * [0.38, 0.60]，暗色政权（宋 #b03a2e）的 V 被压到 0.38，比 Web 版 tint
-     * 深 20%+，且饱和度换算路径不同导致灰感；现直接按 Web 公式输出，
-     * 宋 (176,58,46) → (133,57,49)，与参考图领土色一致。
+     * 政权色 → 水彩颜料色：轻微降饱和/压明度。系数经 [MapTokens.MapParams]
+     * token 化（效果图对照：旧 Web 版 0.78/0.82+[0.32,0.46] 把六政权色全部
+     * 压成土色不可分；放宽后保留各自色相——宋红/辽灰蓝/西夏土黄/大理灰绿/吐蕃褐）。
      */
     private fun watercolorTint(rgba: FloatArray): IntArray {
+        val mp = MapTokens.MapParams
         val r = rgba[0]; val g = rgba[1]; val b = rgba[2]
         val maxC = maxOf(r, g, b)
         val minC = minOf(r, g, b)
@@ -301,8 +375,8 @@ object WatercolorBuilder {
             }
             h /= 6f
         }
-        val ns = max(0f, s * 0.78f)
-        val nl = min(0.46f, max(0.32f, l * 0.82f))
+        val ns = max(0f, s * mp.WATERCOLOR_TINT_SAT)
+        val nl = min(mp.WATERCOLOR_TINT_LUM_MAX, max(mp.WATERCOLOR_TINT_LUM_MIN, l * mp.WATERCOLOR_TINT_LUM))
         // HSL → RGB（标准公式，与 Web 版 THREE.Color.setHSL 一致）
         val c = (1f - kotlin.math.abs(2f * nl - 1f)) * ns
         val hp = h * 6f

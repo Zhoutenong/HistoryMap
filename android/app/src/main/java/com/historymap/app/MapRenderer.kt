@@ -23,8 +23,11 @@ import javax.microedition.khronos.opengles.GL10
  * 绘制内容（渲染顺序）：
  * 1. 宣纸底全屏 quad：paper-texture.jpg + paper-grain.png 叠加，
  *    片元着色器加中心提亮 + 暖褐四边暗角（对齐参考图宣纸氛围）
- * 2. 水彩疆域纹理 quad（政权色块 + 边界渗墨，含 fillOpacity 与孔洞处理）
- * 3. 山水纹理 quad（河流宽窄水痕 + 山脉淡墨笔触，低对比辅助层）
+ * 2. 山脉纹理 quad（淡墨笔触，低对比辅助层）
+ * 3. 水彩疆域：先画接触阴影 pass（贴图 alpha 勾形、右下偏移、统一左上光向），
+ *    再画水彩纹理 quad（政权色块 + 边界渗墨，含 fillOpacity 与孔洞处理）
+ * 4. 河道带几何（RiverRibbons：变宽三角带 + 着色器内水痕/主体/脊线三层、
+ *    两岸羽化与顺流微动画；借鉴 HoMM3 有机河道的「预绘衔接」思路）
  *
  * 线程模型：setOverlay() 做数据解析与 CPU 纹理生成（不调用 GL API），
  * 可从 UI 线程直接调用；GL 线程每帧读取 @Volatile 引用并懒上传纹理。
@@ -78,26 +81,48 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
     /** 上次加载的水彩/山水缓存 key（GL surface 重建后恢复用） */
     @Volatile private var lastWatercolorKey: String? = null
-    @Volatile private var lastTerrainKey: String? = null
+    @Volatile private var lastMountainKey: String? = null
 
     /** 首次标定的世界包围盒（相机 framing 基准） */
     private var worldBounds: RectF? = null
 
+    /** 当前水彩纹理的世界包围盒（worldToScreen 的 y 镜像轴基准；政权-only + 6% pad） */
+    @Volatile private var textureWorldBox: RectF? = null
+
+    /** 中原锚点包围盒（宋政权域；相机水平锚定用，无 pad） */
+    @Volatile private var anchorBounds: RectF? = null
+
     // —— GL 资源 ——
     private var bgProgram = 0    // 全屏 NDC quad：宣纸纹理 + 颗粒 + 暗角
-    private var texProgram = 0   // 世界坐标 quad + UV：水彩/山水纹理采样
+    private var texProgram = 0   // 世界坐标 quad + UV：水彩/山水纹理采样（含阴影 pass）
+    private var riverProgram = 0 // 河道带几何：三层河带 + 羽化 + 顺流微动画
     private var quadBuffer: FloatBuffer? = null // 全屏 NDC quad
 
     // uniform / attribute 位置（onSurfaceCreated 缓存，避免每帧查询）
     private var uPaperTex = -1
     private var uGrainTex = -1
     private var uResolution = -1
+    private var uVignetteCenter = -1
     private var uViewProjTex = -1
     private var aPosBg = -1
     private var aPosTex = -1
     private var aUvTex = -1
     private var uTex = -1
     private var uTexAlpha = -1 // 纹理整体 alpha（交叉淡入用：旧纹理淡出/新纹理淡入）
+    private var uTexOffset = -1 // 纹理 quad 世界偏移（阴影 pass 用；常规绘制置 0）
+    private var uTexShadow = -1 // 1=阴影 pass（贴图 alpha 勾形、墨色平涂）
+
+    // 河道带 uniform / attribute 位置
+    private var uViewProjRiver = -1
+    private var aPosRiver = -1
+    private var aSideRiver = -1
+    private var aSRiver = -1
+    private var uRiverWash = -1
+    private var uRiverBody = -1
+    private var uRiverSpine = -1
+    private var uRiverFracs = -1
+    private var uRiverFlow = -1
+    private var uRiverAlpha = -1
 
     // 宣纸背景纹理（assets/web/paper-texture.jpg + paper-grain.png，一次性上传）
     private var paperTexId = 0
@@ -106,13 +131,16 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     // —— 图层数据（UI 线程 setOverlay 写入 / GL 线程 onDrawFrame 读取）——
     @Volatile private var projection: MercatorProjection? = null
     @Volatile private var pendingWatercolor: PendingTexture? = null
-    @Volatile private var pendingTerrain: PendingTexture? = null
+    @Volatile private var pendingMountains: PendingTexture? = null
 
-    /** 已上传的纹理（GL 线程） */
+    /** 河道带几何（setOverlay 构建；世界 y 已按纹理 worldBox 镜像，与贴图对齐） */
+    @Volatile private var riverRibbons: RiverRibbons? = null
+
+    /** 已上传的纹理（GL 线程）；图层序：山脉（水彩下）→ 水彩（含阴影）→ 河道带 */
     private var watercolorTexId = 0
     private var watercolorQuad: FloatBuffer? = null
-    private var terrainTexId = 0
-    private var terrainQuad: FloatBuffer? = null
+    private var mountainTexId = 0
+    private var mountainQuad: FloatBuffer? = null
 
     /**
      * 纹理交叉淡入（时期切换：旧纹理保留并淡出，新纹理淡入，避免硬切「啪」一下）。
@@ -121,8 +149,8 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
      */
     private var prevWatercolorTexId = 0
     private var prevWatercolorQuad: FloatBuffer? = null
-    private var prevTerrainTexId = 0
-    private var prevTerrainQuad: FloatBuffer? = null
+    private var prevMountainTexId = 0
+    private var prevMountainQuad: FloatBuffer? = null
     /** 交叉淡入起始纳秒；0 表示无进行中的过渡 */
     private var crossfadeStartNanos = 0L
     private val crossfadeDurationMs = 350L
@@ -149,38 +177,54 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
         bgProgram = createProgram(VERT_NDC, buildFragBg())
         texProgram = createProgram(VERT_TEX, buildFragTex())
+        riverProgram = createProgram(VERT_RIVER, FRAG_RIVER)
         uPaperTex = GLES20.glGetUniformLocation(bgProgram, "uPaper")
         uGrainTex = GLES20.glGetUniformLocation(bgProgram, "uGrain")
         uResolution = GLES20.glGetUniformLocation(bgProgram, "uResolution")
+        uVignetteCenter = GLES20.glGetUniformLocation(bgProgram, "uCenter")
         uViewProjTex = GLES20.glGetUniformLocation(texProgram, "uViewProj")
         aPosBg = GLES20.glGetAttribLocation(bgProgram, "aPos")
         aPosTex = GLES20.glGetAttribLocation(texProgram, "aPos")
         aUvTex = GLES20.glGetAttribLocation(texProgram, "aUv")
         uTex = GLES20.glGetUniformLocation(texProgram, "uTex")
         uTexAlpha = GLES20.glGetUniformLocation(texProgram, "uAlpha")
+        uTexOffset = GLES20.glGetUniformLocation(texProgram, "uOffset")
+        uTexShadow = GLES20.glGetUniformLocation(texProgram, "uShadow")
+        uViewProjRiver = GLES20.glGetUniformLocation(riverProgram, "uViewProj")
+        aPosRiver = GLES20.glGetAttribLocation(riverProgram, "aPos")
+        aSideRiver = GLES20.glGetAttribLocation(riverProgram, "aSide")
+        aSRiver = GLES20.glGetAttribLocation(riverProgram, "aS")
+        uRiverWash = GLES20.glGetUniformLocation(riverProgram, "uWash")
+        uRiverBody = GLES20.glGetUniformLocation(riverProgram, "uBody")
+        uRiverSpine = GLES20.glGetUniformLocation(riverProgram, "uSpine")
+        uRiverFracs = GLES20.glGetUniformLocation(riverProgram, "uFracs")
+        uRiverFlow = GLES20.glGetUniformLocation(riverProgram, "uFlow")
+        uRiverAlpha = GLES20.glGetUniformLocation(riverProgram, "uAlpha")
 
         quadBuffer = floatBufferOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
 
-        // 宣纸背景纹理（assets 由 prepare-android.mjs 同步，缺失时退化为纯色）
+        // 宣纸背景纹理（assets 由 prepare-android.mjs 同步，缺失时退化为纯色）。
+        // grain 用 REPEAT：shader 以 uv×1.2 采样（>1 越界），CLAMP_TO_EDGE 会把
+        // 边缘一行噪点拉伸成顶部/右侧 17% 的横向色阶条带；POT 纹理方可 REPEAT。
         paperTexId = uploadAssetTexture("web/paper-texture.jpg")
-        grainTexId = uploadAssetTexture("web/paper-grain.png")
+        grainTexId = uploadAssetTexture("web/paper-grain.png", wrapRepeat = true)
 
         // GL context 重建（退后台再切回）：旧纹理 ID 已失效，需从缓存重新挂 pending
         watercolorTexId = 0
         watercolorQuad = null
-        terrainTexId = 0
-        terrainQuad = null
+        mountainTexId = 0
+        mountainQuad = null
         // 交叉淡入的 prev 纹理 ID 同样失效，重置（避免引用已失效纹理）
         prevWatercolorTexId = 0
         prevWatercolorQuad = null
-        prevTerrainTexId = 0
-        prevTerrainQuad = null
+        prevMountainTexId = 0
+        prevMountainQuad = null
         crossfadeStartNanos = 0L
         restoreCachedTexture(lastWatercolorKey) { tex, quad ->
             pendingWatercolor = PendingTexture(tex, quad)
         }
-        restoreCachedTexture(lastTerrainKey) { tex, quad ->
-            pendingTerrain = PendingTexture(tex, quad)
+        restoreCachedTexture(lastMountainKey) { tex, quad ->
+            pendingMountains = PendingTexture(tex, quad)
         }
     }
 
@@ -239,29 +283,40 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         val t = crossfadeAlpha()
         val crossfading = crossfadeStartNanos != 0L && t < 1f
 
-        // 4. 水彩疆域：过渡中先画旧（1-t）再画新（t）；稳定后只画新
+        // 4. 山脉层（design 图层序 5：画在水彩之下）
+        if (showRivers) {
+            if (crossfading && prevMountainTexId != 0 && prevMountainQuad != null) {
+                drawTextureQuad(prevMountainTexId, prevMountainQuad!!, 1f - t)
+            }
+            val mQuad = mountainQuad
+            if (mountainTexId != 0 && mQuad != null) {
+                drawTextureQuad(mountainTexId, mQuad, if (crossfading) t else 1f)
+            }
+        }
+        // 5. 水彩疆域（design 图层序 6-10）：每张先画接触阴影 pass（右下偏移、
+        //    贴图 alpha 勾形——政权从纸上「浮起」一层）再画本体；
+        //    过渡中先画旧（1-t）再画新（t），稳定后只画新
         if (showTerritory && showWatercolor) {
             if (crossfading && prevWatercolorTexId != 0 && prevWatercolorQuad != null) {
+                drawTextureQuad(prevWatercolorTexId, prevWatercolorQuad!!, 1f - t, shadow = true)
                 drawTextureQuad(prevWatercolorTexId, prevWatercolorQuad!!, 1f - t)
             }
             val wcQuad = watercolorQuad
             if (watercolorTexId != 0 && wcQuad != null) {
-                drawTextureQuad(watercolorTexId, wcQuad, if (crossfading) t else 1f)
+                val a = if (crossfading) t else 1f
+                drawTextureQuad(watercolorTexId, wcQuad, a, shadow = true)
+                drawTextureQuad(watercolorTexId, wcQuad, a)
             }
         }
-        // 5. 山水纹理（河流水痕 + 山脉笔触）
+        // 6. 河道带（design 图层序 11-13：画在水彩之上；变宽/羽化/顺流微动画）
         if (showRivers) {
-            if (crossfading && prevTerrainTexId != 0 && prevTerrainQuad != null) {
-                drawTextureQuad(prevTerrainTexId, prevTerrainQuad!!, 1f - t)
-            }
-            val terrQuad = terrainQuad
-            if (terrainTexId != 0 && terrQuad != null) {
-                drawTextureQuad(terrainTexId, terrQuad, if (crossfading) t else 1f)
-            }
+            riverRibbons?.let { drawRiverRibbons(it) }
         }
 
-        // 6. 交叉淡入完成：回收旧纹理（prev），结束过渡
-        if (!crossfading && (prevWatercolorTexId != 0 || prevTerrainTexId != 0)) finishCrossfade()
+        // 7. 交叉淡入完成：回收旧纹理（prev），结束过渡
+        if (!crossfading &&
+            (prevWatercolorTexId != 0 || prevMountainTexId != 0)
+        ) finishCrossfade()
     }
 
     /**
@@ -286,22 +341,27 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
     }
 
-    /** 上传待处理山水纹理（逻辑同 [uploadPendingWatercolor]） */
+    /** 上传待处理山水纹理（山脉槽；河流已改为几何渲染，不再走纹理） */
     private fun uploadPendingTerrain() {
-        val pending = pendingTerrain ?: return
-        pendingTerrain = null
+        uploadPendingMountains()
+    }
+
+    /** 上传待处理山脉纹理（逻辑同 [uploadPendingWatercolor]） */
+    private fun uploadPendingMountains() {
+        val pending = pendingMountains ?: return
+        pendingMountains = null
         val quad = pending.quad
-        if (terrainTexId != 0 && terrainQuad != null) {
-            if (prevTerrainTexId != 0) texturesToDelete.add(prevTerrainTexId)
-            prevTerrainTexId = terrainTexId
-            prevTerrainQuad = terrainQuad
+        if (mountainTexId != 0 && mountainQuad != null) {
+            if (prevMountainTexId != 0) texturesToDelete.add(prevMountainTexId)
+            prevMountainTexId = mountainTexId
+            prevMountainQuad = mountainQuad
             crossfadeStartNanos = System.nanoTime()
-        } else if (terrainTexId != 0) {
-            texturesToDelete.add(terrainTexId)
+        } else if (mountainTexId != 0) {
+            texturesToDelete.add(mountainTexId)
         }
         uploadTexture(pending.texture, quad) { id ->
-            terrainTexId = id
-            terrainQuad = quad
+            mountainTexId = id
+            mountainQuad = quad
         }
     }
 
@@ -315,11 +375,11 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     /** 结束交叉淡入：把 prev 纹理排入删除队列并清空过渡状态 */
     private fun finishCrossfade() {
         if (prevWatercolorTexId != 0) texturesToDelete.add(prevWatercolorTexId)
-        if (prevTerrainTexId != 0) texturesToDelete.add(prevTerrainTexId)
+        if (prevMountainTexId != 0) texturesToDelete.add(prevMountainTexId)
         prevWatercolorTexId = 0
         prevWatercolorQuad = null
-        prevTerrainTexId = 0
-        prevTerrainQuad = null
+        prevMountainTexId = 0
+        prevMountainQuad = null
         crossfadeStartNanos = 0L
     }
 
@@ -345,11 +405,11 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 旧 GL 纹理 ID 不能在 UI 线程 glDeleteTextures，入队由 GL 线程删除，避免泄漏。
         if (calibrate) {
             if (watercolorTexId != 0) texturesToDelete.add(watercolorTexId)
-            if (terrainTexId != 0) texturesToDelete.add(terrainTexId)
+            if (mountainTexId != 0) texturesToDelete.add(mountainTexId)
             watercolorTexId = 0
             watercolorQuad = null
-            terrainTexId = 0
-            terrainQuad = null
+            mountainTexId = 0
+            mountainQuad = null
         }
         val p = if (calibrate || projection == null) {
             MercatorProjection.fit(OverlayParser.allPoints(model)).also { projection = it }
@@ -363,7 +423,18 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 图例配色按 entity 去重：同一政权的多个 feature（按省份拆分）只保留一行
         regimeColors = model.regimes.map { it.entity to it.color }.distinctBy { it.first }
         // 世界包围盒（水彩/山水共用）：由模型全体要素计算
-        worldBounds = boundsOf(model, p)
+        val bounds = boundsOf(model, p)
+        worldBounds = bounds
+        // 中原锚点（宋政权域包围盒）：resetCamera 水平锚定用
+        anchorBounds = anchorBoundsOf(model, p)
+
+        // 河道带几何：与水彩贴图共用 watercolorWorldBox 的镜像轴（推导见 worldToScreen），
+        // 保证河与世界坐标锚点（标签/事件）对齐；3 条河 ×~40 平滑点，主线程亚毫秒级
+        riverRibbons = if (model.rivers.isEmpty()) null else RiverRibbonBuilder.build(
+            model.rivers, p,
+            watercolorWorldBox(model, p) ?: bounds,
+            viewportW, context.resources.displayMetrics.density,
+        )
 
         val density = context.resources.displayMetrics.density
         // 首次/朝代切换（calibrate）：数据就绪后立即取全图视野，
@@ -378,33 +449,45 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     /**
      * 在后台线程生成水彩/山水纹理（P3：纯 CPU，不碰 GL 与 Compose 状态，
      * 由调用方放到 Dispatchers.IO，避免阻塞主线程）。结果经 [setTextures] 挂接。
+     * 山水只剩山脉层入 LRU（河流改为几何渲染 RiverRibbons，不走纹理）。
      */
     fun buildTextures(
         model: OverlayModel,
         cacheKey: String?,
         density: Float,
-    ): Pair<WatercolorTexture?, WatercolorTexture?> {
+    ): Pair<WatercolorTexture?, TerrainLayers?> {
         val p = projection ?: MercatorProjection.fit(OverlayParser.allPoints(model))
         val key = if (cacheKey == null) null else "$cacheKey|${viewportW}x${viewportH}|$density"
         lastWatercolorKey = key
-        // 水彩疆域：CPU 离屏生成（羽化 + 斑驳 + 边界 + fillOpacity），GL 上传延后
-        val watercolor = buildCachedWatercolor(key) { WatercolorBuilder.build(model, p, viewportW, viewportH, density) }
-        // 山水纹理（河流水痕 + 山脉笔触）：与水彩同包围盒，保证叠加对齐
-        val terrainKey = "$key|terrain"
-        lastTerrainKey = terrainKey
-        val terrain = buildCachedWatercolor(terrainKey) {
-            TerrainTextureBuilder.build(model, p, watercolor?.worldBox ?: boundsOf(model, p), viewportW, viewportH, density)
+        // 水彩疆域：资源贴图优先（assets 烘焙贴图，双端共用）；缺失/失败回退
+        // 程序化离屏生成（羽化 + 斑驳 + 边界 + fillOpacity）。GL 上传延后。
+        val watercolor = buildCachedWatercolor(key) {
+            BakedWatercolorLoader.load(context, model, p)
+                ?: WatercolorBuilder.build(model, p, viewportW, viewportH, density)
         }
+        // 山脉层：与水彩同包围盒，保证叠加对齐；河流槽恒空（几何渲染）
+        val box = watercolor?.worldBox ?: boundsOf(model, p)
+        val mountainsKey = key?.let { "$it|terrain|mountains" }
+        lastMountainKey = mountainsKey
+        val terrain = peekCache(mountainsKey)?.let { TerrainLayers(it, null) }
+            ?: TerrainTextureBuilder.build(
+                // 河流由 RiverRibbonBuilder 几何渲染，纹理侧跳过（省 CPU 与显存）
+                model.copy(rivers = emptyList()), p, box, viewportW, viewportH, density,
+            ).also { layers -> putCache(mountainsKey, layers.mountains) }
         return watercolor to terrain
     }
 
     /** 挂接后台生成的纹理（主线程调用；GL 线程懒上传） */
-    fun setTextures(watercolor: WatercolorTexture?, terrain: WatercolorTexture?) {
+    fun setTextures(watercolor: WatercolorTexture?, terrain: TerrainLayers?) {
         // 替换前若旧 pending 仍存在（尚未上传）且非缓存，回收其 bitmap，避免快速切换泄漏
         recyclePendingIfNotCached(pendingWatercolor)
-        recyclePendingIfNotCached(pendingTerrain)
-        if (watercolor != null) pendingWatercolor = PendingTexture(watercolor, buildTexQuad(watercolor.worldBox))
-        if (terrain != null) pendingTerrain = PendingTexture(terrain, buildTexQuad(terrain.worldBox))
+        recyclePendingIfNotCached(pendingMountains)
+        // worldToScreen 的 y 镜像轴基准（水彩/山水共用同一 worldBox）
+        if (watercolor != null) {
+            textureWorldBox = watercolor.worldBox
+            pendingWatercolor = PendingTexture(watercolor, buildTexQuad(watercolor.worldBox))
+        }
+        terrain?.mountains?.let { pendingMountains = PendingTexture(it, buildTexQuad(it.worldBox)) }
     }
 
     /** 非缓存 pending 纹理被覆盖前回收 bitmap（缓存副本由 LRU 统一回收） */
@@ -475,6 +558,23 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         return RectF(x0 - padX, y0 - padY, x1 + padX, y1 + padY)
     }
 
+    /** 宋政权域包围盒（中原锚点；无匹配政权返回 null） */
+    private fun anchorBoundsOf(model: OverlayModel, p: MercatorProjection): RectF? {
+        var x0 = Float.POSITIVE_INFINITY
+        var y0 = Float.POSITIVE_INFINITY
+        var x1 = Float.NEGATIVE_INFINITY
+        var y1 = Float.NEGATIVE_INFINITY
+        for (r in model.regimes) {
+            if (!r.entity.contains("宋")) continue
+            for (ring in r.rings) for (pt in ring) {
+                val xy = p.project(pt)
+                x0 = minOf(x0, xy[0]); x1 = maxOf(x1, xy[0])
+                y0 = minOf(y0, xy[1]); y1 = maxOf(y1, xy[1])
+            }
+        }
+        return if (x0.isFinite() && y0.isFinite() && x1 > x0 && y1 > y0) RectF(x0, y0, x1, y1) else null
+    }
+
     private fun buildCachedWatercolor(key: String?, build: () -> WatercolorTexture?): WatercolorTexture? {
         if (key == null) return build()
         synchronized(watercolorCache) {
@@ -486,6 +586,22 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             watercolorCache[key] = WatercolorCacheEntry(tex, buildTexQuad(tex.worldBox), key)
         }
         return tex
+    }
+
+    /** 查缓存（命中返回纹理；未命中/无 key 返回 null） */
+    private fun peekCache(key: String?): WatercolorTexture? {
+        if (key == null) return null
+        return synchronized(watercolorCache) { watercolorCache[key]?.texture }
+    }
+
+    /** 纹理入缓存（键冲突时保留既有项，避免覆盖 LRU 访问序） */
+    private fun putCache(key: String?, tex: WatercolorTexture?) {
+        if (key == null || tex == null) return
+        synchronized(watercolorCache) {
+            if (watercolorCache[key] == null) {
+                watercolorCache[key] = WatercolorCacheEntry(tex, buildTexQuad(tex.worldBox), key)
+            }
+        }
     }
 
     private fun uploadTexture(tex: WatercolorTexture, quad: FloatBuffer, assignId: (Int) -> Unit) {
@@ -520,8 +636,8 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
     // ================= GL 绘制 =================
 
-    /** 上传 assets 位图为 GL 纹理（宣纸背景用，一次性） */
-    private fun uploadAssetTexture(assetPath: String): Int {
+    /** 上传 assets 位图为 GL 纹理（宣纸背景用，一次性）；wrapRepeat 仅 POT 纹理可用 */
+    private fun uploadAssetTexture(assetPath: String, wrapRepeat: Boolean = false): Int {
         return try {
             val bytes = context.assets.open(assetPath).use { it.readBytes() }
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return 0
@@ -530,8 +646,14 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0])
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S,
+                if (wrapRepeat) GLES20.GL_REPEAT else GLES20.GL_CLAMP_TO_EDGE,
+            )
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T,
+                if (wrapRepeat) GLES20.GL_REPEAT else GLES20.GL_CLAMP_TO_EDGE,
+            )
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
             bmp.recycle()
             ids[0]
@@ -544,6 +666,14 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private fun drawPaperBackground() {
         GLES20.glUseProgram(bgProgram)
         GLES20.glUniform2f(uResolution, viewportW.toFloat(), viewportH.toFloat())
+        // 暗角/提亮径向中心：竖屏 = 地图区中心（uv.y 自底向上，屏幕 y 分数需翻转）
+        val mp = MapTokens.MapParams
+        val centerV = if (viewportH >= viewportW) {
+            1f - (mp.CAMERA_MAP_AREA_TOP_FRAC + mp.CAMERA_MAP_AREA_BOTTOM_FRAC) / 2f
+        } else {
+            0.5f
+        }
+        GLES20.glUniform2f(uVignetteCenter, 0.5f, centerV)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, paperTexId)
         GLES20.glUniform1i(uPaperTex, 0)
@@ -559,11 +689,21 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
 
     /** 世界坐标纹理 quad 采样（水彩/山水共用；位置已缓存，避免每帧查询）。
-     *  @param alpha 整体透明度（交叉淡入：旧纹理淡出/新纹理淡入） */
-    private fun drawTextureQuad(texId: Int, quad: FloatBuffer, alpha: Float = 1f) {
+     *  @param alpha 整体透明度（交叉淡入：旧纹理淡出/新纹理淡入）
+     *  @param shadow true=接触阴影 pass：贴图 alpha 勾形、墨色平涂、右下偏移
+     *                （统一左上 45° 光向，政权色块从宣纸上「浮起」；见 REGIME_SHADOW_* token） */
+    private fun drawTextureQuad(texId: Int, quad: FloatBuffer, alpha: Float = 1f, shadow: Boolean = false) {
         GLES20.glUseProgram(texProgram)
         GLES20.glUniformMatrix4fv(uViewProjTex, 1, false, buildViewProjMatrix(), 0)
         GLES20.glUniform1f(uTexAlpha, alpha)
+        GLES20.glUniform1f(uTexShadow, if (shadow) 1f else 0f)
+        if (shadow) {
+            // 世界 y 经镜像后向下为 -y（viewProj 的 NDC y 向上），影向屏幕右下 = (+d, -d)
+            val d = (worldBounds?.width() ?: 1000f) * MapTokens.MapParams.REGIME_SHADOW_OFFSET
+            GLES20.glUniform2f(uTexOffset, d, -d)
+        } else {
+            GLES20.glUniform2f(uTexOffset, 0f, 0f)
+        }
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texId)
         GLES20.glUniform1i(uTex, 0)
@@ -577,6 +717,55 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         GLES20.glDisableVertexAttribArray(aPosTex)
         GLES20.glDisableVertexAttribArray(aUvTex)
+    }
+
+    /**
+     * 河道带绘制：主流/支流各一组三角带，颜色与 alpha 用 design 河色 token，
+     * 片元按 |side| 合成 水痕→主体→脊线 三层（宽度比由 uFracs 给出）+ 两岸羽化，
+     * uFlow 驱动一段亮度沿河向下游缓慢移动（HoMM3 palette-cycling 式稀疏动画，
+     * 只让河「活」、不动整幅地图）。时间取模 1h 保证 float 精度。
+     */
+    private fun drawRiverRibbons(ribbons: RiverRibbons) {
+        val mp = MapTokens.MapParams
+        val washC = MapTokens.Colors.RIVER_WASH
+        val bodyC = MapTokens.Colors.RIVER_BODY
+        GLES20.glUseProgram(riverProgram)
+        GLES20.glUniformMatrix4fv(uViewProjRiver, 1, false, buildViewProjMatrix(), 0)
+        GLES20.glUniform1f(uRiverAlpha, 1f)
+        GLES20.glUniform3f(
+            uRiverFlow, mp.RIVER_FLOW_WAVE, mp.RIVER_FLOW_SPEED,
+            (System.nanoTime() / 1_000_000_000f) % 3600f,
+        )
+        GLES20.glEnableVertexAttribArray(aPosRiver)
+        GLES20.glEnableVertexAttribArray(aSideRiver)
+        GLES20.glEnableVertexAttribArray(aSRiver)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+        fun draw(meshes: List<RiverMesh>, fracs: FloatArray, majorRiver: Boolean) {
+            if (meshes.isEmpty()) return
+            GLES20.glUniform4f(uRiverWash, washC.red, washC.green, washC.blue,
+                (if (majorRiver) MapTokens.Alpha.MAJOR_RIVER_WASH else MapTokens.Alpha.MINOR_RIVER_WASH) / 255f)
+            GLES20.glUniform4f(uRiverBody, bodyC.red, bodyC.green, bodyC.blue,
+                (if (majorRiver) MapTokens.Alpha.MAJOR_RIVER_BODY else MapTokens.Alpha.MINOR_RIVER_BODY) / 255f)
+            GLES20.glUniform4f(uRiverSpine, bodyC.red, bodyC.green, bodyC.blue,
+                MapTokens.Alpha.MAJOR_RIVER_SPINE / 255f)
+            GLES20.glUniform4f(uRiverFracs, fracs[0], fracs[1], if (majorRiver) 1f else 0f, mp.RIVER_FLOW_AMP)
+            for (mesh in meshes) {
+                mesh.buffer.position(0)
+                GLES20.glVertexAttribPointer(aPosRiver, 2, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+                mesh.buffer.position(2)
+                GLES20.glVertexAttribPointer(aSideRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+                mesh.buffer.position(3)
+                GLES20.glVertexAttribPointer(aSRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, mesh.vertexCount)
+            }
+        }
+
+        draw(ribbons.major, ribbons.majorFracs, majorRiver = true)
+        draw(ribbons.minor, ribbons.minorFracs, majorRiver = false)
+        GLES20.glDisableVertexAttribArray(aPosRiver)
+        GLES20.glDisableVertexAttribArray(aSideRiver)
+        GLES20.glDisableVertexAttribArray(aSRiver)
     }
 
     /** 纹理 quad：世界坐标 4 角 + UV（x,y,u,v 交错） */
@@ -620,15 +809,15 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
 
     /**
-     * 回到全图视野：保证疆域包围盒两轴完整落入视口（含边距），兼顾横竖屏。
+     * 回到默认取景（对齐效果图 prompt_1：地图纵向充满顶栏与时间轴之间的地图区，
+     * 左右两侧适度裁切、水平锚定中原）。
      *
      * zoom 是放大率（越大看到的世界范围越大）：视口可见世界范围 =
-     * 宽 800×zoom×aspect、高 800×zoom，须 ≥ 包围盒/边距，故取两轴
-     * 所需 zoom 的较大者，另一轴自然留白（竖屏宽度受限、横屏高度受限）。
-     *
-     * 修复（P0-2）：旧实现 zW = viewportW/boxW 单位错误且取 min，竖屏时
-     * 地图横向被裁掉一半以上（P20 实测只显示中间 45%），南北边界被
-     * 顶栏/时间轴遮挡。现改为正确公式 + max 语义 + 每侧 5% 边距。
+     * 宽 800×zoom×aspect、高 800×zoom。竖屏先 contain-fit 到**地图区**
+     * （设计 token mapTop/mapBottom，而非整屏），再乘 [MapTokens.MapParams.CAMERA_FIT_BOOST]
+     * 放大——真实疆域投影后约 2:1 宽扁，contain 时地图呈横条带、上下留白大；
+     * 放大后纵向填满地图区、东西边缘政权（吐蕃西缘/金东缘）允许部分出屏。
+     * 横屏地图区即整屏，保持 contain 不裁切。
      */
     fun resetCamera() {
         val box = worldBounds
@@ -639,28 +828,51 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             Log.d("HistoryMap", "resetCamera(fallback) zoom=$zoom vp=${viewportW}x${viewportH}")
             return
         }
-        val pad = 0.90f // 每侧 5% 边距（评审要求左右 5%~8%、上下 6%）
-        val zW = (box.width() * viewportH) / (viewportW * 800f * pad)
-        val zH = box.height() / (800f * pad)
-        zoom = maxOf(zW, zH).coerceIn(0.25f, 24f)
-        cx = box.centerX()
-        cy = box.centerY()
-        Log.d("HistoryMap", "resetCamera zoom=$zoom cx=$cx cy=$cy vp=${viewportW}x${viewportH} box=${box}")
+        val m = MapTokens.MapParams
+        val portrait = viewportH >= viewportW
+        val areaTopFrac = if (portrait) m.CAMERA_MAP_AREA_TOP_FRAC else 0f
+        val areaBottomFrac = if (portrait) m.CAMERA_MAP_AREA_BOTTOM_FRAC else 1f
+        val areaH = viewportH * (areaBottomFrac - areaTopFrac)
+        val areaCenterY = viewportH * (areaTopFrac + areaBottomFrac) / 2f
+        // contain-fit 到地图区：宽度受整屏视口约束，高度受地图区约束
+        val zW = (box.width() * viewportH) / (viewportW * 800f)
+        val zH = (box.height() * viewportH) / (areaH * 800f)
+        val boost = if (portrait) m.CAMERA_FIT_BOOST else 1f
+        zoom = (maxOf(zW, zH) / boost).coerceIn(0.25f, 24f)
+        // 垂直：包围盒中心对齐地图区中心（世界 y 越大越靠南，相机南移则地图上移）
+        cy = box.centerY() - (areaCenterY - viewportH / 2f) * (2f * 400f * zoom) / viewportH
+        // 水平：锚定中原（宋域中心），钳制不出包围盒
+        val visibleW = 2f * 400f * zoom * aspect
+        val anchorX = anchorBounds?.centerX() ?: box.centerX()
+        cx = if (visibleW < box.width()) {
+            anchorX.coerceIn(box.left + visibleW / 2f, box.right - visibleW / 2f)
+        } else {
+            box.centerX()
+        }
+        Log.d("HistoryMap", "resetCamera zoom=$zoom cx=$cx cy=$cy vp=${viewportW}x${viewportH} box=$box anchor=${anchorBounds != null}")
     }
 
     /**
      * 世界坐标 → 屏幕像素（UI 线程用：Compose 标签/泡泡/区域层定位）。
      *
-     * 注意 y 翻转方向：Projection 输出为「纬度越高 y 越小」（与 Web 版 d3 反号的
-     * 历史遗留），但水彩纹理管线（bitmap + quad UV + NDC）双重翻转后内容北在上。
-     * 因此这里同样翻转 sy，使 Compose 层（标签/泡泡/政权屏幕域）与纹理内容精确对齐，
-     * 镜像轴恰为地图中心（resetCamera 的 cy = 包围盒中心）。
+     * y 方向推导（R6-对齐修复）：水彩纹理管线中 bitmap 行序相对世界 y 有一次翻转
+     * （toPx: py=(y1-wy)/…），quad UV 再映射——世界点 wy 的内容实际出现在
+     * 「镜像四边形坐标」yg = (texBox.top+texBox.bottom) - wy 处。代入相机变换后：
+     * sy = vpH/2 + (wy - (2·B' - cy)) / halfH · vpH/2，B' 为**纹理 worldBox 中心**。
+     * 旧实现直接用 cy 作中心，仅在 cy=B'（旧 resetCamera 的隐含前提）时对齐；
+     * 相机改为地图区取景后 cy≠B'，标签/泡泡整体纵向漂移数百像素。
+     * 另：纹理 worldBox 只含政权，而 worldBounds 含河流+山脉（天山北缘超出政权），
+     * 两者中心本就有差，统一改用纹理 worldBox 消除历史偏差。
      */
     fun worldToScreen(wx: Float, wy: Float): Pair<Float, Float> {
         val halfH = 400f * zoom
         val halfW = halfH * aspect
         val sx = (wx - cx) / halfW * (viewportW / 2f) + viewportW / 2f
-        val sy = viewportH / 2f + (wy - cy) / halfH * (viewportH / 2f)
+        // 镜像轴：纹理 worldBox 中心（无纹理时退回 worldBounds，再退回 cy）
+        val mirrorCenterY = textureWorldBox?.let { it.top + it.bottom - cy }
+            ?: worldBounds?.let { it.top + it.bottom - cy }
+            ?: cy
+        val sy = viewportH / 2f + (wy - mirrorCenterY) / halfH * (viewportH / 2f)
         return sx to sy
     }
 
@@ -719,8 +931,11 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
 
     companion object {
-        /** 水彩 CPU 缓存上限（对齐 Web 版 TerritoryOverlay 的 LRU：4 项） */
-        private const val MAX_CACHE = 4
+        /**
+         * 水彩 CPU 缓存上限。山水拆层后每时期 3 张纹理（水彩 + 山脉 + 河流），
+         * 6 项 ≈ 两个时期；低于此则 GL surface 重建（后台恢复）时山水层可能被淘汰。
+         */
+        private const val MAX_CACHE = 6
         private val watercolorCache = object : LinkedHashMap<String, WatercolorCacheEntry>(MAX_CACHE, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, WatercolorCacheEntry>?): Boolean {
                 if (size > MAX_CACHE) {
@@ -748,6 +963,7 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
          * 所有视觉参数来自 MapTokens.Map（design-tokens.json），只改 token 无需动 shader。
          * - uPaper：纸张纹理（白噪声纤维感，sample 后乘暖色；缺失时 hasPaper=0 退化为纯色）
          * - uGrain：颗粒纹理（screen 叠加，让纸面有颗粒感）
+         * - uCenter：暗角/提亮的径向中心（uv 空间；竖屏为地图区中心，横屏为屏幕中心）
          * - 暗角用暖褐而非纯黑，参考图边缘向棕褐色渐暗
          */
         private fun buildFragBg(): String {
@@ -757,18 +973,21 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 uniform sampler2D uPaper;
                 uniform sampler2D uGrain;
                 uniform vec2 uResolution;
+                uniform vec2 uCenter;
                 void main() {
                     vec2 uv = gl_FragCoord.xy / uResolution;
                     // 纸张纹理作为纤维细节调制暖纸色，而不是完全取代：
                     // 纯色 base 占 (1-STRENGTH)，纹理占 STRENGTH；纹理先暖化（去冷蓝）再混合
-                    vec3 paper = texture2D(uPaper, uv).rgb * vec3(1.02, 1.0, 0.92);
+                    vec3 paper = texture2D(uPaper, uv).rgb * vec3(1.03, 1.0, 0.90);
                     float hasPaper = step(0.001, length(paper));
                     vec3 base = mix(vec3(${paper[0]}, ${paper[1]}, ${paper[2]}), paper, hasPaper * ${MapTokens.MapParams.PAPER_TEXTURE_STRENGTH});
                     // 颗粒层（screen 近似）
                     float grain = texture2D(uGrain, uv * 1.2).r;
                     base = mix(base, vec3(1.0), grain * ${MapTokens.MapParams.PAPER_GRAIN_STRENGTH});
-                    // 中心提亮
-                    float d = distance(uv, vec2(0.5));
+                    // 中心提亮 + 暖褐暗角：径向距离做纵横比校正
+                    // （uv 空间等距圈在竖屏上是纵向拉扁的椭圆，边界横穿屏幕产生横向色阶；
+                    //  x 除以宽高比后等距圈为屏幕空间的圆，暗角自然包裹地图区）
+                    float d = length((uv - uCenter) * vec2(uResolution.x / uResolution.y, 1.0));
                     base *= 1.0 + (1.0 - smoothstep(0.0, ${MapTokens.MapParams.CENTER_LIGHT_RADIUS}, d)) * ${MapTokens.MapParams.CENTER_LIGHT_STRENGTH};
                     // 暖褐暗角
                     base *= 1.0 - smoothstep(${MapTokens.MapParams.VIGNETTE_START}, ${MapTokens.MapParams.VIGNETTE_END}, d) * ${MapTokens.MapParams.VIGNETTE_STRENGTH};
@@ -779,30 +998,95 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             """
         }
 
-        /** 纹理 quad：世界坐标 + UV */
+        /** 纹理 quad：世界坐标 + UV（uOffset 供阴影 pass 平移整张 quad） */
         private const val VERT_TEX = """
             attribute vec2 aPos;
             attribute vec2 aUv;
             uniform mat4 uViewProj;
+            uniform vec2 uOffset;
             varying vec2 vUv;
             void main() {
                 vUv = aUv;
-                gl_Position = uViewProj * vec4(aPos, 0.0, 1.0);
+                gl_Position = uViewProj * vec4(aPos + uOffset, 0.0, 1.0);
             }
         """
 
         /** 纹理 quad：世界坐标 + UV（水彩/山水；同样乘 GL_BRIGHTNESS 对齐 Compose 亮度；
-         *  uAlpha 用于交叉淡入，整体调制透明度） */
-        private fun buildFragTex(): String = """
-            precision mediump float;
-            uniform sampler2D uTex;
-            uniform float uAlpha;
-            varying vec2 vUv;
+         *  uAlpha 用于交叉淡入，整体调制透明度。uShadow=1 时为接触阴影 pass：
+         *  用贴图自身 alpha 勾形、墨色平涂——水彩羽化的软边天然成为软影边） */
+        private fun buildFragTex(): String {
+            val shadowAlpha = MapTokens.MapParams.REGIME_SHADOW_ALPHA
+            return """
+                precision mediump float;
+                uniform sampler2D uTex;
+                uniform float uAlpha;
+                uniform float uShadow;
+                varying vec2 vUv;
+                void main() {
+                    vec4 c = texture2D(uTex, vUv);
+                    if (uShadow > 0.5) {
+                        c = vec4(0.227, 0.204, 0.157, c.a * $shadowAlpha);
+                    } else {
+                        c.rgb *= ${MapTokens.MapParams.GL_BRIGHTNESS};
+                    }
+                    c.a *= uAlpha;
+                    gl_FragColor = c;
+                }
+            """
+        }
+
+        /** 河道带：世界坐标（已含镜像）+ 跨河坐标 side + 弧长 s */
+        private const val VERT_RIVER = """
+            attribute vec2 aPos;
+            attribute float aSide;
+            attribute float aS;
+            uniform mat4 uViewProj;
+            varying float vSide;
+            varying float vS;
             void main() {
-                vec4 c = texture2D(uTex, vUv);
-                c.rgb *= ${MapTokens.MapParams.GL_BRIGHTNESS};
-                c.a *= uAlpha;
-                gl_FragColor = c;
+                vSide = aSide;
+                vS = aS;
+                gl_Position = uViewProj * vec4(aPos, 0.0, 1.0);
+            }
+        """
+
+        /**
+         * 河道带着色：按 |side| 从外到内叠 水痕→主体→脊线 三层（src-over 合成），
+         * 外缘 smoothstep 羽化代替硬边（两岸渗纸感）。uFlow(x=波长, y=速度, z=时间)
+         * 驱动一段亮度沿河向下游缓慢移动——对齐 HoMM3 的 palette-cycling 思路：
+         * 让 5% 的画面动起来，其余保持「纸上的画」。
+         * uFracs = (主体/水痕宽度比, 脊线/水痕宽度比, 是否主流, 流动幅度)。
+         */
+        private const val FRAG_RIVER = """
+            precision mediump float;
+            uniform vec4 uWash;
+            uniform vec4 uBody;
+            uniform vec4 uSpine;
+            uniform vec4 uFracs;
+            uniform vec3 uFlow;
+            uniform float uAlpha;
+            varying float vSide;
+            varying float vS;
+            void main() {
+                float a = abs(vSide);
+                // 顺流微动画：相位随弧长推进，时间项让波峰向下游移动
+                float flow = 0.5 + 0.5 * cos(6.28318 * (vS / uFlow.x - uFlow.y * uFlow.z));
+                vec3 bodyRgb = uBody.rgb * (1.0 + (flow - 0.5) * uFracs.w);
+                // 水痕（最宽，两岸羽化）
+                float washA = uWash.a * (1.0 - smoothstep(0.55, 1.0, a));
+                vec3 rgb = uWash.rgb;
+                float alpha = washA;
+                // 主体带（src-over 覆盖水痕）
+                float bodyMask = 1.0 - smoothstep(uFracs.x - 0.06, uFracs.x + 0.06, a);
+                rgb = mix(rgb, bodyRgb, bodyMask);
+                alpha = alpha + uBody.a * bodyMask * (1.0 - alpha);
+                // 脊线（仅主流；随流动轻微呼吸，避免死线）
+                if (uFracs.z > 0.5) {
+                    float spineMask = (1.0 - smoothstep(uFracs.y, uFracs.y + 0.3, a)) * (0.8 + 0.2 * flow);
+                    rgb = mix(rgb, uSpine.rgb, spineMask);
+                    alpha = alpha + uSpine.a * spineMask * (1.0 - alpha) * 0.55;
+                }
+                gl_FragColor = vec4(rgb, alpha * uAlpha);
             }
         """
     }

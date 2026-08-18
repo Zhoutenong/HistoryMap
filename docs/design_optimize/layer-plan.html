@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Android 描画分层方案 · HistoryMap</title>
+<style>
+  :root{
+    --paper:#E6D8B5; --panel:#F8F4E9; --card:#FDF8EC;
+    --ink:#3A3428; --ink2:#5B5141; --ink3:#807665;
+    --vermilion:#B03A2E; --gold:#D6824A;
+    --song:#8E2F24; --liao:#5D7F8C; --xia:#D6C174; --jin:#6F8BA8; --dali:#6A886E; --tubo:#A4886B;
+    --bg:#22201b; --bg2:#2b2822;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:#d8d2c2;
+    font:15px/1.7 system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  h1,h2,h3{font-family:"Noto Serif SC","Songti SC",serif; color:var(--paper); letter-spacing:2px;}
+  header{ padding:28px 24px 12px; border-bottom:1px solid #3a352b; background:linear-gradient(180deg,#2b2822,#22201b); }
+  header h1{ margin:0 0 6px; font-size:22px; }
+  header p{ margin:0; color:var(--ink3); font-size:13px; max-width:1100px; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 24px; }
+  section{ padding:26px 0; border-bottom:1px dashed #3a352b; }
+  section h2{ font-size:18px; margin:0 0 14px; display:flex; align-items:center; gap:10px; }
+  section h2 .tag{ font-size:11px; color:var(--bg); background:var(--gold); border-radius:3px; padding:1px 7px; letter-spacing:1px; font-family:system-ui; }
+  /* —— 工具条 —— */
+  .toolbar{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; margin:18px 0 10px; }
+  .mode-switch{ display:flex; gap:8px; }
+  .mode-switch button{
+    border:1px solid var(--ink3); background:transparent; color:var(--ink3);
+    padding:7px 16px; border-radius:6px; cursor:pointer; font-size:14px; letter-spacing:2px; font-family:inherit;
+  }
+  .mode-switch button.active{ background:var(--vermilion); border-color:var(--vermilion); color:var(--card); }
+  .layer-panel{
+    background:var(--bg2); border:1px solid #3a352b; border-radius:10px; padding:10px 14px;
+    flex:1; min-width:300px;
+  }
+  .layer-panel .head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .layer-panel .head b{ color:var(--paper); font-size:13px; letter-spacing:2px; }
+  .layer-panel .head button{ background:none; border:1px solid var(--ink3); color:var(--ink3); border-radius:4px; cursor:pointer; font-size:11px; padding:2px 8px; }
+  .layer-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:4px 18px; }
+  .layer-item{ display:flex; align-items:center; gap:8px; font-size:13px; color:#c9c2ae; cursor:pointer; padding:2px 4px; border-radius:4px; user-select:none; }
+  .layer-item:hover{ background:#33302a; }
+  .layer-item input{ accent-color:var(--vermilion); }
+  .layer-item .sw{ width:10px; height:10px; border-radius:2px; border:1px solid rgba(255,255,255,.25); flex:none; }
+  .layer-item .no{ color:var(--ink3); font-size:10px; min-width:26px; font-variant-numeric:tabular-nums; }
+  /* —— 对比画布 —— */
+  .compare{ display:flex; gap:22px; flex-wrap:wrap; justify-content:center; margin-top:10px; }
+  .card{ background:var(--bg2); border:1px solid #3a352b; border-radius:12px; padding:14px; }
+  .card figcaption{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .card figcaption b{ color:var(--paper); font-size:15px; letter-spacing:2px; }
+  .card figcaption span{ color:var(--ink3); font-size:11px; }
+  .card canvas{ display:block; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.45); background:#000; }
+  .legend-line{ margin-top:8px; font-size:11px; color:var(--ink3); line-height:1.6; }
+  /* —— 表格 —— */
+  table{ width:100%; border-collapse:collapse; font-size:13px; background:var(--bg2); border-radius:10px; overflow:hidden; }
+  th,td{ text-align:left; padding:9px 12px; border-bottom:1px solid #3a352b; vertical-align:top; }
+  th{ background:#322e26; color:var(--paper); letter-spacing:1px; font-weight:600; white-space:nowrap; }
+  td b{ color:var(--gold); }
+  tr:last-child td{ border-bottom:none; }
+  .status{ display:inline-block; font-size:11px; border-radius:3px; padding:0 6px; margin-right:4px; }
+  .st-done{ background:#3c5a3f; color:#cfe8c8; }
+  .st-doing{ background:#6b5526; color:#f0dfae; }
+  .st-plan{ background:#4a3540; color:#e8c9d4; }
+  /* —— 流程 —— */
+  .pipeline{ display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; }
+  .pipe-step{ flex:1; min-width:150px; background:var(--bg2); border:1px solid #3a352b; border-radius:10px; padding:10px 12px; font-size:12px; color:#c9c2ae; }
+  .pipe-step b{ display:block; color:var(--paper); font-size:13px; margin-bottom:4px; }
+  .pipe-step .file{ color:var(--ink3); font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+  .pipe-arrow{ color:var(--gold); align-self:center; font-weight:bold; }
+  code{ background:#322e26; color:#e8dfc8; padding:1px 5px; border-radius:4px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  footer{ padding:18px 24px 40px; color:var(--ink3); font-size:12px; }
+  @media (max-width:840px){ .card canvas{ width:min(92vw,420px); height:auto; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Android 描画分层 · 现状与修改方案</h1>
+    <p>对照 <code>docs/design_optimize/prompt_1/4/5.png</code>（效果图）与 <code>design-tokens.json</code>（38 层图层序）逐层核对 Android 原生渲染。
+    左上为「当前效果」（GL 四层纹理 + Compose 动态层，含 R6 已修的观感），右上为「修改后效果」（在既有分层内做绘制细节优化后的目标观感）。
+    下方表格给出逐层差异与修改方案，最末是完整描画流程。</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <h2><span class="tag">DEMO</span> 图层开关（共享控制，两幅画布同配置）</h2>
+  <div class="toolbar">
+    <p style="margin:0;font-size:13px;color:var(--ink3);align-self:center">左侧固定=当前渲染，右侧固定=修改后渲染；勾选图层可逐层观察叠加顺序（按 GL→Compose、亦即设计 38 层序）。</p>
+    <div class="layer-panel">
+      <div class="head"><b>描画图层（先 GL 后 Compose，与设计图层序一致）</b>
+        <span><button id="allOn">全开</button> <button id="allOff">全关</button></span>
+      </div>
+      <div class="layer-grid" id="layerGrid"></div>
+    </div>
+  </div>
+  <div class="compare">
+    <figure class="card">
+      <figcaption><b>当前效果</b><span>GL: 纸/山/水彩/河四 quad · Compose: 上层动画</span></figcaption>
+      <canvas id="cvCurrent" width="380" height="720"></canvas>
+      <div class="legend-line">现状特征：政权边界=数据折线实描 · 山形 glyph 排列规则 · 浅色政权对比弱 · 河流两层偏细 · 标签居中卡片感（早期）→ R6 已部分修正。</div>
+    </figure>
+    <figure class="card">
+      <figcaption><b>修改后效果</b><span>分层不变，绘制参数/细节优化（示意，非真机截图）</span></figcaption>
+      <canvas id="cvProposed" width="380" height="720"></canvas>
+      <div class="legend-line">目标特征：干笔毛边边界 · 政权内缘积色渗化 · 山体松散随机 glyph · 河流三带晕染 · 墨字直书+纸色 halo · 宣纸暖调+暗角。</div>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="tag">PLAN</span> 逐层差异与修改方案（分层已成立，全部改动落在既有层内）</h2>
+  <table>
+    <tr><th>层</th><th>现状（当前效果）</th><th>差距 / 根因</th><th>修改方案</th><th>期望效果</th><th>状态</th></tr>
+    <tr><td><b>1 宣纸底</b><br><code>MapRenderer</code> 背景着色器</td><td>纸色+纸纹混合 0.24，GL 比 Compose 暗 ~12%</td><td>颜色偏灰褐、暗角以屏幕中心起算</td><td>暖纸色混合 + 纹理暖化 <code>×vec3(1.03,1,0.90)</code>；暗角起止回 design、径向中心改地图区中心（uCenter uniform）</td><td>宣纸暖黄(232,223,190)≈design(230,216,181)，暗角自然</td><td><span class="status st-done">R6 已做</span></td></tr>
+    <tr><td><b>2 纸纹 grain</b><br><code>drawPaperBackground</code></td><td>grain 纹理 <code>uv×1.2</code> 采样</td><td>CLAMP_TO_EDGE 拉伸成边缘色阶条带</td><td>grain 改 <code>GL_REPEAT</code>（512×512 POT）</td><td>无条带、细密纸纹</td><td><span class="status st-done">R6 已做</span></td></tr>
+    <tr><td><b>3 山脉</b><br><code>TerrainTexture</code> mountains 纹理 quad（水彩之下）</td><td>山脊 halo 连续描边成横带；glyph 大小近同、间距规则</td><td>被误读为「纸面断层」；山体过于机械</td><td>halo 改干笔长虚线（dash ⅓,⅔ 周期）+α 减弱；glyph 随机跳过 25% 打散 + 尺寸/角度抖动（±25°），峰顶朝上「∧」</td><td>连绵山体、疏密错落，墨色可辨不抢政权</td><td><span class="status st-plan">待精细调参</span></td></tr>
+    <tr><td><b>4 政权水彩</b><br><code>WatercolorTexture</code>（bloom/body/mottle/boundary/dryedge 烘焙一图，水彩 quad）</td><td>六政权全土色、浑浊；辽/金等浅色与纸面对比弱</td><td>tint 过压饱和 + 暖罩 SRC_ATOP 统一推向米褐</td><td>tint 放宽 s×0.95/l×0.92 钳 [0.28,0.55]；暖罩移除；body alpha 102→137；mottle 明/暗双 variant、α 0.10–0.20、数量 60</td><td>色相分离（西夏黄褐 vs 辽灰蓝 vs 宋朱砂），渗化斑驳</td><td><span class="status st-done">R6 已做</span></td></tr>
+    <tr><td><b>5 政权边界/干边</b><br>同水彩纹理内</td><td>真实数据折线的「生硬描边感」</td><td>设计稿为手绘毛边、token 边界为更细的墨线</td><td>边界/干边改设计墨色 <code>#3A3428</code>，描边加 <code>setLineDash</code> 断续 + 1px 微抖动（bump 采样），仍走真实折线数据</td><td>手绘般的干笔毛边</td><td><span class="status st-plan">待做</span></td></tr>
+    <tr><td><b>6 河流</b><br><code>TerrainTexture</code> rivers 纹理 quad（水彩之上）</td><td>wash/body 两层、宽度偏细、拐角硬</td><td>硬编码除数 + alpha 折减、未用 token</td><td>恢复 design 宽度体系（wash 12/6、body 3.2/2、spine 1.1 px 换算）+ Chaikin 二次平滑 + 真机降 ~20% 登记偏差</td><td>宽淡水痕→主线→细脊线三层，青蓝不抢主体</td><td><span class="status st-done">R6 已做</span></td></tr>
+    <tr><td><b>7 州府边界（建议新层）</b><br>独立纹理 quad 或并入 rivers 纹理</td><td>Web 端独立 canvas plane（z=7.02「州府边界」开关）；Android 仅有 Compose 标注</td><td>Voronoi 网格易读作「数据网格」</td><td>新增独立「州府」纹理槽（与山脉/河流同级 LRU+quad），墨线 α26→16 + 干笔虚线，随缩放淡入</td><td>隐约肌理，放大可辨</td><td><span class="status st-plan">规划中</span></td></tr>
+    <tr><td><b>8 城市/地名标签</b><br><code>LabelLayer</code>（Compose Canvas）</td><td>早期为米白圆角卡片 UI 感</td><td>与水墨冲突</td><td>撤卡片：深墨字直书 + 1.2px 纸色 halo 双 pass；城市画「墨点+纸色细环」靶心；rank≤2 州府加大字</td><td>手写批注语言</td><td><span class="status st-done">R6 已做</span></td></tr>
+    <tr><td><b>9 年份水印</b><br>Compose Text（标签之下、泡泡之下）</td><td>120px 衬线、墨色 α26，位置 57.9% 宽</td><td>与设计一致</td><td>无改动（已 token 化）</td><td>淡墨水印不遮挡叙事</td><td><span class="status st-done">已对齐</span></td></tr>
+    <tr><td><b>10 事件点/指向线/泡泡</b><br><code>EventBubblesLayer</code>（Compose Canvas）</td><td>普通=标题+年份、选中=+两行摘要、聚合=+N；虚线指向线+箭头+事件点靶心</td><td>泡泡未带设计卡片阴影/朱砂描边分层绘制</td><td>按 token 补：阴影层(α35/3px) → 纸面(α238) → 朱砂描边(1px) → 分类竖条(6px) → 文字；安全区回收不变</td><td>纸笺式泡泡</td><td><span class="status st-doing">细节打磨</span></td></tr>
+    <tr><td><b>11 顶栏/图例/时间轴</b><br>Compose（Surface + Canvas）</td><td>朝代按钮朱砂印章式、图例折叠小笺、时间轴三行布局</td><td>与设计一致，个别字号偏差已登记</td><td>无结构性改动；字号/间距走 token</td><td>—</td><td><span class="status st-done">已对齐</span></td></tr>
+  </table>
+  <p style="font-size:12px;color:var(--ink3);margin-top:10px">原则：<b>分层结构不动</b>（GL 四 quad + Compose 上层），所有修改都是某一层的绘制参数或细节；河流若要细分主/次开关、州府若要独立开关，也只按「山脉/河流」的既有模式新增纹理槽。</p>
+</section>
+
+<section>
+  <h2><span class="tag">FLOW</span> 描画流程（一次朝代加载）</h2>
+  <div class="pipeline">
+    <div class="pipe-step"><b>① 数据进包</b><span class="file">scripts/prepare-android.mjs</span>同步 seed SQL + GeoJSON（regime/rivers/mountains/prefectures）到 <span class="file">assets/</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><b>② 解析</b><span class="file">OverlayLoader</span>（org.json 复刻 overlay.js 合并）→ <span class="file">OverlayParser</span> 产出 <span class="file">OverlayModel</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><b>③ 装配</b><span class="file">MapRenderer.setOverlay()</span>投影标定（仅一次）+ labels/regimeColors/worldBounds + resetCamera（地图区 ×1.4，水平锚定宋域）</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><b>④ CPU 纹理</b><span class="file">buildTextures()</span> 放 <span class="file">Dispatchers.IO</span>：烘焙贴图优先 → 程序化 <span class="file">WatercolorBuilder</span> + <span class="file">TerrainTextureBuilder</span>（山/河两图），LRU 缓存</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><b>⑤ GL 每帧</b><span class="file">onDrawFrame()</span> 懒上传 → 纸 → 山 → 水彩 → 河；时期切换交叉淡入 350ms（旧→prev 淡出/新淡入）</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><b>⑥ Compose 每帧</b>相机状态 zoom/cx/cy → worldToScreen → <span class="file">layoutMapLabels</span> 避让（政权面+UI 禁区）→ LabelLayer；<span class="file">TimelineController</span> 年份 → 可见事件 → <span class="file">Collisions</span> 推挤 → EventBubblesLayer</div>
+  </div>
+  <p style="font-size:12px;color:var(--ink3);margin-top:12px">线程模型：UI 线程写数据/相机状态；GL 线程每帧读 @Volatile 引用画底图；Compose 状态（zoom/cx/cy/年份）驱动上层标签与泡泡重算。P20 实测 55–59fps。</p>
+</section>
+
+</div>
+
+<footer>
+  HistoryMap · 本文档为静态示意（非真机截图），色值/尺寸取自 <code>design-tokens.json</code>；状态栏「R6 已做」对应 <code>docs/design_optimize/acceptance/README.md</code> 记录。
+</footer>
+
+<script>
+var DESIGN = {
+  W:1080, H:2244,
+  colors:{ paper:'#E6D8B5', panel:'#F8F4E9', card:'#FDF8EC', ink:'#3A3428', ink2:'#5B5141', ink3:'#807665',
+    vermilion:'#B03A2E', gold:'#D6824A',
+    regime:{ song:'#8E2F24', liao:'#5D7F8C', xia:'#D6C174', jin:'#6F8BA8', dali:'#6A886E', tubo:'#A4886B' },
+    riverWash:'#7F9BA0', riverBody:'#52767D', mountainInk:'#51483B', grain:'#8A7658', warm:'#E0CEA8' }
+};
+
+var LAYERS = [
+  { key:'paper',    no:'L1–L4', label:'宣纸底 · 提亮 · 暗角 · 纸纹', color:'#E6D8B5' },
+  { key:'mountains',no:'L5',    label:'山脉淡墨（水彩之下）',        color:'#51483B' },
+  { key:'watercolor',no:'L6–L10',label:'政权水彩（晕染/主体/斑驳/边界/干边）', color:'#8E2F24' },
+  { key:'rivers',   no:'L11–L13',label:'河流水痕 / 主线 / 脊线（水彩之上）', color:'#52767D' },
+  { key:'prefecture',no:'L14',  label:'州府边界（规划新层）',         color:'#5B5141' },
+  { key:'labels',   no:'L15',   label:'城市 · 地点 · 地图地名',        color:'#3A3428' },
+  { key:'watermark',no:'L16',   label:'年份水印（1127 年）',           color:'#807665' },
+  { key:'legend',   no:'L17',   label:'政权图例',                     color:'#B03A2E' },
+  { key:'events',   no:'L18–L20',label:'事件点 · 指向线 · 箭头',       color:'#B03A2E' },
+  { key:'bubbles',  no:'L21–L25',label:'事件泡泡（阴影/纸面/描边/分类条/文字）', color:'#D6824A' },
+  { key:'topbar',   no:'L26–L28',label:'顶栏（半透纸面 / 分隔线 / 标题按钮）', color:'#5B5141' },
+  { key:'timeline', no:'L29–L38',label:'时间轴（卡片/轨道/滑块/分类刻度）', color:'#D6824A' },
+];
+var checked = {}; LAYERS.forEach(function(l){ checked[l.key]=true; });
+var mode = 0; // 0=current 1=proposed
+
+/* ---------- 画布 ---------- */
+var CVW=380, CVH=720;
+function scale(px){ return px*CVW/DESIGN.W; }
+var mapTop  = scale(154), mapH = scale(1256); // 地图区
+function mx(u){ return u*CVW; }
+function my(v){ return mapTop + v*mapH; }
+
+/* 确定性随机（两版共用同一形状数据） */
+function rng(seed){ var s=seed>>>0; return function(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+
+/* 政权 blob：扰动椭圆 + 平滑闭合 */
+function blobPts(cx,cy,rx,ry,n,seed,wr){
+  var r=rng(seed), pts=[];
+  for(var i=0;i<n;i++){
+    var a = -Math.PI/2 + (i/n)*Math.PI*2;
+    var rr = 1 + (r()*2-1)*wr;
+    pts.push([ cx+Math.cos(a)*rx*rr, cy+Math.sin(a)*ry*rr ]);
+  }
+  return pts;
+}
+function trace(ctx,pts){
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0],pts[0][1]);
+  for(var i=0;i<pts.length;i++){
+    var p=pts[i], pn=pts[(i+1)%pts.length];
+    ctx.quadraticCurveTo(p[0],p[1],(p[0]+pn[0])/2,(p[1]+pn[1])/2);
+  }
+  ctx.closePath();
+}
+
+var REGIMES = [
+  { ent:'song', c:'#8E2F24', cx:.50, cy:.52, rx:.26, ry:.30, seed:11, wr:.10 },
+  { ent:'liao', c:'#5D7F8C', cx:.60, cy:.20, rx:.30, ry:.19, seed:22, wr:.12 },
+  { ent:'jin',  c:'#6F8BA8', cx:.76, cy:.34, rx:.13, ry:.10, seed:33, wr:.18 },
+  { ent:'xia',  c:'#D6C174', cx:.24, cy:.32, rx:.16, ry:.12, seed:44, wr:.20 },
+  { ent:'dali', c:'#6A886E', cx:.21, cy:.62, rx:.12, ry:.13, seed:55, wr:.22 },
+  { ent:'tubo', c:'#A4886B', cx:.08, cy:.46, rx:.16, ry:.26, seed:66, wr:.16 },
+];
+var RIVERS = [ // 局部折线：[{u,v}...], kind: major/minor
+  { kind:'major', name:'黄河', pts:[[.26,.44],[.50,.40],[.72,.43],[.82,.46]] },
+  { kind:'major', name:'长江', pts:[[.16,.74],[.40,.66],[.62,.74],[.76,.80]] },
+  { kind:'minor', name:'淮河', pts:[[.46,.56],[.62,.52],[.78,.55]] },
+];
+var MOUNTAINS = [
+  { x:.42, y:.22, s:1.0, seed:7 }, { x:.48, y:.20, s:.8, seed:8 }, { x:.54, y:.22, s:.9, seed:9 },
+  { x:.30, y:.54, s:1.1, seed:10 },{ x:.37, y:.50, s:.9, seed:12 },
+  { x:.12, y:.30, s:1.0, seed:13 },{ x:.18, y:.27, s:.8, seed:14 },
+  { x:.80, y:.18, s:.9, seed:15 }, { x:.86, y:.16, s:.7, seed:16 },
+];
+var CITIES = [
+  { name:'开封', u:.53, v:.46, major:true },
+  { name:'临安', u:.56, v:.72, major:true },
+  { name:'成都', u:.28, v:.60, major:false },
+  { name:'兰州', u:.22, v:.38, major:false },
+  { name:'大同', u:.42, v:.28, major:false },
+  { name:'北京', u:.62, v:.26, major:false },
+  { name:'建康', u:.63, v:.63, major:false },
+];
+var EVENTS = [
+  { t:'靖康之变', y:'1127年', cx:.45, cy:.30, wx:.62, wy:.34, cat:'#6F8BA8', sub:'金军攻破汴京…' },
+  { t:'绍兴和议', y:'1127年', cx:.72, cy:.62, wx:.30, wy:.60, cat:'#A0622D', sub:'宋金议和…' },
+  { t:'陈桥兵变', y:'960年',  cx:.35, cy:.48, wx:.20, wy:.68, cat:'#B03A2E', sub:'赵匡胤陈桥驿兵变' },
+];
+
+/* ---------- 各图层绘制 ---------- */
+function hexToRgba(hex,a){
+  var n=parseInt(hex.slice(1),16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+function paper(ctx){
+  var g = ctx.createLinearGradient(0,0,0,CVH);
+  g.addColorStop(0, mode===0 ? '#E8E2D4' : '#E6D8B5');
+  g.addColorStop(1, mode===0 ? '#DDD6C4' : '#E0CEA8');
+  ctx.fillStyle=g; ctx.fillRect(0,0,CVW,CVH);
+  // 中心提亮 + 暗角
+  var r = ctx.createRadialGradient(CVW*.5, mapTop+mapH*.42, 10, CVW*.5, mapTop+mapH*.42, CVW*.75);
+  r.addColorStop(0, mode===0?'rgba(255,248,230,.5)':'rgba(255,248,230,.72)');
+  r.addColorStop(1,'rgba(120,90,50,0)');
+  ctx.fillStyle=r; ctx.fillRect(0,0,CVW,CVH);
+  var v = ctx.createRadialGradient(CVW*.5, mapTop+mapH*.42, CVW*.30, CVW*.5, mapTop+mapH*.42, CVW*.72);
+  v.addColorStop(0,'rgba(90,66,32,0)');
+  v.addColorStop(mode===0? .95 : .86,'rgba(90,66,32,'+(mode===0?.20:.34)+')');
+  ctx.fillStyle=v; ctx.fillRect(0,0,CVW,CVH);
+  // 纸纹颗粒
+  var rnd=rng(99);
+  for(var i=0;i<480;i++){
+    var x=rnd()*CVW, y=rnd()*CVH;
+    ctx.fillStyle='rgba(138,118,88,'+(mode===0?.05:0.08)+')';
+    ctx.fillRect(x,y,1,1);
+  }
+}
+function mountains(ctx){
+  ctx.save();
+  ctx.lineWidth = mode===0?1:1.2;
+  ctx.strokeStyle = mode===0?'rgba(81,72,59,.30)':'rgba(81,72,59,.38)';
+  MOUNTAINS.forEach(function(m,idx){
+    var r=rng(m.seed);
+    var x=mx(m.x), y=my(m.y), s=m.s*scale(70);
+    // 山脊干笔虚线（修改后：虚线 halo，避免横贯条带）
+    if(mode===1){
+      ctx.setLineDash([scale(30)/4, scale(55)/4]);
+      ctx.beginPath(); ctx.moveTo(x-s, y+s*.5);
+      ctx.lineTo(x+s*1.4, y+s*.45); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 3 峰 glyph（修改后：随机跳过 25%、角度抖动 ±25°）
+    var n = mode===0 ? 3 : (r()<.25 ? 2 : 3);
+    for(var k=0;k<n;k++){
+      var jitter = mode===1 ? (r()*2-1)*0.6 : 0;
+      var gx = x + (k-(n-1)/2)*s*0.5 + jitter*s*0.3;
+      var gy = y + (r()*2-1)*s*0.15;
+      var gs = s*(mode===1 ? 0.7+r()*0.8 : 0.8);
+      var slim = mode===0 ? 0.45 : 0.35+ (r()*2-1)*0.12;
+      ctx.beginPath();
+      ctx.moveTo(gx-gs, gy+gs*0.55);
+      ctx.lineTo(gx, gy-gs*0.45);   // 峰顶朝上「∧」
+      ctx.lineTo(gx+gs, gy+gs*0.55);
+      ctx.stroke();
+      // 皴法短线
+      ctx.beginPath();
+      ctx.moveTo(gx-gs*.3, gy+gs*.2);
+      ctx.lineTo(gx+gs*.1, gy+gs*.05);
+      ctx.stroke();
+    }
+  });
+  ctx.restore();
+}
+function watercolor(ctx){
+  REGIMES.forEach(function(rg){
+    var pts = blobPts(mx(rg.cx), my(rg.cy), scale(260*rg.rx/0.26), scale(300*rg.ry/0.30), 14, rg.seed, rg.wr);
+    var bodyA = mode===0 ? 0.42 : 0.78;
+    var bloomA = mode===0 ? 0.25 : 0.55;
+    // 晕染（bloom）：大模糊近似 = 先画大一点的低透明度路径
+    ctx.save();
+    trace(ctx, blobPts(mx(rg.cx), my(rg.cy), scale(260*rg.rx/0.26)*1.08, scale(300*rg.ry/0.30)*1.10, 14, rg.seed+1, rg.wr+.04));
+    ctx.fillStyle = hexToRgba(rg.c, bloomA); ctx.fill();
+    // 主体 body
+    ctx.restore();
+    trace(ctx, pts);
+    ctx.fillStyle = hexToRgba(rg.c, bodyA); ctx.fill();
+    // 修改后：内缘积色（pooling，内侧深一档）
+    if(mode===1){
+      ctx.save();
+      trace(ctx, blobPts(mx(rg.cx), my(rg.cy), scale(260*rg.rx/0.26)*0.9, scale(300*rg.ry/0.30)*0.9, 14, rg.seed+2, rg.wr*.8));
+      ctx.fillStyle = hexToRgba(rg.c, .28); ctx.fill();
+      ctx.restore();
+    }
+    // 斑驳 mottle（修改后：明/暗 variant）
+    var rnd=rng(rg.seed+9);
+    ctx.save();
+    trace(ctx, pts);
+    ctx.clip();
+    var n = mode===0?14:30;
+    for(var i=0;i<n;i++){
+      var px=mx(rg.cx)+(rnd()*2-1)*scale(260*rg.rx/0.26);
+      var py=my(rg.cy)+(rnd()*2-1)*scale(300*rg.ry/0.30);
+      var pr=scale(8+rnd()*22);
+      var light = rnd()<0.5;
+      ctx.fillStyle = light
+        ? hexToRgba('#F8F4E9', mode===0?.06:.16)
+        : hexToRgba('#000000', mode===0?.05:.12);
+      ctx.beginPath(); ctx.arc(px,py,pr,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    // 边界 + 干边：当前=同色实线；修改=墨色干笔虚线
+    trace(ctx, pts);
+    if(mode===0){
+      ctx.strokeStyle=hexToRgba(rg.c,.55); ctx.lineWidth=1; ctx.stroke();
+    }else{
+      ctx.strokeStyle='rgba(58,52,40,.5)'; ctx.lineWidth=1.8;
+      ctx.setLineDash([scale(4), scale(3)]);
+      ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle='rgba(58,52,40,.28)'; ctx.lineWidth=.9;
+      ctx.setLineDash([scale(2), scale(4)]);
+      trace(ctx, blobPts(mx(rg.cx), my(rg.cy), scale(260*rg.rx/0.26)*1.015, scale(300*rg.ry/0.30)*1.015, 14, rg.seed+3, rg.wr));
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+}
+function riverPath(ctx, rv){
+  ctx.beginPath();
+  var p0=rv.pts[0];
+  ctx.moveTo(mx(p0[0]), my(p0[1]));
+  for(var i=1;i<rv.pts.length-1;i++){
+    var p=rv.pts[i], pn=rv.pts[i+1];
+    ctx.quadraticCurveTo(mx(p[0]),my(p[1]), (mx(p[0])+mx(pn[0]))/2, (my(p[1])+my(pn[1]))/2);
+  }
+  var pe=rv.pts[rv.pts.length-1];
+  ctx.lineTo(mx(pe[0]), my(pe[1]));
+}
+function rivers(ctx){
+  RIVERS.forEach(function(rv){
+    var major = rv.kind==='major';
+    if(mode===0){
+      ctx.lineCap='round';
+      ctx.strokeStyle='rgba(82,118,125,.42)'; ctx.lineWidth=major?scale(3):scale(2); riverPath(ctx,rv); ctx.stroke();
+      ctx.strokeStyle='rgba(82,118,125,.65)'; ctx.lineWidth=major?scale(1.4):scale(.9); riverPath(ctx,rv); ctx.stroke();
+    }else{
+      ctx.lineCap='round';
+      ctx.strokeStyle='rgba(127,155,160,.30)'; ctx.lineWidth=major?scale(12):scale(6); riverPath(ctx,rv); ctx.stroke();
+      ctx.strokeStyle='rgba(82,118,125,.43)';  ctx.lineWidth=major?scale(3.2):scale(2); riverPath(ctx,rv); ctx.stroke();
+      ctx.strokeStyle='rgba(82,118,125,.55)';  ctx.lineWidth=major?scale(1.1):0;       riverPath(ctx,rv); ctx.stroke();
+    }
+  });
+}
+function prefecture(ctx){
+  // 规划层（示意）：在地图区撒隐约网格点阵
+  ctx.save();
+  ctx.fillStyle = 'rgba(91,81,65,.20)';
+  var rnd=rng(7);
+  for(var i=0;i<90;i++){
+    ctx.fillRect(mx(rnd()*0.9+0.05), my(rnd()*0.9+0.05), 1, 1);
+  }
+  ctx.restore();
+}
+function labels(ctx){
+  ctx.save();
+  var halo = 'rgba(246,238,214,.85)';
+  ctx.textBaseline='middle';
+  CITIES.forEach(function(c){
+    var x=mx(c.u), y=my(c.v);
+    var fs = scale(c.major?15:11);
+    ctx.font = (c.major?'700 ':'')+fs+'px "Noto Serif SC","Songti SC",serif';
+    // 城市靶心：墨点 + 纸色细环
+    if(mode===1){
+      ctx.beginPath(); ctx.arc(x,y,scale(3),0,Math.PI*2);
+      ctx.fillStyle=halo; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,scale(1.6),0,Math.PI*2);
+      ctx.fillStyle='rgba(58,52,40,.9)'; ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(x,y,scale(2.5),0,Math.PI*2);
+      ctx.fillStyle='rgba(91,81,65,.8)'; ctx.fill();
+    }
+    // 文字：先 halo 后填充
+    ctx.strokeStyle=halo; ctx.lineWidth=scale(1.2); ctx.lineJoin='round';
+    ctx.strokeText(c.name, x+scale(c.major?10:8), y- (c.major?scale(8):0));
+    ctx.fillStyle = 'rgba(58,52,40,.92)';
+    ctx.fillText(c.name, x+scale(c.major?10:8), y - (c.major?scale(8):0));
+  });
+  ctx.restore();
+}
+function watermark(ctx){
+  ctx.save();
+  ctx.textBaseline='alphabetic';
+  ctx.font = scale(120)+'px "Noto Serif SC","Songti SC",serif';
+  ctx.fillStyle='rgba(128,118,101,.12)';
+  ctx.fillText('1127 年', CVW*.55, mapTop+scale(150));
+  ctx.restore();
+}
+function legend(ctx){
+  ctx.save();
+  var x0=scale(24), y0=my(0.10)+scale(20);
+  if(mode===1){
+    ctx.fillStyle='rgba(253,248,236,.92)';
+    roundRect(ctx,x0,y0,scale(150),scale(120),scale(8)); ctx.fill();
+    ctx.strokeStyle='rgba(91,81,65,.3)'; ctx.lineWidth=1; roundRect(ctx,x0,y0,scale(150),scale(120),scale(8)); ctx.stroke();
+  } else {
+    ctx.fillStyle='rgba(248,244,233,.9)';
+    roundRect(ctx,x0,y0,scale(140),scale(100),scale(8)); ctx.fill();
+    ctx.strokeStyle='rgba(91,81,65,.25)'; ctx.lineWidth=1; roundRect(ctx,x0,y0,scale(140),scale(100),scale(8)); ctx.stroke();
+  }
+  ctx.fillStyle='#B03A2E'; ctx.font='700 '+scale(14)+'px "Noto Serif SC",serif';
+  ctx.textBaseline='alphabetic';
+  ctx.fillText('政权', x0+scale(14), y0+scale(22));
+  if(mode===1) ctx.fillRect(x0+scale(14), y0+scale(28), scale(122), scale(1));
+  REGIMES.forEach(function(rg,i){
+    var y=y0+scale(42)+i*scale(16);
+    ctx.fillStyle=rg.c; ctx.fillRect(x0+scale(14), y, scale(14), scale(8));
+    ctx.fillStyle='#3A3428'; ctx.font=scale(12)+'px "Noto Serif SC",serif';
+    ctx.fillText(rg.ent==='song'?'宋':rg.ent==='liao'?'辽':rg.ent==='xia'?'西夏':rg.ent==='jin'?'金':rg.ent==='dali'?'大理':'吐蕃', x0+scale(34), y+scale(7));
+  });
+  ctx.restore();
+}
+function events(ctx){
+  ctx.save();
+  ctx.lineCap='round';
+  EVENTS.forEach(function(ev){
+    var a=[mx(ev.wx),my(ev.wy)], b=[mx(ev.cx),my(ev.cy)];
+    // 事件点（靶心）
+    ctx.beginPath(); ctx.arc(a[0],a[1],scale(5),0,Math.PI*2);
+    ctx.fillStyle='rgba(246,238,214,.9)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(a[0],a[1],scale(3),0,Math.PI*2);
+    ctx.fillStyle='#B03A2E'; ctx.fill();
+    // 虚线指向线 + 箭头
+    ctx.strokeStyle='rgba(176,58,46,.8)'; ctx.lineWidth=1.2;
+    ctx.setLineDash([scale(8),scale(7)]);
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    ctx.setLineDash([]);
+    var ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+    ctx.beginPath();
+    ctx.moveTo(b[0],b[1]);
+    ctx.lineTo(b[0]-Math.cos(ang-0.4)*scale(8), b[1]-Math.sin(ang-0.4)*scale(8));
+    ctx.lineTo(b[0]-Math.cos(ang+0.4)*scale(8), b[1]-Math.sin(ang+0.4)*scale(8));
+    ctx.closePath(); ctx.fillStyle='rgba(176,58,46,.85)'; ctx.fill();
+  });
+  ctx.restore();
+}
+function bubbles(ctx){
+  ctx.save();
+  EVENTS.forEach(function(ev,i){
+    var x=mx(ev.cx)-scale(130), y=my(ev.cy)-scale(30), w=scale(260), h=scale(112);
+    // 阴影
+    ctx.shadowColor='rgba(60,40,20,.35)'; ctx.shadowBlur=scale(8); ctx.shadowOffsetY=scale(3);
+    // 纸面
+    roundRect(ctx,x,y,w,h,scale(8));
+    ctx.fillStyle='rgba(253,248,236,.94)'; ctx.fill();
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+    // 朱砂描边
+    ctx.strokeStyle='rgba(176,58,46,.55)'; ctx.lineWidth=1; roundRect(ctx,x,y,w,h,scale(8)); ctx.stroke();
+    // 分类竖条
+    ctx.fillStyle=ev.cat; ctx.fillRect(x, y+scale(10), scale(6), h-scale(20));
+    // 文字
+    ctx.fillStyle='#3A3428';
+    ctx.font='700 '+scale(15)+'px "Noto Serif SC",serif'; ctx.textBaseline='alphabetic';
+    ctx.fillText(ev.t, x+scale(18), y+scale(28));
+    ctx.fillStyle='#B03A2E'; ctx.font=scale(12)+'px "Noto Serif SC",serif';
+    ctx.fillText(ev.y, x+scale(18), y+scale(46));
+    ctx.fillStyle='rgba(91,81,65,.85)'; ctx.font=scale(11)+'px "Noto Serif SC",serif';
+    ctx.fillText(ev.sub, x+scale(18), y+scale(66));
+  });
+  ctx.restore();
+}
+function topbar(ctx){
+  var h=scale(154), x0=0, y0=0;
+  ctx.fillStyle='rgba(248,244,233,.88)'; ctx.fillRect(x0,y0,CVW,h);
+  ctx.fillStyle='rgba(91,81,65,.35)'; ctx.fillRect(x0,y0+h-1,CVW,1);
+  ctx.fillStyle='#3A3428'; ctx.textBaseline='middle';
+  ctx.font='700 '+scale(18)+'px "Noto Serif SC","Songti SC",serif';
+  ctx.fillText('历史地图', scale(54), h/2);
+  ctx.fillStyle='#B03A2E';
+  ctx.font='700 '+scale(15)+'px "Noto Serif SC",serif';
+  roundRect(ctx, scale(610), h/2-scale(16), scale(110), scale(34), scale(6));
+  ctx.fillStyle='rgba(253,248,236,.6)'; ctx.fill();
+  ctx.strokeStyle='#B03A2E'; ctx.lineWidth=1; roundRect(ctx, scale(610), h/2-scale(16), scale(110), scale(34), scale(6)); ctx.stroke();
+  ctx.fillStyle='#B03A2E'; ctx.fillText('宋 ▾', scale(632), h/2);
+  ctx.fillStyle='#5B5141'; ctx.font='400 '+scale(14)+'px "Noto Serif SC",serif';
+  ctx.fillText('事件', scale(745), h/2);
+  ctx.fillText('⚙', scale(930), h/2);
+}
+function timeline(ctx){
+  var bot = CVH; var h = scale(280); var y0 = bot - h - scale(28);
+  roundRect(ctx, scale(42), y0, CVW-scale(84), h, scale(14));
+  ctx.fillStyle='rgba(253,248,236,.96)'; ctx.fill();
+  ctx.strokeStyle='rgba(91,81,65,.25)'; ctx.lineWidth=1; roundRect(ctx, scale(42), y0, CVW-scale(84), h, scale(14)); ctx.stroke();
+  // 播放钮
+  var px=scale(100), py=y0+scale(34);
+  ctx.fillStyle='#B03A2E'; roundRect(ctx, px-scale(28), py-scale(28), scale(56), scale(56), scale(6)); ctx.fill();
+  ctx.fillStyle='#FDF8EC';
+  ctx.beginPath(); ctx.moveTo(px-scale(8),py-scale(16)); ctx.lineTo(px-scale(8),py+scale(16)); ctx.lineTo(px+scale(16),py); ctx.closePath(); ctx.fill();
+  // 年份 + 范围
+  ctx.fillStyle='#B03A2E'; ctx.textBaseline='alphabetic';
+  ctx.font=scale(42)+'px "Noto Serif SC",serif';
+  ctx.fillText('1127 年', px+scale(60), py-scale(4));
+  ctx.fillStyle='rgba(91,81,65,.68)'; ctx.font=scale(13)+'px "Noto Serif SC",serif';
+  ctx.fillText('960 — 1279', px+scale(330), py+scale(2));
+  // 轨道
+  var tx=scale(152), tw=CVW-scale(152)-scale(168), ty=y0+scale(120);
+  ctx.strokeStyle='rgba(91,81,65,.35)'; ctx.lineWidth=scale(6); ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx+tw,ty); ctx.stroke();
+  // 进度（朱砂→金渐变）
+  var prog=(1127-960)/(1279-960);
+  var gr=ctx.createLinearGradient(tx,0,tx+tw*prog,0);
+  gr.addColorStop(0,'#B03A2E'); gr.addColorStop(1,'#D6824A');
+  ctx.strokeStyle=gr; ctx.lineWidth=scale(6);
+  ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx+tw*prog,ty); ctx.stroke();
+  // 滑块
+  ctx.fillStyle='#FDF8EC'; ctx.strokeStyle='#B03A2E'; ctx.lineWidth=scale(3);
+  ctx.beginPath(); ctx.arc(tx+tw*prog, ty, scale(16), 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  // 分类刻度点
+  var cats=['政治','人物','军事','经济','文化'];
+  var ccol=['#B03A2E','#6E5A7E','#A0622D','#5F7D4F','#46647F'];
+  for(var i=0;i<5;i++){
+    var cx2=tx + tw*(0.15+ i*0.175); var cy2=ty+scale(40);
+    ctx.fillStyle=ccol[i];
+    ctx.beginPath(); ctx.arc(cx2,cy2,scale(8),0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(91,81,65,.7)'; ctx.font=scale(11)+'px "Noto Serif SC",serif';
+    ctx.textAlign='center';
+    ctx.fillText(cats[i], cx2, cy2+scale(26));
+    ctx.textAlign='left';
+  }
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+/* ---------- 主绘制 ---------- */
+function draw(canvas, m){
+  var prev = mode; mode = m;      // 层绘制函数读全局 mode；同步绘制期间临时切换
+  var dpr = window.devicePixelRatio||1;
+  canvas.width = CVW*dpr; canvas.height = CVH*dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,CVW,CVH);
+  var order = ['paper','mountains','watercolor','rivers','prefecture','labels','watermark','legend','events','bubbles','topbar','timeline'];
+  // 画布上 map 区域铺纸（mapTop 之上为顶栏）
+  order.forEach(function(key){ if(checked[key]) LAYER_FN[key](ctx); });
+  mode = prev;
+}
+var LAYER_FN = { paper:paper, mountains:mountains, watercolor:watercolor, rivers:rivers,
+  prefecture:prefecture, labels:labels, watermark:watermark, legend:legend,
+  events:events, bubbles:bubbles, topbar:topbar, timeline:timeline };
+
+/* ---------- 界面 ---------- */
+function renderLayerList(){
+  var grid=document.getElementById('layerGrid');
+  grid.innerHTML='';
+  LAYERS.forEach(function(l){
+    var lab=document.createElement('label');
+    lab.className='layer-item';
+    var cb=document.createElement('input'); cb.type='checkbox'; cb.checked=checked[l.key];
+    cb.addEventListener('change',function(){ checked[l.key]=cb.checked; redraw(); });
+    var sw=document.createElement('span'); sw.className='sw'; sw.style.background=l.color;
+    var no=document.createElement('span'); no.className='no'; no.textContent=l.no;
+    var tx=document.createElement('span'); tx.textContent=l.label;
+    lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(no); lab.appendChild(tx);
+    grid.appendChild(lab);
+  });
+}
+function redraw(){ draw(document.getElementById('cvCurrent'), 0); draw(document.getElementById('cvProposed'), 1); }
+document.getElementById('allOn').addEventListener('click',function(){ LAYERS.forEach(function(l){checked[l.key]=true;}); renderLayerList(); redraw(); });
+document.getElementById('allOff').addEventListener('click',function(){ LAYERS.forEach(function(l){checked[l.key]=false;}); renderLayerList(); redraw(); });
+
+renderLayerList();
+redraw();
+</script>
+</body>
+</html>

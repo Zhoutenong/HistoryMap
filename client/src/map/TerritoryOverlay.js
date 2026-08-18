@@ -267,6 +267,49 @@ function buildWatercolorCanvas(geojson, renderConfig = {}) {
   return { canvas, width: W, height: H, worldBox: { xmin, xmax, ymin, ymax } };
 }
 
+// ===== 资源贴图（烘焙优先策略）=====
+// 视觉思路：水彩晕染层改为预生成图片资源（scripts/bake-overlay-textures.mjs），
+// 双端（Web / Android）共用同一份贴图，程序化 OffscreenCanvas 渲染仅作回退。
+// manifest.json：periodId → 贴图文件；贴图宽高比与运行时 worldBox 一致，
+// plane 几何/位置不动，只替换材质 map。加载失败静默保持程序化纹理。
+
+const bakedManifestCache = { promise: null };
+
+function getBakedManifest() {
+  if (!bakedManifestCache.promise) {
+    bakedManifestCache.promise = fetch('./textures/overlay/manifest.json', { cache: 'force-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }
+  return bakedManifestCache.promise;
+}
+
+/**
+ * 资源贴图异步替换 wash 材质 map。时期切换后旧 mesh 已被 dispose，
+ * 此时回调直接丢弃（替换旧纹理无害：新纹理随 mesh 一起被 GC 回收）。
+ */
+function applyBakedWatercolor(washMesh, geojson) {
+  if (!washMesh || !washMesh.material) return;
+  const periodId = geojson?.properties?._periodId;
+  if (!periodId) return;
+  getBakedManifest().then((manifest) => {
+    const file = manifest?.byPeriod?.[periodId];
+    if (!file) return;
+    new THREE.TextureLoader().load(
+      `./textures/overlay/${file}`,
+      (texture) => {
+        if (!washMesh.material) return;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 4;
+        washMesh.material.map = texture;
+        washMesh.material.needsUpdate = true;
+      },
+      undefined,
+      () => { /* 加载失败：保持程序化纹理 */ },
+    );
+  });
+}
+
 /**
  * 政权名标签：放在政权几何质心，CSS2DObject 挂到 overlay group 内，
  * 随时期切换迁移、随「历史疆域」开关显隐，无需 main.js 额外处理。
@@ -555,6 +598,8 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     washMesh.name = 'watercolor-wash';
     washMesh.position.set((box.xmin + box.xmax) / 2, (box.ymin + box.ymax) / 2, 7);
     root.add(washMesh);
+    // 资源贴图优先：烘焙/美术贴图异步加载后替换程序化纹理（失败静默回退）
+    applyBakedWatercolor(washMesh, geojson);
   }
 
   // 州府边界描边 plane（独立开关 showPrefectures 控制）

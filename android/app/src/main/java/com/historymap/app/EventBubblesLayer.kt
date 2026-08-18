@@ -465,10 +465,11 @@ private fun DrawScope.drawBubble(
     } else {
         MapTokens.PAPER_CARD.copy(alpha = MapTokens.Alpha.BUBBLE_BACKGROUND / 255f)
     }
-    // 单层淡墨阴影（偏移 2px 低透明圆角矩形，对齐 bubble-shadow alpha 35）
+    // 单层淡墨阴影（对齐 bubble-shadow alpha 35）：右下偏移——与地图标签投影、
+    // 政权贴图接触阴影统一「左上来光」的方位（HoMM3 统一光向纪律）
     drawRoundRect(
         color = MapTokens.INK.copy(alpha = MapTokens.Alpha.BUBBLE_SHADOW / 255f),
-        topLeft = Offset(rect.left, rect.top + 2f * scale),
+        topLeft = Offset(rect.left + 1.5f * scale, rect.top + 2.5f * scale),
         size = Size(rect.width, rect.height),
         cornerRadius = radius,
     )

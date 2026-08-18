@@ -1446,3 +1446,11 @@ body::before {
     font-size: 20px;
   }
 }
+
+/* 时空库详情：变更事件行（生命周期/史料/事件时间线） */
+.detail-event {
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(46, 42, 36, 0.72);
+  margin: 2px 0;
+}

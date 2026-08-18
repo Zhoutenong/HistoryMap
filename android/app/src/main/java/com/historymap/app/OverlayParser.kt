@@ -59,6 +59,8 @@ data class OverlayModel(
     val mountains: List<MountainFeature>,
     val labels: List<OverlayLabel>,
     val prefectures: List<PrefecturePolygon> = emptyList(),
+    /** 时期 id（overlay 响应顶层 properties._periodId，如 song-1111）；资源贴图索引用 */
+    val periodId: String? = null,
 )
 
 /**
@@ -133,7 +135,8 @@ object OverlayParser {
         }
         labels.addAll(prefectureLabels)
 
-        return OverlayModel(regimes, rivers, mountains, labels, prefectures)
+        val periodId = props.optString("_periodId").takeIf { it.isNotEmpty() }
+        return OverlayModel(regimes, rivers, mountains, labels, prefectures, periodId)
     }
 
     /** 州府面：properties.prefectures 的完整 feature（Polygon/MultiPolygon）→ 环列表 */

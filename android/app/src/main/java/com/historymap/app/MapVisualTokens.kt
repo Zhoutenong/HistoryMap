@@ -81,11 +81,11 @@ object MapTokens {
         /** 年份水印 */
         const val YEAR_WATERMARK = 26
         /**
-         * 水彩主体（design 117 → 102：真机截图对照 prompt_1——主体与斑驳叠加后
-         * 有效透明度约 0.51，宋屏幕色 (155,135,115) 比参考 (185,146,113) 深；
-         * 降至 102 后有效 ~0.47，与参考 0.46 对齐。见 scripts/visual-token-deviations.json）。
+         * 水彩主体（design 117。两轮真机对照效果图：117 在暖纸上有效覆盖仅 ~46%，
+         * 六政权呈粉彩态、色相区分不足；137 后宋砖红/辽灰蓝/西夏土黄可分。
+         * 登记于 scripts/visual-token-deviations.json）。
          */
-        const val WATERCOLOR_BODY = 102
+        const val WATERCOLOR_BODY = 137
         /** 水彩羽化 */
         const val WATERCOLOR_BLOOM = 82
         /** 水彩斑驳 alpha 区间（min..max） */
@@ -95,13 +95,13 @@ object MapTokens {
         const val BOUNDARY = 122
         /** 干边 */
         const val DRY_EDGE = 71
-        // P1-河流：评审要求主/支流水痕、主体、脊线 alpha 整体降 15~25%，
-        // 河流是辅助层，不应与政权边界竞争视觉层级
-        const val MAJOR_RIVER_WASH = 38
-        const val MAJOR_RIVER_BODY = 90
-        const val MAJOR_RIVER_SPINE = 115
-        const val MINOR_RIVER_WASH = 24
-        const val MINOR_RIVER_BODY = 55
+        // M1-河流：在 R4 偏硬偏深调优与整体色彩饱和之间取中间值，
+        // body/spine 温和回调（wash 保持设计值），政权色块保持第一视觉层级
+        const val MAJOR_RIVER_WASH = 46
+        const val MAJOR_RIVER_BODY = 96
+        const val MAJOR_RIVER_SPINE = 124
+        const val MINOR_RIVER_WASH = 30
+        const val MINOR_RIVER_BODY = 60
         /** 山脉 */
         const val MOUNTAIN = 96
         /** 纸张颗粒 */
@@ -139,8 +139,8 @@ object MapTokens {
         const val TIMELINE_WIDTH = 996
         const val TIMELINE_HEIGHT = 280
         const val TIMELINE_RADIUS = 14
-        /** P1：底部安全区 28→18，压缩时间轴占屏高度（约 10%） */
-        const val TIMELINE_BOTTOM_SAFE_AREA = 18
+        /** P1→M1：底部安全区原 28→18 压缩后分类行被底部导航栏遮挡，折中回 24 */
+        const val TIMELINE_BOTTOM_SAFE_AREA = 24
         const val PLAY_BUTTON_WIDTH = 56
         const val PLAY_BUTTON_HEIGHT = 56
         const val TRACK_HEIGHT = 6
@@ -153,20 +153,21 @@ object MapTokens {
     object Typography {
         data class TypeSpec(val size: Int, val weight: Int, val letterSpacing: Int, val lineHeight: Int)
 
-        // P1-字体：评审要求放大顶栏/地图辅助文字并加重标题字重（Medium/Bold，
-        // 打包字体仅 400/700，取 700）；设计 px 与 P20 物理 px 1:1，评审的 sp 数值即设计 px。
-        val TOP_TITLE = TypeSpec(20, 700, 4, 28)
-        val DYNASTY = TypeSpec(16, 700, 2, 24)
-        val MENU = TypeSpec(15, 400, 2, 22)
+        // M1-字体：字号已对齐 design-tokens.json 标称值，消除此前双重放大（DesignMetrics
+        // 的 FONT_SCALE=1.25 已含全局可读性放大，Typography 无需再在设计稿基础上加 1~2px）。
+        // FONT_SCALE=1.25 是唯一全局可读性放大系数。
+        val TOP_TITLE = TypeSpec(18, 400, 4, 26)
+        val DYNASTY = TypeSpec(15, 700, 2, 22)
+        val MENU = TypeSpec(14, 400, 2, 20)
         val LEGEND_TITLE = TypeSpec(14, 700, 2, 20)
-        val LEGEND_ITEM = TypeSpec(14, 400, 1, 26)
-        val MAP_LABEL = TypeSpec(16, 400, 1, 24)
-        val BUBBLE_TITLE = TypeSpec(15, 700, 1, 22)
-        val BUBBLE_BODY = TypeSpec(12, 400, 0, 20)
+        val LEGEND_ITEM = TypeSpec(13, 400, 1, 22)
+        val MAP_LABEL = TypeSpec(13, 400, 1, 20)
+        val BUBBLE_TITLE = TypeSpec(14, 700, 1, 20)
+        val BUBBLE_BODY = TypeSpec(11, 400, 0, 18)
         val WATERMARK = TypeSpec(120, 400, 8, 130)
         val TIMELINE_YEAR = TypeSpec(42, 400, 3, 52)
-        val TIMELINE_RANGE = TypeSpec(14, 400, 1, 20)
-        val TIMELINE_CATEGORY = TypeSpec(12, 400, 1, 18)
+        val TIMELINE_RANGE = TypeSpec(13, 400, 1, 18)
+        val TIMELINE_CATEGORY = TypeSpec(11, 400, 1, 16)
     }
 
     // ===================== 地图渲染参数（GL shader + 纹理管线）=====================
@@ -177,28 +178,28 @@ object MapTokens {
         val INK_GL = floatArrayOf(0.227f, 0.204f, 0.157f, 0.38f)
 
         // —— 背景 shader（宣纸 + 颗粒 + 中心提亮 + 暗角）——
-        /** 暗角强度（0..1；alpha0to255.vignette 97/255。P20 实测偏重，0.38→0.28） */
-        const val VIGNETTE_STRENGTH = 0.28f
-        /** 暗角起止（离中心距离；起点外推，减少中部压暗面积） */
-        const val VIGNETTE_START = 0.45f
+        /**
+         * 暗角强度（0..1；design vignette 97/255≈0.38。M1：0.34→0.38 对齐设计值）。
+         */
+        const val VIGNETTE_STRENGTH = 0.38f
+        /** 暗角起止（离中心距离；R5：起点回收到 design 0.40 附近） */
+        const val VIGNETTE_START = 0.40f
         const val VIGNETTE_END = 0.86f
         /**
-         * 中心提亮强度（0..1；真机截图对照：0.12 + GL_BRIGHTNESS 1.08 叠加后
-         * 地图中心被推到 255 白并偏蓝（B≈218），宣纸失去暖调。降至 0.09 保留
-         * 设计 centerLight 26/255≈0.10 的语义，避免白点裁剪）。
+         * 中心提亮强度（0..1；R5：0.09→0.06——真机对照效果图中心发白、
+         * 旧纸感不足，弱化提亮）。
          */
-        const val CENTER_LIGHT_STRENGTH = 0.09f
+        const val CENTER_LIGHT_STRENGTH = 0.06f
         /** 中心提亮作用半径 */
         const val CENTER_LIGHT_RADIUS = 0.62f
         /** 纸张颗粒叠加强度（shader 内 grain * 该值） */
         const val PAPER_GRAIN_STRENGTH = 0.10f
         /**
          * 宣纸纹理混合强度（0..1）：0 = 纯暖纸色，1 = 完全采用纹理。
-         * P20 实测 paper-texture.jpg 偏冷灰（RGB≈225,219,204 vs 目标 230,216,181），
-         * 完全采用纹理会让底纸变灰褐；二次调优降至 0.35 恢复暖黄。
-         * 三次调优（截图对照）：0.25 → 0.20，冷灰纹理影响进一步收窄。
+         * R5 两轮：0.20→0.30 旧纸感提升但纹理图自身的大尺度横向结构显形
+         * （真机出现横向色阶）；回落 0.24 + 暖化系数加强（见 buildFragBg）。
          */
-        const val PAPER_TEXTURE_STRENGTH = 0.20f
+        const val PAPER_TEXTURE_STRENGTH = 0.24f
         /**
          * GL 全场景亮度补偿（>1 提亮）。P20 实测：GLSurfaceView 无 sRGB 色彩管理，
          * 同样颜色 GL 渲染比 Compose 层暗约 12%（顶栏 244,238,226 正常，地图暗）；
@@ -210,14 +211,21 @@ object MapTokens {
          */
         const val GL_BRIGHTNESS = 1.0f
 
+        // —— 相机取景（resetCamera；效果图 prompt_1：地图纵向充满顶栏与时间轴之间）——
+        /** 竖屏 contain 基础上的放大倍数（>1 = 地图放大、左右两侧适度裁切） */
+        const val CAMERA_FIT_BOOST = 1.4f
+        /** 地图区上下边界（占屏高比例；设计画布 mapTop 154 / mapBottom 1410 @ 1080×2244） */
+        const val CAMERA_MAP_AREA_TOP_FRAC = Dimensions.MAP_TOP / DesignMetrics.CANVAS_HEIGHT
+        const val CAMERA_MAP_AREA_BOTTOM_FRAC = Dimensions.MAP_BOTTOM / DesignMetrics.CANVAS_HEIGHT
+
         // —— 水彩（WatercolorBuilder）——
         /** 水彩主体 alpha 分数（与 fillOpacity 联动） */
         const val WATERCOLOR_BODY_FRAC = 0.459f
         /** 水彩羽化 alpha 分数 */
         const val WATERCOLOR_BLOOM_FRAC = 0.322f
-        /** 斑驳 alpha 区间分数 */
-        const val WATERCOLOR_MOTTLE_MIN_FRAC = 0.051f
-        const val WATERCOLOR_MOTTLE_MAX_FRAC = 0.122f
+        /** 斑驳 alpha 区间分数（design 13..31/255；两轮对照后上调，粉彩态下斑驳几乎不可见） */
+        const val WATERCOLOR_MOTTLE_MIN_FRAC = 0.10f
+        const val WATERCOLOR_MOTTLE_MAX_FRAC = 0.20f
         /**
          * P1-边界：评审要求「水彩主体 → 边缘羽化 → 淡墨干边」而不是矢量描边。
          * 主边界 alpha 0.478→0.36（降低 25%），宽度 3.0→2.2；
@@ -226,24 +234,44 @@ object MapTokens {
          */
         const val BOUNDARY_FRAC = 0.36f
         const val DRY_EDGE_FRAC = 0.22f
-        /** 暖色罩 alpha（0..255；110→60→40→10：真机截图对照 prompt_1——40 的
-         *  SRC_ATOP 暖罩把领土色整体提亮 ~20/通道、向米褐靠拢，色相被压平；
-         *  10 保留「色块与宣纸融合」的意图但不再抹掉政权色）。 */
-        const val WARM_WASH_ALPHA = 10
+        /**
+         * 暖色罩 alpha（0..255；110→60→40→10→0：真机截图对照效果图——任何强度的
+         * SRC_ATOP 暖罩都会把政权色向米褐拉平；效果图六政权色相分明，移除）。
+         */
+        const val WARM_WASH_ALPHA = 0
+        /** 水彩 tint 饱和度保留（0.78 会把辽/金/大理的灰蓝灰绿压成土色；0.95 → 1.00 来自 M2
+         *  实测：宋域中心 #9e4b3d vs 设计 #b03a2e 色相 +3° 正常、饱和度 -15%（消除 tint 去饱和，暖纸 alpha 混合柔化保留）） */
+        const val WATERCOLOR_TINT_SAT = 1.0f
+        /** 水彩 tint 亮度系数与钳制（保留政权明暗层级，不过度压暗；旧 0.82/[0.32,0.46]） */
+        const val WATERCOLOR_TINT_LUM = 0.92f
+        const val WATERCOLOR_TINT_LUM_MIN = 0.28f
+        const val WATERCOLOR_TINT_LUM_MAX = 0.55f
+        /** 边缘积色（水彩渗化 pooling）：政权内侧沿边界的加深晕（效果图谱系的渗化感） */
+        const val WATERCOLOR_POOLING_WIDTH = 6f
+        const val WATERCOLOR_POOLING_BLUR = 3f
+        const val WATERCOLOR_POOLING_ALPHA = 38
+        /** 积色/斑驳暗 variant = tint × 该系数 */
+        const val WATERCOLOR_POOLING_DARK = 0.78f
+        /** 斑驳明 variant：tint 向纸色 #E6D8B5 混合比例 */
+        const val WATERCOLOR_MOTTLE_LIGHT_MIX = 0.35f
+        /** 州府边界（Voronoi 近似面）细描边：alpha 与宽度除数（默认视图中不抢政权色；
+         *  R3 第五轮 46→26→16 + 干笔虚线：规则网格在大色块内仍被感知为数据网格，仅作隐约肌理） */
+        const val PREFECTURE_STROKE_ALPHA = 16
+        const val PREFECTURE_STROKE_WIDTH_DIV = 1300f
         /** 水彩羽化层模糊半径（相对纹理宽度的比例基数；max(基, W/除数)） */
         const val WATERCOLOR_BLOOM_BLUR_BASE = 16f
         const val WATERCOLOR_BLOOM_BLUR_DIV = 85f
         /** 水彩主体层模糊半径 */
         const val WATERCOLOR_BODY_BLUR_BASE = 6f
         const val WATERCOLOR_BODY_BLUR_DIV = 260f
-        /** 斑驳数量（min + rng(range)，主政权 ×2） */
-        const val WATERCOLOR_MOTTLE_COUNT_MIN = 45
-        const val WATERCOLOR_MOTTLE_COUNT_RANGE = 25
+        /** 斑驳数量（min + rng(range)，主政权 ×2；design mottleCount 60） */
+        const val WATERCOLOR_MOTTLE_COUNT_MIN = 55
+        const val WATERCOLOR_MOTTLE_COUNT_RANGE = 15
         /** 斑驳半径（px，底 + rng×范围） */
         const val WATERCOLOR_MOTTLE_RADIUS_BASE = 14f
-        const val WATERCOLOR_MOTTLE_RADIUS_RANGE = 48f
-        /** 政权边界/干边描边宽度（px；P1 减细 + 干边加断续虚线见 WatercolorBuilder） */
-        const val WATERCOLOR_BOUNDARY_WIDTH = 2.2f
+        const val WATERCOLOR_MOTTLE_RADIUS_RANGE = 60f
+        /** 政权边界/干边描边宽度（px；design watercolor.edgeWidth 1.8） */
+        const val WATERCOLOR_BOUNDARY_WIDTH = 1.8f
         const val WATERCOLOR_DRY_EDGE_WIDTH = 1.3f
 
         /**
@@ -254,50 +282,70 @@ object MapTokens {
             (0.95f + 0.05f * fillOpacity).coerceIn(0f, 1f)
 
         // —— 山水（TerrainTextureBuilder）——
-        /** 河流水痕 alpha 分数（design 46/110 × 系数；P1 再降一档，评审要求降 15~20%） */
-        const val MAJOR_RIVER_WASH_FRAC = 0.16f
-        const val MAJOR_RIVER_BODY_FRAC = 0.37f
-        const val MAJOR_RIVER_SPINE_FRAC = 0.47f
-        const val MINOR_RIVER_WASH_FRAC = 0.10f
-        const val MINOR_RIVER_BODY_FRAC = 0.24f
-        /** 河流水痕/主体/脊线 alpha 系数（P1 继续降档，河流为辅助层） */
-        const val RIVER_WASH_ALPHA_FRAC = 0.7f
-        const val RIVER_BODY_ALPHA_FRAC = 0.62f
-        /** 河流水痕/主体/脊线宽度（相对纹理宽度的除数；越小越宽）。
-         *  P1 再减细 8~17%，避免与政权边界竞争视觉层级。 */
-        const val RIVER_WASH_WIDTH_MAJOR_DIV = 185f
-        const val RIVER_WASH_WIDTH_MINOR_DIV = 270f
-        const val RIVER_WASH_WIDTH_MIN = 8f
-        const val RIVER_WASH_WIDTH_MIN_MINOR = 4f
-        const val RIVER_BODY_WIDTH_MAJOR_DIV = 400f
-        const val RIVER_BODY_WIDTH_MINOR_DIV = 500f
-        const val RIVER_BODY_WIDTH_MIN = 2.6f
-        const val RIVER_BODY_WIDTH_MIN_MINOR = 1.6f
+        /**
+         * 河流水痕/主体/脊线宽度（相对纹理宽度的除数；越小越宽）。
+         * R4 校准基准：默认取景下纹理 W≈2048 对应屏幕宽约 1520px，
+         * 设计宽度（major wash 12 / body 3.2 / spine 1.1、minor 6/2 设计px）
+         * 换算为除数：wash 130/250、body 450/700、spine 1400。
+         */
+        const val RIVER_WASH_WIDTH_MAJOR_DIV = 130f
+        const val RIVER_WASH_WIDTH_MINOR_DIV = 250f
+        const val RIVER_WASH_WIDTH_MIN = 10f
+        const val RIVER_WASH_WIDTH_MIN_MINOR = 6f
+        const val RIVER_BODY_WIDTH_MAJOR_DIV = 500f
+        const val RIVER_BODY_WIDTH_MINOR_DIV = 700f
+        const val RIVER_BODY_WIDTH_MIN = 3.4f
+        const val RIVER_BODY_WIDTH_MIN_MINOR = 2.2f
         const val RIVER_SPINE_WIDTH_DIV = 1400f
-        const val RIVER_SPINE_WIDTH_MIN = 0.9f
-        /** 主脊线 alpha 系数（design 140 × 0.5，进一步减淡深色主轴） */
-        const val RIVER_SPINE_ALPHA_FRAC = 0.5f
+        const val RIVER_SPINE_WIDTH_MIN = 1.1f
         /** 河流水痕模糊半径 */
         const val RIVER_WASH_BLUR_DIV = 260f
         const val RIVER_WASH_BLUR_MIN = 4f
+
+        // —— 河道带（GL 几何渲染；借鉴 HoMM3 有机河道：变宽 / 两岸羽化 / 顺流微动画）——
+        /** 变宽系数：上游（path 首点）宽 = 基准宽 × HEAD */
+        const val RIVER_TAPER_HEAD = 0.55f
+        /** 变宽系数：入海口（path 末点）宽 = 基准宽 × MOUTH */
+        const val RIVER_TAPER_MOUTH = 1.30f
+        /** 顺流微动画波长（世界单位，一段亮部沿河向下游移动） */
+        const val RIVER_FLOW_WAVE = 46f
+        /** 顺流微动画速度（周期/秒；0.05 ≈ 20s 一段流过，克制的「活」） */
+        const val RIVER_FLOW_SPEED = 0.05f
+        /** 顺流微动画亮度起伏幅度（0..1；小幅度，只做呼吸感不做闪烁） */
+        const val RIVER_FLOW_AMP = 0.07f
+
+        // —— 政权贴图接触阴影（统一光向：左上 45° 来光 → 右下投影）——
+        /** 阴影 alpha（0..1；水彩贴图整体 alpha × 该值，软影不压政权色） */
+        const val REGIME_SHADOW_ALPHA = 0.15f
+        /** 阴影偏移（世界宽比例；与 RIVER_TAPER 同源的世界单位，跟随地图缩放） */
+        const val REGIME_SHADOW_OFFSET = 0.0075f
         /** 山脉 alpha 分数 */
         const val MOUNTAIN_FRAC = 0.32f
-        /** 山脊线 alpha 系数（design 96 × 0.62；P1 再降一档） */
-        const val MOUNTAIN_RIDGE_ALPHA_FRAC = 0.62f
-        /** 山脉次级（前景小峰）alpha 分数 */
-        const val MOUNTAIN_LIGHT_FRAC = 0.16f
-        /** 山脉山脊/笔触宽度（相对纹理宽度的除数；P1 略减细） */
-        const val MOUNTAIN_RIDGE_WIDTH_DIV = 1100f
-        const val MOUNTAIN_RIDGE_WIDTH_MIN = 1.0f
-        const val MOUNTAIN_GLYPH_WIDTH_DIV = 1100f
-        const val MOUNTAIN_GLYPH_WIDTH_MIN = 0.9f
-        /** 山脊晕染 halo 宽度系数（山脊线宽 × 该值；2.5×→2.0×→1.8×） */
+        /** 山脊线 alpha 系数（design 96 × 0.8；山形 glyph 是主体，脊线作骨架） */
+        const val MOUNTAIN_RIDGE_ALPHA_FRAC = 0.8f
+        /** 山体晕染 halo alpha 系数（design 96 × 0.40；连续 halo 横贯屏幕会被读作纸面色带） */
+        const val MOUNTAIN_HALO_ALPHA_FRAC = 0.40f
+        /** 山脉次级（前景小峰）alpha 分数（R3：0.16→0.30） */
+        const val MOUNTAIN_LIGHT_FRAC = 0.30f
+        /** 山脉山脊/笔触宽度（相对纹理宽度的除数；R3：1100→850） */
+        const val MOUNTAIN_RIDGE_WIDTH_DIV = 850f
+        const val MOUNTAIN_RIDGE_WIDTH_MIN = 1.2f
+        const val MOUNTAIN_GLYPH_WIDTH_DIV = 900f
+        const val MOUNTAIN_GLYPH_WIDTH_MIN = 1.1f
+        /** 山脊晕染 halo 宽度系数（山脊线宽 × 该值） */
         const val MOUNTAIN_RIDGE_HALO_MULT = 1.8f
-        /** 皴法短线 alpha 分数（山脉主线的 1/3，弱化笔触堆叠） */
-        const val MOUNTAIN_CUNFA_FRAC = 0.28f
-        /** 山形 glyph 基准尺寸（相对纹理宽度；P1 略缩小 + 峰数减少 + 随机旋转） */
-        const val MOUNTAIN_GLYPH_SIZE_DIV = 130f
+        /** 皴法短线 alpha 分数（R3：0.28→0.55，第三轮回调 0.45——与山形 glyph 叠加过重） */
+        const val MOUNTAIN_CUNFA_FRAC = 0.38f
+        /** 皴法短线长度/线宽（相对纹理宽度的除数） */
+        const val MOUNTAIN_CUNFA_LEN_DIV = 170f
+        const val MOUNTAIN_CUNFA_WIDTH_DIV = 700f
+        /** 山形 glyph 基准尺寸（相对纹理宽度；R3 迭代：W/130→…→W/80 低对比辅助） */
+        const val MOUNTAIN_GLYPH_SIZE_DIV = 80f
         const val MOUNTAIN_GLYPH_SIZE_MIN = 9f
+        /** 山形 glyph 主峰 alpha 分数（R3 第四轮 0.5：山脊线/皴法为主纹理，glyph 低对比辅助） */
+        const val MOUNTAIN_GLYPH_ALPHA_FRAC = 0.5f
+        /** 沿山脊撒山形 glyph 的间隔（glyph 基准尺寸 × 该值；第四轮 1.7 加大留白） */
+        const val MOUNTAIN_RIDGE_GLYPH_STEP = 1.7f
 
         // —— 纹理尺寸（mapTextureSize）——
         const val TEXTURE_DPR_MAX = 2f
@@ -318,10 +366,10 @@ object MapTokens {
         /** 泡泡最大宽度（设计 px） */
         const val MAX_WIDTH = 260
         /**
-         * 普通泡泡高度（设计 px，标题+年份+一行短摘要——对齐验收 README 的
-         * 260×112 目标：标题 + 年份 + 首句摘要，让当前事件在地图上自带语境）。
+         * 普通泡泡高度（设计 px，对齐 design-tokens.json 标称 112；
+         * MAX_WIDTH=260 × HEIGHT=112 为设计目标尺寸）。
          */
-        const val HEIGHT = 96
+        const val HEIGHT = 112
         /** 选中泡泡高度（设计 px，标题+年份+两行摘要） */
         const val HEIGHT_SELECTED = 116
         /** 聚合泡泡高度（设计 px，紧凑「简称 +N」） */

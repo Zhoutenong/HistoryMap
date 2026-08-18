@@ -62,3 +62,28 @@ export function getDynasties(options = {}) {
   if (bridge) return bridgeCall('getDynasties');
   return request('/dynasties', options.signal);
 }
+
+/**
+ * 时空实体查询（PostgreSQL + PostGIS 时空库，/api/places）：
+ * 按年份返回 valid_from <= year <= valid_to 的实体版本。
+ * @param {object} query { year, type, name, route }
+ */
+export function getPlaces(query = {}, options = {}) {
+  const qs = new URLSearchParams();
+  if (query.year !== undefined) qs.set('year', String(query.year));
+  if (query.type) qs.set('type', query.type);
+  if (query.name) qs.set('name', query.name);
+  if (query.route) qs.set('route', query.route);
+  const q = qs.toString();
+  return request(`/places${q ? `?${q}` : ''}`, options.signal);
+}
+
+/** 时空实体详情（全部时间版本 + 事件时间线 + 史料源） */
+export function getPlace(id, options = {}) {
+  return request(`/places/${encodeURIComponent(id)}`, options.signal);
+}
+
+/** 史料源清单（时空库） */
+export function getPlaceSources(options = {}) {
+  return request('/places/sources', options.signal);
+}

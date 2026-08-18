@@ -1137,7 +1137,7 @@ private fun labelTextPaints(scale: Float): Map<String, Paint> {
     }
     return mapOf(
         "regime" to make(16f, true, 0xF03A3428.toInt()),
-        "cities" to make(14f, false, 0xD43A3428.toInt()),
+        "cities" to make(14f, false, 0xE03A3428.toInt()),
         "prefecture" to make(13.5f, false, 0xBF3A3428.toInt()), // 州府治所（元丰九域志基准）
         "mountains" to make(13f, false, 0xB83A3428.toInt()),
         "rivers" to make(13f, false, 0xB83A3428.toInt()),
@@ -1145,22 +1145,37 @@ private fun labelTextPaints(scale: Float): Map<String, Paint> {
     )
 }
 
-/** 地图标注层：绘制 layoutMapLabels 的放置结果（卡片/文字/指向线，垂直居中） */
+/**
+ * 地图标注层：绘制 layoutMapLabels 的放置结果（文字/指向线/城市点，垂直居中）。
+ *
+ * R6-标签（对齐效果图）：政权/城市名撤掉米白卡片+朱砂描边（UI 感强、遮挡色块），
+ * 改为深墨文字直书 + 极细纸色 halo 描边保证在水彩色块上的可读性；
+ * 城市标签在锚点画「墨点 + 纸色细环」的靶心标记。
+ */
 @Composable
 fun LabelLayer(
     placedLabels: List<PlacedMapLabel>,
     modifier: Modifier = Modifier,
 ) {
     val designScale = rememberDesignScale()
-    val paints = remember(designScale) { labelTextPaints(designScale) }
-    val labelBg = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xD9F7F2E6.toInt() }
+    val density = LocalDensity.current.density
+    // 统一左上光向的文字投影（右下偏移软影）：与政权贴图接触阴影（GL 侧）、
+    // 泡泡阴影同一光向——HoMM3「焙烧阴影」的手机端移植，让元素有「贴在纸上」的厚度
+    val paints = remember(designScale, density) {
+        labelTextPaints(designScale).mapValues { (_, p) ->
+            p.setShadowLayer(2.4f * density, 1.2f * density, 1.8f * density, 0x2E3A3428)
+            p
+        }
     }
-    val cardBorder = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 1.2f
-            color = 0x59B03A2E.toInt()
+    // 纸色 halo：与文字同字号描边（先描边后填充的双 pass 画法）
+    val haloPaints = remember(designScale, density) {
+        labelTextPaints(designScale).mapValues { (_, p) ->
+            Paint(p).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1.2f * density
+                strokeJoin = android.graphics.Paint.Join.ROUND
+                color = 0xCCF8F4E9.toInt()
+            }
         }
     }
     val leaderInk = remember {
@@ -1171,6 +1186,15 @@ fun LabelLayer(
             pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f, 5f), 0f)
         }
     }
+    // 城市靶心点：墨点 + 纸色细环（效果图的城市标记语言）
+    val cityDot = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC3A3428.toInt() } }
+    val cityDotRing = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            color = 0xCCF8F4E9.toInt()
+        }
+    }
 
     Canvas(modifier = modifier) {
         drawIntoCanvas { canvas ->
@@ -1179,26 +1203,23 @@ fun LabelLayer(
                 if (!pl.visible) continue
                 val l = pl.label
                 val paint = paints[l.kind] ?: continue
+                val halo = haloPaints[l.kind] ?: continue
                 val cx = pl.rect.center.x
                 val cy = pl.rect.center.y
-                // 指向线：锚点 → 卡片（仅被移开时）
+                // 指向线：锚点 → 文字（仅被移开时）
                 if (pl.needLeader) {
                     native.drawLine(pl.anchor.x, pl.anchor.y, cx, cy, leaderInk)
                 }
-                // 政权/城市卡片：半透明纸底 + 细朱砂描边
-                if (l.kind == "regime" || (l.kind == "cities" && l.rank <= 2)) {
-                    native.drawRoundRect(
-                        pl.rect.left, pl.rect.top, pl.rect.right, pl.rect.bottom,
-                        8f * density, 8f * density, labelBg,
-                    )
-                    native.drawRoundRect(
-                        pl.rect.left, pl.rect.top, pl.rect.right, pl.rect.bottom,
-                        8f * density, 8f * density, cardBorder,
-                    )
+                // 城市靶心点（锚点即城市位置）
+                if (l.kind == "cities") {
+                    val r = 3.8f * density
+                    native.drawCircle(pl.anchor.x, pl.anchor.y, r + 1.6f * density, cityDotRing)
+                    native.drawCircle(pl.anchor.x, pl.anchor.y, r, cityDot)
                 }
                 // 文字垂直居中：基线 = 中心 - (ascent+descent)/2（与泡泡一致）
                 val fm = paint.fontMetrics
                 val baseline = cy - (fm.ascent + fm.descent) / 2f
+                native.drawText(l.text, pl.rect.left + 10f * density, baseline, halo)
                 native.drawText(l.text, pl.rect.left + 10f * density, baseline, paint)
             }
         }

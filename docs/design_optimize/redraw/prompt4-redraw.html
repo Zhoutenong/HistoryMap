@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>prompt_4 重绘 · 识图→数据驱动重绘演示</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #b8a890; }
+  .stage { display: flex; justify-content: center; padding: 24px 0; }
+  .app {
+    position: relative; width: 872px; height: 1804px; overflow: hidden;
+    background:
+      radial-gradient(1300px 800px at 30% 18%, rgba(255,250,240,.95), transparent 62%),
+      radial-gradient(1100px 1000px at 78% 72%, rgba(226,198,166,.55), transparent 55%),
+      linear-gradient(160deg, #efe2cc 0%, #e8d8c8 45%, #dbc5a6 100%);
+    border-radius: 18px; box-shadow: 0 18px 50px rgba(60,40,20,.35);
+  }
+  .paper { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .12; mix-blend-mode: multiply; pointer-events: none; }
+  .statusbar { position: absolute; top: 0; left: 0; right: 0; height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px; font: 22px/1 sans-serif; color: rgba(60,45,30,.75); }
+  .topbar { position: absolute; top: 56px; left: 0; right: 0; height: 88px; display: flex; align-items: center; padding: 0 22px; border-bottom: 1px solid rgba(120,90,60,.18); }
+  .brand { font: 700 30px/1 'STKaiti','KaiTi','SimSun',serif; color: #5a4030; letter-spacing: 4px; }
+  .dyn-btn { margin-left: 18px; padding: 10px 22px; font: 600 26px/1 'STKaiti','KaiTi',serif; color: #a0432f;
+    background: rgba(255,250,240,.92); border: 2px solid rgba(176,58,46,.8); border-radius: 999px; }
+  .icon-row { margin-left: auto; display: flex; gap: 26px; }
+  .icon-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .icon-glyph { width: 88px; height: 88px; display: grid; place-items: center; font-size: 34px; color: #b8a890;
+    border: 2px dashed rgba(140,115,85,.55); border-radius: 10px; background: rgba(240,228,208,.6); }
+  .icon-slot em { font-style: normal; font: 16px/1 sans-serif; color: #9a8874; }
+  .legend { position: absolute; top: 150px; left: 18px; z-index: 5; padding: 14px 18px 16px;
+    background: rgba(250,242,226,.85); border: 1px solid rgba(160,120,70,.25); border-radius: 12px; box-shadow: 0 4px 12px rgba(90,60,30,.12); }
+  .legend-head { font: 700 26px/1 'STKaiti','KaiTi',serif; color: #fff; background: #b03a2e;
+    display: inline-block; padding: 8px 16px; border-radius: 8px; margin-bottom: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 12px; padding: 7px 0; font: 22px/1 'STKaiti','KaiTi',serif; color: #5a4030; }
+  .legend-dot { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  /* 地图层：svg 与浮层共用地图局部坐标（0..872 × 0..1256，相对 .map） */
+  .map { position: absolute; top: 144px; left: 0; width: 872px; height: 1256px; }
+  .map svg.regimes { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .regimes .rpath { fill-opacity: .46; stroke-opacity: .6; stroke-width: 1.6; }
+  .regimes .rpath.blur { fill-opacity: .22; filter: blur(7px); }
+  .river { fill: none; stroke: rgba(70,90,110,.55); stroke-width: 2.6; stroke-linecap: round; }
+  .river-label { font: italic 23px/1 'STKaiti','KaiTi',serif; fill: rgba(90,110,130,.85); }
+  .city-label { font: 21px/1 'STKaiti','KaiTi',serif; fill: rgba(80,60,40,.9); }
+  .city circle { fill: rgba(80,60,40,.9); }
+  .regime-label { font: 700 42px/1 'STKaiti','KaiTi',serif; fill: rgba(70,50,35,.55); letter-spacing: 6px; }
+  .regime-label.major { font-size: 48px; fill: rgba(70,50,35,.68); }
+  .sea-label { font: italic 32px/1 'STKaiti','KaiTi',serif; fill: rgba(90,110,130,.6); letter-spacing: 10px; }
+  .bubble { position: absolute; z-index: 6; padding: 14px 16px 12px 26px; border-radius: 12px;
+    background: linear-gradient(180deg, #fdf5e6, #f3e4cc); border: 1.5px solid rgba(176,58,46,.8);
+    box-shadow: 0 6px 16px rgba(90,60,30,.22); }
+  .bubble::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 7px; border-radius: 4px; background: var(--cat); }
+  .bubble-title { font: 700 26px/1.2 'STKaiti','KaiTi',serif; color: #7a3a28; margin-bottom: 6px; }
+  .bubble-text { font: 20px/1.45 'STKaiti','KaiTi',serif; color: #6b5638; }
+  .leaders { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }
+  .leader { stroke: rgba(176,58,46,.55); stroke-width: 2.5; stroke-dasharray: 7 7; fill: none; }
+  .anchor { fill: #b03a2e; opacity: .9; }
+  /* 底部面板 */
+  .panel { position: absolute; left: 0; right: 0; bottom: 0; height: 404px; z-index: 7;
+    background: linear-gradient(180deg, #faf0dd, #f1e2c6); border-radius: 26px 26px 0 0;
+    box-shadow: 0 -8px 22px rgba(90,60,30,.2); }
+  .play-btn { position: absolute; left: 26px; top: 34px; width: 64px; height: 64px; border-radius: 50%;
+    background: #fdf5e6; border: 2.5px solid rgba(176,58,46,.85); display: grid; place-items: center; }
+  .play-tri { width: 0; height: 0; border-left: 20px solid #b03a2e; border-top: 13px solid transparent; border-bottom: 13px solid transparent; margin-left: 4px; }
+  .year { position: absolute; top: 74px; left: 120px; font: 700 44px/1 'STKaiti','KaiTi',serif; color: #6b3a28; }
+  .range { position: absolute; top: 84px; left: 600px; font: 24px/1 'STKaiti','KaiTi',serif; color: #8a7a68; }
+  .track { position: absolute; top: 158px; left: 112px; width: 736px; height: 40px; }
+  .track-base { position: absolute; top: 12px; left: 0; right: 0; height: 5px; border-radius: 3px; background: rgba(90,70,50,.18); }
+  .track-fill { position: absolute; top: 12px; left: 0; height: 5px; border-radius: 3px;
+    background: linear-gradient(90deg, #c05a3e, #b03a2e); box-shadow: 0 0 8px rgba(176,58,46,.35); }
+  .track-knob { position: absolute; top: 5px; width: 20px; height: 20px; border-radius: 50%;
+    background: #fdf5e6; border: 2.5px solid #b03a2e; box-shadow: 0 2px 6px rgba(90,60,30,.25); transform: translateX(-10px); }
+  .track-year { position: absolute; top: -2px; font: 18px/1 'STKaiti','KaiTi',serif; color: #7a6a58; transform: translateX(-50%); }
+  .track-dot { position: absolute; top: 38px; width: 13px; height: 13px; border-radius: 50%; transform: translateX(-50%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.6), 0 1px 3px rgba(0,0,0,.2); }
+  .tabs { position: absolute; top: 238px; left: 0; right: 0; height: 88px; }
+  .tab { position: absolute; top: 0; height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  .tab-dot { width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; font: 11px/1 sans-serif; color: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  .tab-label { font: 24px/1 'STKaiti','KaiTi',serif; color: #5a4030; }
+  .tab.active .tab-label { color: #a8322a; font-weight: 700; }
+  .tab-underline { position: absolute; bottom: 6px; width: 44px; height: 5px; border-radius: 3px; background: #b03a2e; }
+  .divider { position: absolute; top: 342px; left: 28px; right: 28px; border-top: 2px dashed rgba(176,58,46,.4); }
+  .safe-area { position: absolute; top: 366px; left: 28px; font: 18px/1 'STKaiti','KaiTi',serif; color: #9a8874; }
+  .anno-toggle { position: fixed; left: 12px; bottom: 12px; z-index: 99; font: 14px/1.4 sans-serif; color: #554;
+    background: rgba(255,255,255,.85); border: 1px solid #aaa; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  .app.anno-off .icon-slot em,
+  .app.anno-off .safe-area { display: none; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="app" id="app">
+    <svg class="paper" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 872 1804">
+      <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.28  0 0 0 0.5 0"/></filter>
+      <rect width="872" height="1804" filter="url(#grain)"/>
+    </svg>
+
+    <div class="statusbar"><span>9:41</span><span>▂▄▆ █</span></div>
+
+    <header class="topbar">
+      <span class="brand">历史地图</span>
+      <button class="dyn-btn">宋 ▾</button>
+      <div class="icon-row"><div class="icon-slot"><span class="icon-glyph">☰</span><em>44×44</em></div><div class="icon-slot"><span class="icon-glyph">⚙</span><em>44×44</em></div><div class="icon-slot"><span class="icon-glyph">⋯</span><em>44×44</em></div></div>
+    </header>
+
+    <aside class="legend">
+      <div class="legend-head">政权 ▾</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#b03a2e"></span><span>宋</span></div><div class="legend-item"><span class="legend-dot" style="background:#4a6a8a"></span><span>辽</span></div><div class="legend-item"><span class="legend-dot" style="background:#b08d4f"></span><span>西夏</span></div><div class="legend-item"><span class="legend-dot" style="background:#a8873a"></span><span>金</span></div><div class="legend-item"><span class="legend-dot" style="background:#6a8a5f"></span><span>大理</span></div><div class="legend-item"><span class="legend-dot" style="background:#8a6a4a"></span><span>吐蕃</span></div>
+    </aside>
+
+    <div class="map">
+      <svg class="regimes" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 872 1256">
+        <g>
+          <path d="M341.0 704.8L331.8 646.9L328.6 598.6L331.9 552.8L353.3 518.9L374.2 485.5L375.0 455.7L355.9 427.9L349.0 374.4L355.2 320.4L474.0 320.4L489.7 312.7L500.2 237.7L515.9 249.7L589.3 249.7L620.4 281.0L619.2 287.3L619.8 293.2L621.7 299.5L626.0 304.2L632.2 308.8L641.5 308.0L643.8 312.4L643.6 321.6L642.7 331.5L643.1 340.7L645.1 345.5L650.8 346.7L656.2 344.0L662.1 335.1L666.0 326.6L670.2 322.7L674.4 320.5L676.4 320.4L675.1 316.9L676.4 315.8L678.9 316.2L681.1 319.6L683.5 325.7L687.6 328.0L695.5 329.5L698.4 329.1L702.0 331.4L704.6 333.3L702.2 349.1L701.8 358.5L697.0 355.1L694.7 353.7L690.7 354.7L677.7 364.1L672.3 371.5L671.7 383.8L667.7 386.5L666.6 384.6L666.4 380.1L665.5 378.6L661.6 380.6L662.7 388.4L661.5 394.5L657.7 402.8L647.0 421.4L646.0 425.1L646.3 434.2L651.1 437.9L656.6 446.0L662.6 454.6L665.6 463.3L668.9 483.5L674.1 494.0L675.4 501.1L674.4 512.0L675.7 514.9L681.1 519.7L684.2 529.2L688.5 533.2L690.6 537.5L691.3 542.4L690.9 544.9L684.8 550.7L685.5 551.9L688.8 556.8L691.2 569.3L691.1 574.0L690.0 576.9L685.9 577.5L680.8 580.9L673.5 589.6L667.0 592.9L662.1 597.6L667.7 600.9L670.6 601.8L677.9 595.1L681.6 594.2L682.9 595.1L686.9 604.4L689.9 607.0L693.4 607.4L693.5 609.8L691.7 614.7L688.8 618.2L686.4 622.0L687.3 624.4L689.8 623.9L691.4 625.2L689.9 630.3L687.6 641.9L686.2 651.9L686.4 657.4L684.7 664.3L683.1 666.3L680.4 661.1L679.2 663.3L674.8 675.0L671.7 684.5L670.1 694.0L669.1 698.5L664.5 705.0L662.6 711.7L660.6 714.5L656.2 714.9L653.3 718.3L655.4 729.2L653.4 736.9L654.0 745.9L653.3 749.9L651.7 753.9L647.6 756.9L646.3 761.2L645.0 767.1L642.7 776.6L637.9 781.9L634.7 789.3L630.9 787.2L627.5 786.1L626.4 787.8L625.3 790.8L626.2 803.1L624.5 805.2L618.6 814.9L615.8 816.8L611.0 819.3L606.6 826.2L602.2 829.4L601.4 831.0L601.3 838.1L600.3 840.4L595.9 841.2L592.1 842.9L589.5 849.4L586.6 847.5L582.6 845.0L580.5 845.9L578.1 850.7L574.7 853.6L569.8 855.0L569.4 848.2L565.4 849.0L560.0 852.2L557.5 855.1L555.3 854.5L552.2 847.2L551.0 845.0L549.5 849.1L550.2 851.6L549.9 854.7L549.5 864.8L547.9 869.2L544.7 870.9L540.8 868.2L539.9 872.3L539.9 875.8L538.7 878.1L534.0 878.9L531.2 880.6L526.6 881.2L523.0 878.2L521.3 879.6L517.9 886.6L516.2 887.7L510.2 887.1L504.4 890.4L501.3 895.1L497.8 894.7L495.7 893.5L495.6 894.3L495.1 899.4L492.8 905.2L492.9 906.8L496.6 916.0L498.7 917.9L499.0 920.7L496.2 924.6L490.4 926.9L486.6 916.5L484.8 906.5L484.9 900.7L487.9 889.4L487.8 886.9L483.3 883.3L481.5 884.3L480.0 888.6L476.5 889.7L471.2 886.6L466.8 875.9L465.3 877.2L465.2 879.6L463.9 885.4L461.9 887.3L459.3 886.4L455.6 887.1L455.2 887.6L453.7 889.5L447.3 896.6L433.0 840.2L409.1 743.9L370.9 711.4L341.0 704.8Z" fill="#b03a2e" fill-opacity="0.38" stroke="#b03a2e" stroke-opacity="0.6" stroke-width="1.6" data-entity="宋" class="rpath blur"/>
+          <path d="M866.5 100.2L861.7 103.4L857.8 112.4L852.8 122.5L842.6 140.9L842.0 141.8L831.6 158.6L733.6 237.8L733.5 237.4L730.2 240.4L720.8 242.7L715.2 245.8L697.8 262.0L693.0 268.5L688.6 276.6L683.9 281.4L681.3 281.6L682.3 277.2L689.0 265.3L691.5 259.1L687.9 257.1L685.1 258.3L683.9 253.1L684.3 250.4L691.7 236.6L693.8 229.8L698.0 222.5L699.2 218.9L698.8 213.6L693.1 203.7L687.5 198.7L686.5 198.4L681.7 199.0L680.4 199.2L676.6 205.9L667.8 226.9L665.0 229.7L660.1 231.2L655.3 235.5L652.5 239.0L649.5 247.1L648.5 254.3L647.5 258.8L645.5 263.2L642.2 265.5L638.4 265.3L635.8 270.0L633.5 272.0L630.0 262.1L627.2 261.8L624.5 264.1L621.5 275.2L620.4 281.0L589.3 249.7L515.9 249.7L500.2 237.7L480.9 185.2L463.5 172.9L557.2 102.0L664.5 78.8L725.0 71.0L793.0 52.8L867.4 -37.7L886.5 -37.7L898.2 10.7L892.8 42.3L866.5 100.2Z" fill="#4a6a8a" fill-opacity="0.35" stroke="#4a6a8a" stroke-opacity="0.6" stroke-width="1.6" data-entity="辽" class="rpath blur"/>
+          <path d="M355.2 320.4L316.7 316.6L276.5 289.2L255.6 281.4L192.7 281.4L119.3 273.5L77.4 249.7L65.1 225.7L66.4 202.4L66.9 193.3L79.1 177.0L117.5 177.0L171.7 148.2L187.4 148.2L255.6 172.9L302.7 160.6L344.7 185.2L372.6 185.2L422.0 178.5L463.5 172.9L480.9 185.2L500.2 237.7L489.7 312.7L474.0 320.4L355.2 320.4Z" fill="#b08d4f" fill-opacity="0.35" stroke="#b08d4f" stroke-opacity="0.6" stroke-width="1.6" data-entity="西夏" class="rpath blur"/>
+          <path d="M375.0 455.7L374.2 485.5L353.3 518.9L331.9 552.8L328.6 598.6L331.8 646.9L296.7 688.3L258.8 714.6L228.9 720.5L228.9 720.5L225.6 721.2L223.6 707.2L219.8 681.9L180.0 695.2L87.0 693.4L53.1 674.9L41.3 663.6L-21.9 602.3L-22.7 597.4L-26.2 576.9L-26.2 561.0L-24.6 552.7L-21.5 535.5L-26.2 493.5L-24.6 457.6L-25.5 414.6L-25.7 404.6L115.8 304.9L108.8 285.3L119.3 273.5L192.7 281.4L255.6 281.4L276.5 289.2L316.7 316.6L355.2 320.4L349.0 374.4L355.9 427.9L375.0 455.7Z" fill="#8a6a4a" fill-opacity="0.3" stroke="#8a6a4a" stroke-opacity="0.6" stroke-width="1.6" data-entity="吐蕃" class="rpath blur"/>
+          <path d="M337.4 888.9L310.3 881.0L295.8 758.2L341.0 704.8L370.9 711.4L409.1 743.9L433.0 840.2L403.3 877.8L398.3 929.4L389.1 930.9L385.0 927.6L337.4 888.9Z" fill="#6a8a5f" fill-opacity="0.35" stroke="#6a8a5f" stroke-opacity="0.6" stroke-width="1.6" data-entity="大理" class="rpath blur"/>
+          <path d="M412.7 1051.1L404.7 1015.8L390.6 998.5L372.5 998.5L385.0 927.6L389.1 930.9L398.3 929.4L403.3 877.8L433.0 840.2L447.3 896.6L448.1 903.3L446.6 906.4L436.8 905.6L435.8 908.5L436.2 914.2L434.0 919.8L429.5 931.2L427.8 933.2L423.7 936.7L422.4 938.6L420.3 944.3L418.0 957.7L415.0 971.7L417.1 974.9L420.7 982.9L429.2 998.2L429.4 1001.6L429.8 1009.1L430.4 1012.7L433.7 1019.7L440.2 1028.9L442.1 1031.5L446.6 1039.8L436.6 1049.8L430.7 1055.6L426.5 1059.8L412.7 1051.1Z" fill="#8a9a5a" fill-opacity="0.35" stroke="#8a9a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="大越" class="rpath blur"/>
+          <path d="M412.7 1051.1L426.5 1059.8L430.7 1055.6L448.1 1093.1L455.5 1133.8L455.5 1168.2L438.9 1190.6L436.3 1227.5L435.1 1233.4L435.5 1240.2L435.8 1245.1L434.3 1255.0L431.3 1260.8L428.7 1261.8L426.9 1260.8L425.0 1267.4L421.7 1271.9L417.7 1273.9L414.5 1276.8L410.9 1284.6L409.4 1288.2L406.3 1292.3L404.3 1293.7L401.4 1293.1L402.0 1281.3L402.8 1263.3L404.0 1256.5L405.6 1252.6L405.5 1247.7L401.8 1241.7L396.0 1238.4L395.3 1237.5L393.4 1234.9L391.4 1231.2L388.8 1230.7L385.8 1232.6L384.2 1232.0L382.0 1232.6L380.6 1231.1L381.6 1226.8L383.0 1223.7L382.7 1220.2L380.6 1214.7L378.4 1215.3L374.8 1219.4L372.2 1219.6L370.9 1205.2L365.9 1184.6L365.7 1183.7L363.5 1181.2L360.0 1180.0L353.0 1167.7L349.7 1165.5L347.3 1165.3L342.9 1168.5L339.9 1166.9L337.7 1165.0L335.1 1164.8L335.0 1160.9L336.5 1143.6L335.7 1141.0L336.1 1122.2L331.2 1117.8L323.8 1117.8L317.6 1126.7L318.9 1146.8L296.0 1163.0L294.1 1151.4L292.7 1146.6L289.2 1134.9L285.6 1117.5L347.6 1075.0L372.5 998.5L390.6 998.5L404.7 1015.8L412.7 1051.1Z" fill="#8a6a5a" fill-opacity="0.3" stroke="#8a6a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="高棉" class="rpath blur"/>
+          <path d="M430.7 1055.6L436.6 1049.8L446.6 1039.8L452.0 1049.8L454.0 1052.6L458.9 1053.6L461.3 1059.0L463.5 1073.3L465.8 1081.4L470.8 1089.9L473.0 1099.2L475.7 1118.6L479.7 1157.8L477.4 1163.9L475.6 1170.7L476.0 1182.1L475.3 1187.8L475.7 1197.0L475.5 1198.3L473.5 1203.8L472.7 1206.0L469.2 1212.0L467.3 1213.8L463.3 1215.2L460.1 1217.5L456.2 1222.4L451.7 1231.0L447.2 1235.9L444.7 1236.5L440.8 1233.8L437.6 1229.5L436.3 1227.5L438.9 1190.6L455.5 1168.2L455.5 1133.8L448.1 1093.1L430.7 1055.6Z" fill="#a84a5a" fill-opacity="0.3" stroke="#a84a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="占婆" class="rpath blur"/>
+          <path d="M775.1 320.7L774.9 320.7L774.8 319.8L774.8 319.6L774.8 319.4L774.7 319.2L774.5 319.0L774.5 318.9L773.6 317.8L773.5 317.5L773.4 317.4L773.3 317.3L773.2 317.2L772.8 317.4L772.8 317.4L772.3 318.5L772.3 318.7L772.2 321.1L772.3 324.6L771.6 323.4L769.6 319.8L766.9 325.7L764.4 329.1L761.5 318.7L758.4 316.7L753.4 330.1L751.9 323.6L750.1 319.2L744.9 312.9L743.6 305.1L744.3 299.7L747.6 292.6L753.4 288.7L753.9 284.0L749.3 279.1L752.4 263.7L753.9 257.8L752.4 253.1L747.5 247.9L746.4 247.9L743.5 248.4L741.1 250.9L739.3 249.6L735.3 243.2L734.0 239.1L733.6 237.8L831.6 158.6L828.4 166.9L827.5 174.4L828.2 182.2L827.0 190.4L825.6 205.9L820.4 208.0L817.7 212.1L813.8 218.9L807.9 230.3L804.3 234.1L799.1 234.6L794.6 238.1L792.6 242.2L790.7 247.7L787.9 263.3L790.0 269.0L799.5 283.8L802.7 289.9L804.9 294.3L804.7 294.7L804.4 295.3L804.1 295.8L803.7 296.4L803.3 297.0L803.1 297.3L802.8 297.6L802.7 297.8L802.6 297.9L801.6 298.5L801.2 298.7L800.4 298.7L800.1 298.7L799.8 298.6L798.3 298.4L794.7 298.2L794.5 298.2L792.3 298.7L790.8 298.5L789.4 298.1L787.4 298.2L786.5 298.5L785.4 299.0L785.3 299.1L784.9 299.4L784.8 299.7L784.3 300.5L784.1 300.7L783.8 301.0L783.2 301.7L783.0 302.1L782.8 302.4L782.6 303.0L782.5 303.4L782.3 304.5L782.0 305.5L780.1 309.8L779.8 310.4L779.3 311.3L779.1 311.7L778.7 312.1L778.4 312.3L777.8 316.8L777.6 322.5L777.0 319.6L775.3 319.5L775.1 319.5L775.1 320.7Z" fill="#5a7a9a" fill-opacity="0.35" stroke="#5a7a9a" stroke-opacity="0.6" stroke-width="1.6" data-entity="高丽" class="rpath blur"/>
+          <path d="M481.8 995.4L473.4 988.0L468.5 983.2L466.9 964.8L467.2 960.7L469.0 957.3L472.3 953.8L477.8 944.8L481.6 945.6L482.0 943.2L483.9 937.5L485.7 937.9L490.1 941.1L492.6 936.6L496.0 936.6L502.2 934.2L506.8 944.1L505.5 946.6L502.1 951.7L498.9 959.4L496.7 969.9L497.8 974.2L496.1 978.6L493.8 979.8L485.9 985.3L481.8 995.4Z" fill="#a04a3a" fill-opacity="0.3" stroke="#a04a3a" stroke-opacity="0.6" stroke-width="1.6" data-entity="海南" class="rpath blur"/>
+        </g>
+        <g>
+          <path d="M341.0 704.8L331.8 646.9L328.6 598.6L331.9 552.8L353.3 518.9L374.2 485.5L375.0 455.7L355.9 427.9L349.0 374.4L355.2 320.4L474.0 320.4L489.7 312.7L500.2 237.7L515.9 249.7L589.3 249.7L620.4 281.0L619.2 287.3L619.8 293.2L621.7 299.5L626.0 304.2L632.2 308.8L641.5 308.0L643.8 312.4L643.6 321.6L642.7 331.5L643.1 340.7L645.1 345.5L650.8 346.7L656.2 344.0L662.1 335.1L666.0 326.6L670.2 322.7L674.4 320.5L676.4 320.4L675.1 316.9L676.4 315.8L678.9 316.2L681.1 319.6L683.5 325.7L687.6 328.0L695.5 329.5L698.4 329.1L702.0 331.4L704.6 333.3L702.2 349.1L701.8 358.5L697.0 355.1L694.7 353.7L690.7 354.7L677.7 364.1L672.3 371.5L671.7 383.8L667.7 386.5L666.6 384.6L666.4 380.1L665.5 378.6L661.6 380.6L662.7 388.4L661.5 394.5L657.7 402.8L647.0 421.4L646.0 425.1L646.3 434.2L651.1 437.9L656.6 446.0L662.6 454.6L665.6 463.3L668.9 483.5L674.1 494.0L675.4 501.1L674.4 512.0L675.7 514.9L681.1 519.7L684.2 529.2L688.5 533.2L690.6 537.5L691.3 542.4L690.9 544.9L684.8 550.7L685.5 551.9L688.8 556.8L691.2 569.3L691.1 574.0L690.0 576.9L685.9 577.5L680.8 580.9L673.5 589.6L667.0 592.9L662.1 597.6L667.7 600.9L670.6 601.8L677.9 595.1L681.6 594.2L682.9 595.1L686.9 604.4L689.9 607.0L693.4 607.4L693.5 609.8L691.7 614.7L688.8 618.2L686.4 622.0L687.3 624.4L689.8 623.9L691.4 625.2L689.9 630.3L687.6 641.9L686.2 651.9L686.4 657.4L684.7 664.3L683.1 666.3L680.4 661.1L679.2 663.3L674.8 675.0L671.7 684.5L670.1 694.0L669.1 698.5L664.5 705.0L662.6 711.7L660.6 714.5L656.2 714.9L653.3 718.3L655.4 729.2L653.4 736.9L654.0 745.9L653.3 749.9L651.7 753.9L647.6 756.9L646.3 761.2L645.0 767.1L642.7 776.6L637.9 781.9L634.7 789.3L630.9 787.2L627.5 786.1L626.4 787.8L625.3 790.8L626.2 803.1L624.5 805.2L618.6 814.9L615.8 816.8L611.0 819.3L606.6 826.2L602.2 829.4L601.4 831.0L601.3 838.1L600.3 840.4L595.9 841.2L592.1 842.9L589.5 849.4L586.6 847.5L582.6 845.0L580.5 845.9L578.1 850.7L574.7 853.6L569.8 855.0L569.4 848.2L565.4 849.0L560.0 852.2L557.5 855.1L555.3 854.5L552.2 847.2L551.0 845.0L549.5 849.1L550.2 851.6L549.9 854.7L549.5 864.8L547.9 869.2L544.7 870.9L540.8 868.2L539.9 872.3L539.9 875.8L538.7 878.1L534.0 878.9L531.2 880.6L526.6 881.2L523.0 878.2L521.3 879.6L517.9 886.6L516.2 887.7L510.2 887.1L504.4 890.4L501.3 895.1L497.8 894.7L495.7 893.5L495.6 894.3L495.1 899.4L492.8 905.2L492.9 906.8L496.6 916.0L498.7 917.9L499.0 920.7L496.2 924.6L490.4 926.9L486.6 916.5L484.8 906.5L484.9 900.7L487.9 889.4L487.8 886.9L483.3 883.3L481.5 884.3L480.0 888.6L476.5 889.7L471.2 886.6L466.8 875.9L465.3 877.2L465.2 879.6L463.9 885.4L461.9 887.3L459.3 886.4L455.6 887.1L455.2 887.6L453.7 889.5L447.3 896.6L433.0 840.2L409.1 743.9L370.9 711.4L341.0 704.8Z" fill="#b03a2e" fill-opacity="0.38" stroke="#b03a2e" stroke-opacity="0.6" stroke-width="1.6" data-entity="宋"/>
+          <path d="M866.5 100.2L861.7 103.4L857.8 112.4L852.8 122.5L842.6 140.9L842.0 141.8L831.6 158.6L733.6 237.8L733.5 237.4L730.2 240.4L720.8 242.7L715.2 245.8L697.8 262.0L693.0 268.5L688.6 276.6L683.9 281.4L681.3 281.6L682.3 277.2L689.0 265.3L691.5 259.1L687.9 257.1L685.1 258.3L683.9 253.1L684.3 250.4L691.7 236.6L693.8 229.8L698.0 222.5L699.2 218.9L698.8 213.6L693.1 203.7L687.5 198.7L686.5 198.4L681.7 199.0L680.4 199.2L676.6 205.9L667.8 226.9L665.0 229.7L660.1 231.2L655.3 235.5L652.5 239.0L649.5 247.1L648.5 254.3L647.5 258.8L645.5 263.2L642.2 265.5L638.4 265.3L635.8 270.0L633.5 272.0L630.0 262.1L627.2 261.8L624.5 264.1L621.5 275.2L620.4 281.0L589.3 249.7L515.9 249.7L500.2 237.7L480.9 185.2L463.5 172.9L557.2 102.0L664.5 78.8L725.0 71.0L793.0 52.8L867.4 -37.7L886.5 -37.7L898.2 10.7L892.8 42.3L866.5 100.2Z" fill="#4a6a8a" fill-opacity="0.35" stroke="#4a6a8a" stroke-opacity="0.6" stroke-width="1.6" data-entity="辽"/>
+          <path d="M355.2 320.4L316.7 316.6L276.5 289.2L255.6 281.4L192.7 281.4L119.3 273.5L77.4 249.7L65.1 225.7L66.4 202.4L66.9 193.3L79.1 177.0L117.5 177.0L171.7 148.2L187.4 148.2L255.6 172.9L302.7 160.6L344.7 185.2L372.6 185.2L422.0 178.5L463.5 172.9L480.9 185.2L500.2 237.7L489.7 312.7L474.0 320.4L355.2 320.4Z" fill="#b08d4f" fill-opacity="0.35" stroke="#b08d4f" stroke-opacity="0.6" stroke-width="1.6" data-entity="西夏"/>
+          <path d="M375.0 455.7L374.2 485.5L353.3 518.9L331.9 552.8L328.6 598.6L331.8 646.9L296.7 688.3L258.8 714.6L228.9 720.5L228.9 720.5L225.6 721.2L223.6 707.2L219.8 681.9L180.0 695.2L87.0 693.4L53.1 674.9L41.3 663.6L-21.9 602.3L-22.7 597.4L-26.2 576.9L-26.2 561.0L-24.6 552.7L-21.5 535.5L-26.2 493.5L-24.6 457.6L-25.5 414.6L-25.7 404.6L115.8 304.9L108.8 285.3L119.3 273.5L192.7 281.4L255.6 281.4L276.5 289.2L316.7 316.6L355.2 320.4L349.0 374.4L355.9 427.9L375.0 455.7Z" fill="#8a6a4a" fill-opacity="0.3" stroke="#8a6a4a" stroke-opacity="0.6" stroke-width="1.6" data-entity="吐蕃"/>
+          <path d="M337.4 888.9L310.3 881.0L295.8 758.2L341.0 704.8L370.9 711.4L409.1 743.9L433.0 840.2L403.3 877.8L398.3 929.4L389.1 930.9L385.0 927.6L337.4 888.9Z" fill="#6a8a5f" fill-opacity="0.35" stroke="#6a8a5f" stroke-opacity="0.6" stroke-width="1.6" data-entity="大理"/>
+          <path d="M412.7 1051.1L404.7 1015.8L390.6 998.5L372.5 998.5L385.0 927.6L389.1 930.9L398.3 929.4L403.3 877.8L433.0 840.2L447.3 896.6L448.1 903.3L446.6 906.4L436.8 905.6L435.8 908.5L436.2 914.2L434.0 919.8L429.5 931.2L427.8 933.2L423.7 936.7L422.4 938.6L420.3 944.3L418.0 957.7L415.0 971.7L417.1 974.9L420.7 982.9L429.2 998.2L429.4 1001.6L429.8 1009.1L430.4 1012.7L433.7 1019.7L440.2 1028.9L442.1 1031.5L446.6 1039.8L436.6 1049.8L430.7 1055.6L426.5 1059.8L412.7 1051.1Z" fill="#8a9a5a" fill-opacity="0.35" stroke="#8a9a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="大越"/>
+          <path d="M412.7 1051.1L426.5 1059.8L430.7 1055.6L448.1 1093.1L455.5 1133.8L455.5 1168.2L438.9 1190.6L436.3 1227.5L435.1 1233.4L435.5 1240.2L435.8 1245.1L434.3 1255.0L431.3 1260.8L428.7 1261.8L426.9 1260.8L425.0 1267.4L421.7 1271.9L417.7 1273.9L414.5 1276.8L410.9 1284.6L409.4 1288.2L406.3 1292.3L404.3 1293.7L401.4 1293.1L402.0 1281.3L402.8 1263.3L404.0 1256.5L405.6 1252.6L405.5 1247.7L401.8 1241.7L396.0 1238.4L395.3 1237.5L393.4 1234.9L391.4 1231.2L388.8 1230.7L385.8 1232.6L384.2 1232.0L382.0 1232.6L380.6 1231.1L381.6 1226.8L383.0 1223.7L382.7 1220.2L380.6 1214.7L378.4 1215.3L374.8 1219.4L372.2 1219.6L370.9 1205.2L365.9 1184.6L365.7 1183.7L363.5 1181.2L360.0 1180.0L353.0 1167.7L349.7 1165.5L347.3 1165.3L342.9 1168.5L339.9 1166.9L337.7 1165.0L335.1 1164.8L335.0 1160.9L336.5 1143.6L335.7 1141.0L336.1 1122.2L331.2 1117.8L323.8 1117.8L317.6 1126.7L318.9 1146.8L296.0 1163.0L294.1 1151.4L292.7 1146.6L289.2 1134.9L285.6 1117.5L347.6 1075.0L372.5 998.5L390.6 998.5L404.7 1015.8L412.7 1051.1Z" fill="#8a6a5a" fill-opacity="0.3" stroke="#8a6a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="高棉"/>
+          <path d="M430.7 1055.6L436.6 1049.8L446.6 1039.8L452.0 1049.8L454.0 1052.6L458.9 1053.6L461.3 1059.0L463.5 1073.3L465.8 1081.4L470.8 1089.9L473.0 1099.2L475.7 1118.6L479.7 1157.8L477.4 1163.9L475.6 1170.7L476.0 1182.1L475.3 1187.8L475.7 1197.0L475.5 1198.3L473.5 1203.8L472.7 1206.0L469.2 1212.0L467.3 1213.8L463.3 1215.2L460.1 1217.5L456.2 1222.4L451.7 1231.0L447.2 1235.9L444.7 1236.5L440.8 1233.8L437.6 1229.5L436.3 1227.5L438.9 1190.6L455.5 1168.2L455.5 1133.8L448.1 1093.1L430.7 1055.6Z" fill="#a84a5a" fill-opacity="0.3" stroke="#a84a5a" stroke-opacity="0.6" stroke-width="1.6" data-entity="占婆"/>
+          <path d="M775.1 320.7L774.9 320.7L774.8 319.8L774.8 319.6L774.8 319.4L774.7 319.2L774.5 319.0L774.5 318.9L773.6 317.8L773.5 317.5L773.4 317.4L773.3 317.3L773.2 317.2L772.8 317.4L772.8 317.4L772.3 318.5L772.3 318.7L772.2 321.1L772.3 324.6L771.6 323.4L769.6 319.8L766.9 325.7L764.4 329.1L761.5 318.7L758.4 316.7L753.4 330.1L751.9 323.6L750.1 319.2L744.9 312.9L743.6 305.1L744.3 299.7L747.6 292.6L753.4 288.7L753.9 284.0L749.3 279.1L752.4 263.7L753.9 257.8L752.4 253.1L747.5 247.9L746.4 247.9L743.5 248.4L741.1 250.9L739.3 249.6L735.3 243.2L734.0 239.1L733.6 237.8L831.6 158.6L828.4 166.9L827.5 174.4L828.2 182.2L827.0 190.4L825.6 205.9L820.4 208.0L817.7 212.1L813.8 218.9L807.9 230.3L804.3 234.1L799.1 234.6L794.6 238.1L792.6 242.2L790.7 247.7L787.9 263.3L790.0 269.0L799.5 283.8L802.7 289.9L804.9 294.3L804.7 294.7L804.4 295.3L804.1 295.8L803.7 296.4L803.3 297.0L803.1 297.3L802.8 297.6L802.7 297.8L802.6 297.9L801.6 298.5L801.2 298.7L800.4 298.7L800.1 298.7L799.8 298.6L798.3 298.4L794.7 298.2L794.5 298.2L792.3 298.7L790.8 298.5L789.4 298.1L787.4 298.2L786.5 298.5L785.4 299.0L785.3 299.1L784.9 299.4L784.8 299.7L784.3 300.5L784.1 300.7L783.8 301.0L783.2 301.7L783.0 302.1L782.8 302.4L782.6 303.0L782.5 303.4L782.3 304.5L782.0 305.5L780.1 309.8L779.8 310.4L779.3 311.3L779.1 311.7L778.7 312.1L778.4 312.3L777.8 316.8L777.6 322.5L777.0 319.6L775.3 319.5L775.1 319.5L775.1 320.7Z" fill="#5a7a9a" fill-opacity="0.35" stroke="#5a7a9a" stroke-opacity="0.6" stroke-width="1.6" data-entity="高丽"/>
+          <path d="M481.8 995.4L473.4 988.0L468.5 983.2L466.9 964.8L467.2 960.7L469.0 957.3L472.3 953.8L477.8 944.8L481.6 945.6L482.0 943.2L483.9 937.5L485.7 937.9L490.1 941.1L492.6 936.6L496.0 936.6L502.2 934.2L506.8 944.1L505.5 946.6L502.1 951.7L498.9 959.4L496.7 969.9L497.8 974.2L496.1 978.6L493.8 979.8L485.9 985.3L481.8 995.4Z" fill="#a04a3a" fill-opacity="0.3" stroke="#a04a3a" stroke-opacity="0.6" stroke-width="1.6" data-entity="海南"/>
+        </g>
+        <g class="river"><polyline points="242.9 422.9 320.1 404.5 388.7 367.2 440.1 310.4 500.2 232.9 551.6 213.2 594.5 291.3 645.9 348.4 697.4 329.5 748.8 318.1 791.7 318.1"/></g><text x="649.4" y="356.4" class="river-label" text-anchor="middle">黄河</text><g class="river"><polyline points="157.2 619 251.5 566.7 320.1 584.2 388.7 601.7 448.7 619 508.7 584.2 560.2 584.2 594.5 584.2 628.8 566.7 671.6 549.1 697.4 549.1 731.7 566.7 766 549.1"/></g><text x="560.2" y="592.2" class="river-label" text-anchor="middle">长江</text><g class="river"><polyline points="534.5 477.6 560.2 474 585.9 488.4 611.6 495.6 637.4 481.2 659.6 459.5 668.2 448.6"/></g><text x="611.6" y="503.6" class="river-label" text-anchor="middle">淮河</text>
+        <g class="city"><circle cx="548.2" cy="229" r="3.4"/></g><text x="548.2" y="253" class="city-label" text-anchor="middle">大 同</text><g class="city"><circle cx="385.8" cy="383.7" r="3.4"/></g><text x="385.8" y="407.7" class="city-label" text-anchor="middle">兰 州</text><g class="city"><circle cx="350.6" cy="362.7" r="3.4"/></g><text x="350.6" y="386.7" class="city-label" text-anchor="middle">西 宁</text><g class="city"><circle cx="389.7" cy="579" r="3.4"/></g><text x="389.7" y="603" class="city-label" text-anchor="middle">成都</text><g class="city"><circle cx="566.2" cy="431" r="3.4"/></g><text x="566.2" y="455" class="city-label" text-anchor="middle">开封</text><g class="city"><circle cx="665.8" cy="592.9" r="3.4"/></g><text x="665.8" y="616.9" class="city-label" text-anchor="middle">临安</text><g class="city"><circle cx="577.7" cy="375.5" r="3.4"/></g><text x="577.7" y="399.5" class="city-label" text-anchor="middle">北京</text><g class="city"><circle cx="642.2" cy="529.2" r="3.4"/></g><text x="642.2" y="553.2" class="city-label" text-anchor="middle">南京</text>
+        <text x="536.2" y="488.4" class="regime-label major" text-anchor="middle">宋</text><text x="587.6" y="95.6" class="regime-label major" text-anchor="middle">辽</text><text x="409.3" y="295.1" class="regime-label" text-anchor="middle">西夏</text><text x="620.2" y="132.7" class="regime-label" text-anchor="middle">金</text><text x="145.2" y="545.5" class="regime-label" text-anchor="middle">吐蕃</text><text x="320.1" y="758.3" class="regime-label" text-anchor="middle">大理</text>
+        <text x="714.5" y="549.1" class="sea-label" text-anchor="middle">东海</text><text x="525.9" y="1045.8" class="sea-label" text-anchor="middle">南海</text>
+      </svg>
+      <svg class="leaders" viewBox="0 0 872 1256"><line x1="554.1858227223478" y1="393.00406125633964" x2="566.1858227223478" y2="431.00406125633964" class="leader"/><circle cx="566.1858227223478" cy="431.00406125633964" r="5" class="anchor"/><line x1="384.1858227223478" y1="456.5272490715164" x2="566.1858227223478" y2="440.5272490715164" class="leader"/><circle cx="566.1858227223478" cy="440.5272490715164" r="5" class="anchor"/><line x1="698" y1="636.6701038956443" x2="627.0624685060301" y2="520.6701038956443" class="leader"/><circle cx="627.0624685060301" cy="520.6701038956443" r="5" class="anchor"/></svg>
+      
+  <div class="bubble" style="left:416.1858227223478px;top:281.00406125633964px;width:276px;--cat:#a0622d">
+    <div class="bubble-title">靖康之变</div>
+    <div class="bubble-text">1127年，金军攻破汴京，宋徽宗、宋钦宗被俘。</div>
+  </div>
+  <div class="bubble" style="left:266.1858227223478px;top:450.5272490715164px;width:236px;--cat:#b03a2e">
+    <div class="bubble-title">陈桥兵变</div>
+    <div class="bubble-text">1127年，赵匡胤在陈桥驿发动兵变，建立宋朝。</div>
+  </div>
+  <div class="bubble" style="left:560px;top:630.6701038956443px;width:276px;--cat:#a0622d">
+    <div class="bubble-title">绍兴和议</div>
+    <div class="bubble-text">1127年，宋金议和，以淮河为界，宋割地求和。</div>
+  </div>
+    </div>
+
+    <section class="panel">
+      <div class="play-btn"><div class="play-tri"></div></div>
+      <div class="year">1127年</div>
+      <div class="range">960 — 1279</div>
+      <div class="track">
+        <div class="track-base"></div>
+        <div class="track-fill" style="width:52.4%"></div>
+        <div class="track-knob" style="left:52.4%"></div>
+        <div class="track-year" style="left:0%">960</div>
+        <div class="track-year" style="left:52.4%">1127</div>
+        <div class="track-year" style="left:100%">1279</div>
+        <span class="track-dot" style="left:112px;background:#b03a2e" title="陈桥兵变960"></span><span class="track-dot" style="left:214px;background:#6e5a7e" title="澶渊之盟1004"></span><span class="track-dot" style="left:363px;background:#5f7d4f" title="熙宁变法1069"></span><span class="track-dot" style="left:497px;background:#a0622d" title="靖康之变1127"></span><span class="track-dot" style="left:530px;background:#46647f" title="绍兴和议1141"></span>
+      </div>
+      <div class="tabs">
+  <div class="tab active" style="left:0px;width:174.4px">
+    <span class="tab-dot" style="background:#b03a2e"></span>
+    <span class="tab-label">政治</span>
+    <span class="tab-underline"></span>
+  </div>
+  <div class="tab" style="left:174px;width:174.4px">
+    <span class="tab-dot" style="background:#6e5a7e"></span>
+    <span class="tab-label">人物</span>
+    
+  </div>
+  <div class="tab" style="left:349px;width:174.4px">
+    <span class="tab-dot" style="background:#a0622d"></span>
+    <span class="tab-label">军事</span>
+    
+  </div>
+  <div class="tab" style="left:523px;width:174.4px">
+    <span class="tab-dot" style="background:#5f7d4f"></span>
+    <span class="tab-label">经济</span>
+    
+  </div>
+  <div class="tab" style="left:698px;width:174.4px">
+    <span class="tab-dot" style="background:#46647f"></span>
+    <span class="tab-label">文化</span>
+    
+  </div></div>
+      <div class="divider"></div>
+      <div class="safe-area">安全区 28dp</div>
+    </section>
+  </div>
+</div>
+<label class="anno-toggle"><input type="checkbox" checked onchange="document.getElementById('app').classList.toggle('anno-off', !this.checked)"> 显示设计标注（44×44 / 安全区）</label>
+</body>
+</html>

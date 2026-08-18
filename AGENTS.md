@@ -38,9 +38,10 @@ HistoryMap/
 │       ├── java/com/historymap/app/
 │       │   ├── MainActivity.kt     # Compose 入口 + 沉浸式全屏
 │       │   ├── MapScreen.kt        # 主界面：顶栏/地图/泡泡/时间轴/图例/详情/事件流/设置
-│       │   ├── MapRenderer.kt      # GLES2 渲染器：宣纸底/水彩纹理/河流/相机/标签数据
+│       │   ├── MapRenderer.kt      # GLES2 渲染器：宣纸底/水彩纹理+接触阴影/河道带/相机/标签数据
 │       │   ├── Projection.kt       # d3-geo geoMercator + fitSize 的 Kotlin 翻译（与 Web 版坐标一致）
 │       │   ├── WatercolorTexture.kt# 水彩离屏生成（羽化/斑驳/边界/颗粒，对齐 TerritoryOverlay.js）
+│       │   ├── RiverRibbons.kt     # 河道带几何（变宽三角带+弧长属性；着色器内三层河带/羽化/顺流微动画）
 │       │   ├── OverlayParser.kt    # overlay JSON → 渲染模型（政权/河流/标签）
 │       │   ├── MapRepository.kt    # 数据仓储（Room + OverlayLoader，等价 api.js 职责）
 │       │   ├── TimelineController.kt # 「当前年份」唯一状态源（播放/暂停/拖动/完成）
@@ -249,8 +250,12 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 与 Web 版同数据契约、同交互语义，渲染与 UI 全部原生实现：
 
 1. **渲染层**：GLSurfaceView + 自研 GLES2 渲染器（`MapRenderer.kt`）——宣纸底/暗角（片元着色器）、
-   政权水彩纹理 quad（`WatercolorTexture.kt` 离屏生成：羽化/斑驳/边界/颗粒）、河流线（GL_LINE_STRIP）。
+   政权水彩纹理 quad（`WatercolorTexture.kt` 离屏生成：羽化/斑驳/边界/颗粒）+ 接触阴影 pass（贴图
+   alpha 勾形、右下偏移，统一左上光向）、山脉纹理 quad、**河道带几何**（`RiverRibbons.kt`：变宽三角带
+   [上游窄→入海口宽] + 着色器内水痕/主体/脊线三层与两岸羽化 + uTime 顺流微动画；河流不再走 CPU 纹理）。
    投影（`Projection.kt`）翻译 d3-geo geoMercator + fitSize([1000,800])，与 Web 版 `project()` 输出完全一致。
+   （河道带/阴影借鉴 HoMM3 美术纪律：有机衔接、统一光向焙烧阴影、稀疏动画；token 见 MapTokens.MapParams
+   RIVER_TAPER_*/RIVER_FLOW_*/REGIME_SHADOW_*）
 2. **数据层**：`MapRepository.kt`（Room + OverlayLoader）等价 Web 版 api.js 职责；Room schema 与
    seed 重放机制同 WebView 时代（`HistoryDb.kt` 不变）；assets 数据由 `scripts/prepare-android.mjs` 同步。
 3. **UI 层**：Compose——时间轴（`TimelineController` 是「当前年份」唯一状态源，播放/暂停/拖动/播放完毕/重播）、
@@ -261,6 +266,22 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 5. **性能**：P20 实测 55-59fps（自动播放全功能），渲染器每 5 秒输出 FPS 日志（`adb logcat -s HistoryMap`）。
 6. **构建**：`cd android && ./gradlew assembleDebug`（离线可构建，依赖与本地缓存匹配）。
 7. **数据更新**：改后端 seed / GeoJSON 后重跑 `node scripts/prepare-android.mjs` 重装即可。
+
+## 资源贴图（水彩疆域层烘焙优先）
+
+水彩疆域层已改为**资源贴图优先**：`npm run bake:textures` 用当前 GeoJSON 生成
+纯色占位贴图（`client/public/textures/overlay/`），运行时 `TerritoryOverlay.js`
+按 manifest.json 加载贴图替换程序化 canvas 纹理（失败静默回退程序化渲染）。
+**配准纪律**：贴图只画"画什么"，位置由运行时 worldBox（geojson + project()）决定；
+脚本与浏览器共用 `fit-geojson.json`（全时期 bbox）标定投影，保证精确对齐。
+
+**水彩版（Penpot 管线）**：`npm run penpot:svg`（GeoJSON → 简化 SVG，同投影同 worldBox，
+输出 `artifacts/penpot/*.svg`）→ 在 Penpot（MCP 已配置全局 opencode.json）里导入并三层化
+（bloom 晕染/body 主体/edge 描边，样式可视化可调）→ 提取样式 → `npm run penpot:render`
+（本地 `@napi-rs/canvas` 水彩渲染：斑驳/干边/羽化，覆盖贴图并更新 manifest status=penpot）。
+当前 8 张均为 penpot-v1（水彩版），样式默认 token + 宋政权示范样式（`artifacts/penpot/styles.json`）。
+**状态标注在 `docs/texture-bake-plan.md`**（占位=placeholder-rework，水彩=penpot-v1，定稿=done），
+每次改动贴图/管线后必须更新该文档。数据变更后先重跑 bake 再走 penpot 两步，勿手改贴图。
 
 ## 扩展指南（后续加朝代）
 
@@ -295,3 +316,20 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
   生命周期/史料/置信度（503 时静默降级）。
 - **许可**：古籍解析（九域志/舆地广记/宋史）为公版可提交；治所坐标来自 CHGIS TGaz 查询
   （非商业学术，本地派生不入库）；`_generated/` 与 `prefectures.geojson` gitignore。
+
+## 子 agent 模型路由（mimo-v2.5 备忘录，新会话免查证）
+
+用户说「用 mimo / mimo-v2.5 做子 agent / 子任务」时，指本机已注册的模型 **`mimo-v2.5`**，
+**无需再检查/查证**，按以下约定直接执行：
+
+- **注册位置**：`~/.dsh/settings.yaml` → `llm-pi-ai.providers.opencode-go.models`（模型 id `mimo-v2.5`，
+  API key 环境变量 `OPENCODE_GO_API_KEY`）。
+- **唯一可用通道**：`workflow` 工具的 `agent()` 选项支持 per-agent 覆盖：
+  `agent(prompt, { provider: 'opencode-go', model: 'mimo-v2.5' })`；
+  整阶段统一指定则在 `meta.phases` 里给对应 phase 声明 `provider`/`model`。
+  框架内部将其转为子代理 `agentOptions: { provider, model }`（继承父级后覆盖）。
+- **不可用通道**：普通 `subagent` / `subagent_fork` 工具**无 model 参数**，子代理默认继承
+  父级模型（本机默认 `opencode-go` / `deepseek-v4-flash`），不能直接指定 mimo。
+- **子代理提示词必须自包含**：子代理看不到父会话上下文，任务里需写清文件路径、契约、输出格式。
+- **成本**：走 opencode-go 提供方，消耗真实 API 额度；模型名/提供方写错时 workflow 直接报错中断。
+- **角色分工**：父 agent 负责规划/拆解/验收，mimo-v2.5 只执行被派发的子任务；workflow 仅回收子代理最终文本。
