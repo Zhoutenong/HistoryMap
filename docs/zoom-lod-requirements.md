@@ -206,3 +206,111 @@
 | 3 | 安卓 LOD 档位接入（§4.2 矩阵 + 滞回 + 过渡 + 视口剔除） | 步骤 2 |
 | 4 | P1-D 南宋州府/路级数据补齐、P1-E 黄河双河道 | 步骤 3 验证后 |
 | 5 | Web 端 LOD 对齐；P2-G 政权名锚点按时期覆写 | 步骤 3 定稿后 |
+
+---
+
+## 六、实施完成记录（2026-08-20）
+
+本节记录上述需求的实际落地，便于回归与对账。全部条目已完成并验证。
+
+### 6.1 数据（P0-A / P0-B / P1-D / P1-E）
+
+- `server/data/geo/historical/rivers.geojson` 扩为唯一数据源：9 条 feature（8 河，黄河按 1128 改道拆北线/南线），全部带 `periods` 与 `rank`（黄河/长江 1，淮河/辽河/珠江 2，钱塘/闽江/松花江 3）。
+  - 北线（北宋故道，入海 37.8°N）tag `song-1111/jin-1120/liao-1111/tang-800`；
+  - 南线（杜充决河夺淮，入海 36°N）tag `song-1142/song-1279/jin-1142/jin-1200/yuan-1279/yuan-1300`。
+  - 实测：song-1111 返回 8 河 ✅（验收 ≥6）。
+- `server/data/geo/historical/cities.geojson` 扩为唯一数据源：19 城，全部带 `periods` + `rank`；
+  - 修正「南京开封府→东京开封府」（song-1111）；金朝时期单独保留「南京开封府」（jin-1142/1200）；
+  - 补南宋临安（行在，rank1）、建康府（rank2，留都）等。实测：song-1111 返回 13 城 ✅（验收 ≥12）。
+- `server/data/geo/historical/southern-song-routes.geojson`（新增，随仓库提交）：11 个南宋路治治所点
+  （`kind: prefecture-seat`，tag `song-1142/song-1279`，含 `route` 路名，rank2），满足 P1-D「至少治所点」。
+  - 与城市标签同坐标的路治（临安/建康/成都/扬州/潭州/广州）不重复录入，避免双标签。
+- `server/routes/overlay.js` 标准文件清单追加 `southern-song-routes.geojson`；`prefectures.geojson`（290 治所）不变 ✅。
+
+### 6.2 安卓州府描边通道（P0-C）+ 设置开关
+
+- 新增 `PrefectureStrokeBuilder.kt`：独立离屏 Canvas → GL 纹理 quad（水彩 worldBox 同 box 叠加），
+  线色 `rgba(58,52,40,0.36)`、线宽 1.1 设计 px、round 接缝，运行时生成不烘焙（许可安全）。
+- `WatercolorBuilder` 原 4e（州府描边烘焙进水彩纹理）已移除，避免程序化回退时双绘。
+- `MapRenderer.kt`：新增 `pendingPrefectures/prefectureTexId/prefectureQuad` 纹理通道，绘制序在水彩之上、
+  河道之下（等价 Web z=7.02）；时期/朝代切换正确清理；GL surface 重建从缓存恢复。
+- `SettingsStore/SettingsSheet`：新增「州府边界」「治所标注」两个独立开关（默认开）。
+
+### 6.3 安卓 LOD 档位（§4.2 矩阵 + 滞回 + 过渡 + 视口剔除）
+
+- 新增 `LodLevel.kt`：`LodTier`（L0..L3）、`mapScale`（s=可见世界宽/包围盒宽）、`nextLod`（±0.02 滞回）、
+  `admitAtTier`（档位×rank 准入矩阵）、`CITY_CAPS/PLACE_CAPS`（每档数量上限）。
+- `MapScreen.kt`：由 `renderer.zoom+viewport+worldWidth` 计算 s → 档位（LaunchedEffect，不重置时期切换）；
+  准入过滤在 `layoutMapLabels` 前完成；L3 视口剔除（±15% 缓冲，290 治所 O(n²) 布局护栏）；
+  档位切换标签层 250ms 淡入（Animatable crossfade）。
+- `LabelPlacement.kt`：`layoutMapLabels` 增加 `tier` 参数，城市/州府/地点按档位×rank 表计次，
+  旧 `rivers rank>1/mountains rank>2/places rank>2` 硬编码改为矩阵驱动（tier=null 时保留旧行为）。
+- `MapRenderer.kt`：州府描边 LOD alpha（L2 ×0.6 / L3 ×1.0，GL uniform 250ms 指数过渡）；
+  山脉纹理 L3 降至 ~30%；河道带按 rank 分级 alpha（rank2 L0 淡化、rank3 L1 淡入）。
+
+### 6.4 Web 端 LOD 对齐 + P2-G
+
+- `TerritoryOverlay.js`：`tierAdmits` 准入矩阵（与 Android `LodLevel.kt` 同源）；`setLod` 档位切换
+  （标签层 250ms opacity 过渡；州府 plane alpha L2 0.6 / L3 1.0）；`worldBox` 导出；
+  `applyVisibility/getCollisionObstacles` 改为按 name 动态查找图层组（时期切换后闭包旧组已 dispose，
+  动态定位同时修复了切换后设置/年份/LOD 过滤失效的隐患），`getCollisionObstacles` 自动跟随可见集。
+- `main.js`：`updateLod()` 每帧按相机距离换算 s（透视半宽 = d·tan(fov/2)·aspect）→ 滞回 → `setLod`。
+- P2-G：`periods.json` 新增 `labelsByPeriod`（song-1142/1279「宋」→ [113.5, 28]）；
+  `overlay.js` 注入优先级 feature.labelCoord > 时期覆写 > 全局 labels。实测：song-1142 宋=113.5,28，
+  song-1111 保持 112.6,33.2 ✅。
+
+### 6.5 验收
+
+- `npm run lint`：0 error（2 个 pre-existing warning）。
+- `npm run test`：44/44 通过。
+- `node scripts/check-prefectures.mjs`：州府面 287 / 治所 290 不变，校验通过。
+- Android `:app:compileDebugKotlin`：BUILD SUCCESSFUL（仅 pre-existing 弃用警告）。
+- API 实测：song-1111 河流 8 / 城市 13 / 治所 290；song-1142 路治治所 11；黄河南北线按时区分流。
+
+### 6.6 代码评审修复（第二轮 2026-08-20）
+
+针对评审反馈的 P0/P1/P2 逐条修复：
+
+**P0（必修）— Web LOD 滞回逻辑错误**：`main.js` 原 `updateLod()` 用「新档下限」当升档判据，
+与 `lodTierFromScale` 的返回条件自相矛盾（`tier>prev` 成立时 s 必已在新档区间，条件恒假），
+档位永远停 L0。已直接用 Android `nextLod` 状态机逐分支翻译替换（含 ±0.02 滞回）。
+脚本模拟验证：降档 L0→L1 @ s=0.380、L2→L3 @ 0.110；升档 L3→L2 @ 0.150、L1→L0 @ 0.420，
+与 Android 完全一致。
+
+**P1（必修）— 黄河南线夺淮史实**：南线路径原为 `[113,35.3]→[116,35]→[120,36]`（近似现代河道、
+入海 36°N，无黄淮交汇）。已改为夺淮河道 `…→[117.2,34.3](徐州)→[119,33.6](淮安)→[120.3,34.3]`，
+入海口与淮河示意线终点完全重合（黄淮交汇叙事成立）。`note` 同步注明「夺泗水入淮、夺淮入海」。
+
+**P2-1 双端 s 分母同源**：`TerritoryOverlay.js` 新增 `computeLodWorldBox`（政权+河流+山脉+6% pad），
+与 Android `boundsOf` 逐项一致（不包含城市/地点/治所）；导出 `worldBox` 改用它，
+不再用水彩政权-only box。
+
+**P2-2 Web 河流几何淡化**：`applyVisibility` 对 rivers 按 rank 分级（rank2 L0 ×0.4、
+rank3 L0 隐藏/L1 ×0.4，`material.opacity` 渐变），与 Android `riverLodAlpha` 语义对齐，
+不再整条 `visible=false`。
+
+**P2-4 过渡补全**：Web 州府描边 alpha 走 250ms easeOutCubic tween（不跳变）；
+Android 河流 alpha 接入 `smoothLodAlpha` 指数平滑（`riverAlphaSmooth` 数组，删除硬切函数）；
+Android 标签层降回 L0 也有 250ms 过渡（`prevLodLevel` 记录，首次 L0 不淡入）；
+Web `setLod` 改为**只对新准入元素淡入**（`prevSeen` 对比，跨档标签不闪）。
+
+**P2-5 tang/yuan 回落城市 LOD 失效**：`periods.json` 全局 cities（14）+ 三个 jin 时期 cities
+补 `rank`（京府/都城 1、路治 2、一般州 3）；`overlay.js` 回落数组统一补 `kind`
+（rivers→river / mountains→mountain / cities→city / places→capital）——原回落数据无 kind，
+`tierAdmits` 走 default 全档，矩阵对 tang-800/yuan-* 完全失效。实测 tang-800 回落 14 城
+全部 `kind+rank` 齐备。
+
+**P2-6 死常量**：删除 `MapVisualTokens.kt` 的 `PREFECTURE_STROKE_ALPHA/WIDTH_DIV`
+（4e 移除后无引用）。
+
+**P2-7 文档同步**：`docs/texture-bake-plan.md` 补充 Android 独立州府描边通道行
+（PrefectureStrokeBuilder 运行时生成不烘焙；4e 分支已移除，贴图永不含州府线）。
+
+**P2-8 Web 拆双开关**：`store.js` 新增 `showSeats`（默认 true）+ `BOOL_KEYS`；
+`SettingsMenu.js` 新增「治所标注」开关行与事件委托；`TerritoryOverlay.js`
+`setAuxiliaryVisibility` 读 `showSeats` 控制治所组（`visibility.seats`），
+`visibility.prefectures` 只控州府边界 mesh——与 Android 双开关对称。
+
+**记账项（未实现，评审确认可接受）**：
+- Web 无城市/治所数量上限（`CITY_CAPS/PLACE_CAPS` 仅 Android；桌面端标签密度可接受）。
+- Web 标签无统一避让布局器（CSS2D 直接挂 scene），数量截断需引入额外布局阶段，暂缓。

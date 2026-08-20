@@ -42,12 +42,13 @@ export const defaultSettings = {
   showMountains: true,
   showCities: true,
   showPlaces: true,     // 地点标注（都城/战场/书院等）
-  showPrefectures: true, // 州府边界 + 治所标注（元丰九域志基准）
+  showPrefectures: true, // 州府边界（独立描边层，L2+ 档位可见）
+  showSeats: true,       // 州府/路治治所标注（与 Android 双开关对齐）
   showCounties: false    // 县治标注（数据量 1100+，默认关闭防拥挤）
 };
 
 /** 布尔开关字段清单（校验时逐个规整）。 */
-const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities', 'showPlaces', 'showPrefectures', 'showCounties'];
+const BOOL_KEYS = ['autoplay', 'showBaseMap', 'showOverlay', 'showRivers', 'showMountains', 'showCities', 'showPlaces', 'showPrefectures', 'showSeats', 'showCounties'];
 
 /**
  * 校验并规整一份设置对象：合并默认值、过滤非法分类/速度/布尔值。

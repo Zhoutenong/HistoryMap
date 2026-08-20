@@ -12,18 +12,19 @@ import kotlin.math.max
  * 顶点交错布局 (x, y, side, s)：side ∈ {-1,+1} 为跨河坐标（|side|=1 即水痕外缘），
  * s 为沿河累计弧长（世界单位，上游=0）。三层河带（水痕/主体/脊线）与两岸羽化、
  * 顺流微动画都在片段着色器内按 side/s 合成（见 MapRenderer.FRAG_RIVER）。
+ * @param rank 河级：1 大江（脊线+微动画）/ 2 中河 / 3 支流（几何 alpha 由 LOD 档位调制）
  */
-class RiverMesh(val buffer: FloatBuffer, val vertexCount: Int)
+class RiverMesh(
+    val buffer: FloatBuffer,
+    val vertexCount: Int,
+    val rank: Int = 1,
+    val fracs: FloatArray = floatArrayOf(1f, 0f),
+)
 
-/** 主流/支流两组河道带：主流带脊线与流动微动画，支流仅水痕+主体。
- *  fracs 为片元着色器分层带用的宽度比 [主体/水痕, 脊线/水痕]（与几何同源计算） */
-class RiverRibbons(
-    val major: List<RiverMesh>,
-    val minor: List<RiverMesh>,
-    val majorFracs: FloatArray,
-    val minorFracs: FloatArray,
-) {
-    fun isEmpty() = major.isEmpty() && minor.isEmpty()
+/** 全部河道带（rank 已编码进各 mesh；fracs 为片元着色器分层带用的宽度比
+ *  [主体/水痕, 脊线/水痕]，与几何同源计算） */
+class RiverRibbons(val meshes: List<RiverMesh>) {
+    fun isEmpty() = meshes.isEmpty()
 }
 
 /**
@@ -50,23 +51,7 @@ object RiverRibbonBuilder {
         fun width(div: Float, minPx: Float) = max(boxW * minPx / texW, boxW / div)
 
         val mirrorY = worldBox.top + worldBox.bottom
-        val major = mutableListOf<RiverMesh>()
-        val minor = mutableListOf<RiverMesh>()
-        for (river in rivers) {
-            if (river.path.size < 2) continue
-            val raw = river.path.map { p ->
-                val xy = projection.project(p)
-                floatArrayOf(xy[0], mirrorY - xy[1])
-            }
-            // 稀疏折线（4~11 点）两次 Chaikin 平滑出毛笔运笔的弧度
-            val pts = if (raw.size <= 10) chaikin(chaikin(raw)) else chaikin(raw)
-            if (pts.size < 2) continue
-            val isMajor = river.rank <= 1
-            val wash = if (isMajor) width(mp.RIVER_WASH_WIDTH_MAJOR_DIV, mp.RIVER_WASH_WIDTH_MIN)
-            else width(mp.RIVER_WASH_WIDTH_MINOR_DIV, mp.RIVER_WASH_WIDTH_MIN_MINOR)
-            val mesh = buildMesh(pts, wash)
-            if (mesh != null) (if (isMajor) major else minor).add(mesh)
-        }
+        val meshes = mutableListOf<RiverMesh>()
         // 分层带宽度比（片元着色器用；与几何同源的宽度计算，避免两处口径不一）
         val majorFracs = floatArrayOf(
             width(mp.RIVER_BODY_WIDTH_MAJOR_DIV, mp.RIVER_BODY_WIDTH_MIN) /
@@ -79,7 +64,22 @@ object RiverRibbonBuilder {
                 width(mp.RIVER_WASH_WIDTH_MINOR_DIV, mp.RIVER_WASH_WIDTH_MIN_MINOR),
             0f,
         )
-        return RiverRibbons(major, minor, majorFracs, minorFracs)
+        for (river in rivers) {
+            if (river.path.size < 2) continue
+            val raw = river.path.map { p ->
+                val xy = projection.project(p)
+                floatArrayOf(xy[0], mirrorY - xy[1])
+            }
+            // 稀疏折线（4~11 点）两次 Chaikin 平滑出毛笔运笔的弧度
+            val pts = if (raw.size <= 10) chaikin(chaikin(raw)) else chaikin(raw)
+            if (pts.size < 2) continue
+            val isMajor = river.rank <= 1
+            val wash = if (isMajor) width(mp.RIVER_WASH_WIDTH_MAJOR_DIV, mp.RIVER_WASH_WIDTH_MIN)
+            else width(mp.RIVER_WASH_WIDTH_MINOR_DIV, mp.RIVER_WASH_WIDTH_MIN_MINOR)
+            val mesh = buildMesh(pts, wash) ?: continue
+            meshes.add(RiverMesh(mesh.buffer, mesh.vertexCount, river.rank, if (isMajor) majorFracs else minorFracs))
+        }
+        return RiverRibbons(meshes)
     }
 
     /** 单条河的三角带：逐点沿法线外扩 ±halfWidth(s)（含上游→下游变宽） */

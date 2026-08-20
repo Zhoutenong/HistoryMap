@@ -182,8 +182,11 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 - properties 含 `route`（路）、`type`（府州军监）、`grade`、`households`（主/客户，元丰九域志）、
   `tribute`（土贡）、`seat`/`seatCoord`、`countyCount`/`counties`（属县）、`evolution`（舆地广记沿革）。
 - 渲染：Web 端州府描边走独立 canvas plane（z=7.02，「州府边界」开关独立控制），治所标注为
-  `.prefecture-label`（rank<=2 加 `.major`，可点击打开府州详情面板）；Android 端 WatercolorBuilder
-  同款仅描边分支 + Compose 标签层。
+  `.prefecture-label`（rank<=2 加 `.major`，可点击打开府州详情面板）；Android 端由独立描边
+  通道 `PrefectureStrokeBuilder`（运行时离屏 Canvas→GL 纹理 quad，**不烘焙**，许可安全）+
+  Compose 标签层，「州府边界」「治所标注」双开关，LOD 档位调 alpha。
+- 南宋数据：`southern-song-routes.geojson`（随仓库提交，公版事实坐标）提供 11 个路治治所点
+  （`kind: prefecture-seat`，tag `song-1142/song-1279`，含 `route` 路名），补齐南宋 L2/L3 档内容。
 - 四库本底本缺文记录：九域志缺邢州头行（占位州已定名）、部分州缺「縣N」行/治所注記（warning 输出）；
   岳州/万州为四库本误刻（峽州巴陵郡/方州南浦郡），已按舆地广记校正并保留 `sourceFix`。
 

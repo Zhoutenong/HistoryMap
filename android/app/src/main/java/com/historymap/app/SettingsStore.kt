@@ -25,6 +25,8 @@ object SettingsStore {
         val speed: String,           // slow / normal / fast
         val showTerritory: Boolean,
         val showRivers: Boolean,
+        val showPrefectures: Boolean, // 州府边界描边（独立通道，L2+ 档位才可见）
+        val showSeats: Boolean,        // 州府/路治治所标注
     )
 
     fun defaults() = Settings(
@@ -32,6 +34,8 @@ object SettingsStore {
         speed = "normal",
         showTerritory = true,
         showRivers = true,
+        showPrefectures = true,
+        showSeats = true,
     )
 
     fun load(context: Context): Settings {
@@ -45,6 +49,8 @@ object SettingsStore {
             speed = if (speed in listOf("slow", "normal", "fast")) speed!! else "normal",
             showTerritory = prefs.getBoolean("showTerritory", true),
             showRivers = prefs.getBoolean("showRivers", true),
+            showPrefectures = prefs.getBoolean("showPrefectures", true),
+            showSeats = prefs.getBoolean("showSeats", true),
         )
     }
 
@@ -54,6 +60,8 @@ object SettingsStore {
             .putString("speed", settings.speed)
             .putBoolean("showTerritory", settings.showTerritory)
             .putBoolean("showRivers", settings.showRivers)
+            .putBoolean("showPrefectures", settings.showPrefectures)
+            .putBoolean("showSeats", settings.showSeats)
             .apply()
     }
 

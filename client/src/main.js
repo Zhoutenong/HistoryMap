@@ -57,6 +57,45 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(200, -400, 600);
 scene.add(dirLight);
 
+// —— LOD 档位（docs/zoom-lod-requirements.md §4.2，与 Android LodLevel.kt:nextLod 状态机同源）——
+// s = 可见世界宽 / 世界包围盒宽；0=L0 全国 / 1=L1 区域 / 2=L2 省域 / 3=L3 州府级。
+// 滞回 ±0.02：以「prev↔next 分界线」为判据（放大越过新档下限-滞回、缩小越过原档下限+滞回），
+// 缩放临界抖动不反复换档。animate 循环每帧计算，变化时驱动 overlay.setLod。
+const LOD_HYST = 0.02;
+const lodState = { overlay: null, tier: 0 };
+// 状态机式换挡（与 Android nextLod 逐分支一致）：输入「当前档位 + 实时 s」，输出下一档位。
+function nextLodTier(prev, s) {
+  switch (prev) {
+    case 0: return s < 0.40 - LOD_HYST ? 1 : 0;
+    case 1:
+      if (s < 0.24 - LOD_HYST) return 2;
+      if (s >= 0.40 + LOD_HYST) return 0;
+      return 1;
+    case 2:
+      if (s < 0.13 - LOD_HYST) return 3;
+      if (s >= 0.24 + LOD_HYST) return 1;
+      return 2;
+    default: return s >= 0.13 + LOD_HYST ? 2 : 3;
+  }
+}
+function updateLod() {
+  const ov = lodState.overlay;
+  if (!ov || !ov.worldBox || !ov.setLod) return;
+  const box = ov.worldBox;
+  const worldWidth = box.xmax - box.xmin;
+  if (!(worldWidth > 0)) return;
+  // 相机到目标距离（z=0 平面处）推算可见世界宽：半高 = d·tan(fov/2)，半宽 = 半高·aspect
+  const dist = camera.position.distanceTo(controls.target) || 1;
+  const halfH = dist * Math.tan((camera.fov * Math.PI) / 180 / 2);
+  const halfW = halfH * camera.aspect;
+  const s = (2 * halfW) / worldWidth;
+  const next = nextLodTier(lodState.tier, s);
+  if (next !== lodState.tier) {
+    lodState.tier = next;
+    ov.setLod(next);
+  }
+}
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.addEventListener('change', () => bubblesRef?.markLeadersDirty());
 controls.enableDamping = true;
@@ -156,6 +195,7 @@ resize();
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
+  updateLod(); // LOD 档位（s 判据 + 滞回），变化时驱动 overlay.setLod
   if (camTween) {
     camTween.t = Math.min(1, camTween.t + 0.03);
     const t = easeInOutCubic(camTween.t);
@@ -738,6 +778,8 @@ animate();
         layerConfig: 'default',
         onPickPrefecture: (pref) => showPlaceDetail(pref),
       });
+      lodState.overlay = territoryOverlay; // LOD 驱动（animate 循环按 s 判据计算）
+      lodState.tier = 0;
       const overlayDurationMs = performance.now() - overlayBuildStarted;
       performance.mark('map-initialization-overlay-end');
       console.info('[overlay] 地图初始化', {
@@ -834,6 +876,10 @@ animate();
                 // 把新 group 的资源迁移到旧 group
                 while (newOverlay.group.children.length > 0) {
                   territoryOverlay.group.add(newOverlay.group.children[0]);
+                }
+                // LOD 判据的 worldBox 随时期数据刷新（旧对象闭包里的包围盒已陈旧）
+                if (lodState.overlay && newOverlay.worldBox) {
+                  lodState.overlay.worldBox = newOverlay.worldBox;
                 }
                 // 新疆域淡入（材质从 0 → 各自原始 opacity）
                 fadeIn(territoryOverlay.group);

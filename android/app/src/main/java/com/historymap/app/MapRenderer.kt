@@ -82,6 +82,7 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     /** 上次加载的水彩/山水缓存 key（GL surface 重建后恢复用） */
     @Volatile private var lastWatercolorKey: String? = null
     @Volatile private var lastMountainKey: String? = null
+    @Volatile private var lastPrefectureKey: String? = null
 
     /** 首次标定的世界包围盒（相机 framing 基准） */
     private var worldBounds: RectF? = null
@@ -132,6 +133,8 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     @Volatile private var projection: MercatorProjection? = null
     @Volatile private var pendingWatercolor: PendingTexture? = null
     @Volatile private var pendingMountains: PendingTexture? = null
+    /** 州府边界独立描边纹理（运行时 canvas 生成，许可安全；L2+ 才可见） */
+    @Volatile private var pendingPrefectures: PendingTexture? = null
 
     /** 河道带几何（setOverlay 构建；世界 y 已按纹理 worldBox 镜像，与贴图对齐） */
     @Volatile private var riverRibbons: RiverRibbons? = null
@@ -141,6 +144,8 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var watercolorQuad: FloatBuffer? = null
     private var mountainTexId = 0
     private var mountainQuad: FloatBuffer? = null
+    private var prefectureTexId = 0
+    private var prefectureQuad: FloatBuffer? = null
 
     /**
      * 纹理交叉淡入（时期切换：旧纹理保留并淡出，新纹理淡入，避免硬切「啪」一下）。
@@ -165,6 +170,20 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     @Volatile var showTerritory = true      // 统一控制水彩疆域
     @Volatile var showWatercolor = true     // 水彩疆域纹理（旧设置项兼容）
     @Volatile var showRivers = true         // 山水纹理（河流水痕 + 山脉笔触）
+    @Volatile var showPrefectures = true    // 州府边界描边（独立开关；L2+ 档位才可见）
+
+    /**
+     * LOD 档位（0=L0 全国 .. 3=L3 州府级；MapScreen 按 s 判据计算后写入，
+     * GL 线程每帧读它来调制州府描边 alpha 与山脉纹理 alpha，250ms 平滑过渡）。
+     */
+    @Volatile var lodTier = 0
+
+    /** GL 侧 LOD alpha 平滑状态（避免档位切换硬切） */
+    private var prefectureAlphaSmooth = 0f
+    private var mountainAlphaSmooth = 1f
+    /** 河流几何 alpha 平滑（index=rank-1：rank1 主流 / rank2 中河 / rank≥3 支流） */
+    private val riverAlphaSmooth = FloatArray(3) { 1f }
+    private var lastFrameNanos = System.nanoTime()
 
     /** 帧率统计（性能回归观测） */
     private var frameCount = 0
@@ -214,6 +233,8 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         watercolorQuad = null
         mountainTexId = 0
         mountainQuad = null
+        prefectureTexId = 0
+        prefectureQuad = null
         // 交叉淡入的 prev 纹理 ID 同样失效，重置（避免引用已失效纹理）
         prevWatercolorTexId = 0
         prevWatercolorQuad = null
@@ -225,6 +246,9 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
         restoreCachedTexture(lastMountainKey) { tex, quad ->
             pendingMountains = PendingTexture(tex, quad)
+        }
+        restoreCachedTexture(lastPrefectureKey) { tex, quad ->
+            pendingPrefectures = PendingTexture(tex, quad)
         }
     }
 
@@ -278,19 +302,26 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 2. 上传待处理纹理；若已有当前纹理则启动交叉淡入（旧→prev 淡出，新→current 淡入）
         uploadPendingWatercolor()
         uploadPendingTerrain()
+        uploadPendingPrefectures()
+
+        // 2.5 LOD alpha 平滑（州府描边 L2 ×0.6 / L3 ×1.0；山脉纹理 L3 ~0.3，250ms 过渡）
+        val frameNow = System.nanoTime()
+        val dtSec = ((frameNow - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 0.25f)
+        lastFrameNanos = frameNow
+        smoothLodAlpha(dtSec)
 
         // 3. 交叉淡入进度（0=刚开始，1=稳定；无过渡时为 1）
         val t = crossfadeAlpha()
         val crossfading = crossfadeStartNanos != 0L && t < 1f
 
-        // 4. 山脉层（design 图层序 5：画在水彩之下）
+        // 4. 山脉层（design 图层序 5：画在水彩之下；LOD 档位调制整体透明度）
         if (showRivers) {
             if (crossfading && prevMountainTexId != 0 && prevMountainQuad != null) {
-                drawTextureQuad(prevMountainTexId, prevMountainQuad!!, 1f - t)
+                drawTextureQuad(prevMountainTexId, prevMountainQuad!!, (1f - t) * mountainAlphaSmooth)
             }
             val mQuad = mountainQuad
             if (mountainTexId != 0 && mQuad != null) {
-                drawTextureQuad(mountainTexId, mQuad, if (crossfading) t else 1f)
+                drawTextureQuad(mountainTexId, mQuad, (if (crossfading) t else 1f) * mountainAlphaSmooth)
             }
         }
         // 5. 水彩疆域（design 图层序 6-10）：每张先画接触阴影 pass（右下偏移、
@@ -306,6 +337,13 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 val a = if (crossfading) t else 1f
                 drawTextureQuad(watercolorTexId, wcQuad, a, shadow = true)
                 drawTextureQuad(watercolorTexId, wcQuad, a)
+            }
+        }
+        // 5.5 州府边界描边（水彩之上、河道之下；独立开关 + LOD alpha，等价 Web z=7.02）
+        if (showPrefectures) {
+            val pQuad = prefectureQuad
+            if (prefectureTexId != 0 && pQuad != null && prefectureAlphaSmooth > 0.003f) {
+                drawTextureQuad(prefectureTexId, pQuad, prefectureAlphaSmooth)
             }
         }
         // 6. 河道带（design 图层序 11-13：画在水彩之上；变宽/羽化/顺流微动画）
@@ -365,6 +403,45 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
     }
 
+    /** 上传待处理州府描边纹理（直接替换当前，无交叉淡入——可见性由 LOD alpha 平滑控制） */
+    private fun uploadPendingPrefectures() {
+        val pending = pendingPrefectures ?: return
+        pendingPrefectures = null
+        val quad = pending.quad
+        if (prefectureTexId != 0) texturesToDelete.add(prefectureTexId)
+        uploadTexture(pending.texture, quad) { id ->
+            prefectureTexId = id
+            prefectureQuad = quad
+        }
+    }
+
+    /**
+     * LOD alpha 平滑（指数趋近：时间常数 ≈ 过渡时长/3，250ms 内到达 ~95%）。
+     * 州府描边：L0/L1 隐藏，L2 ×0.6，L3 ×1.0（线色 0.36 已烘焙在 canvas）；
+     * 山脉纹理：L3 降至 ~30%，避免放大后纹理过粗。
+     */
+    private fun smoothLodAlpha(dtSec: Float) {
+        val m = MapTokens.MapParams
+        val prefTarget = when {
+            !showPrefectures || lodTier < 2 -> 0f
+            lodTier == 2 -> m.LOD_PREFECTURE_L2_ALPHA
+            else -> 1f
+        }
+        val mtnTarget = if (lodTier == 3) m.LOD_MOUNTAIN_L3_ALPHA else 1f
+        // 河流几何 alpha（§4.2 矩阵）：rank2 L0 ×0.4、rank3 L0 隐藏/L1 ×0.4
+        val riverTargets = floatArrayOf(
+            1f,
+            if (lodTier == 0) 0.4f else 1f,
+            when (lodTier) { 0 -> 0f; 1 -> 0.4f; else -> 1f },
+        )
+        val factor = 1f - kotlin.math.exp(-dtSec / (m.LOD_TRANSITION_MS / 1000f / 3f))
+        prefectureAlphaSmooth += (prefTarget - prefectureAlphaSmooth) * factor
+        mountainAlphaSmooth += (mtnTarget - mountainAlphaSmooth) * factor
+        for (i in riverAlphaSmooth.indices) {
+            riverAlphaSmooth[i] += (riverTargets[i] - riverAlphaSmooth[i]) * factor
+        }
+    }
+
     /** 交叉淡入进度（0..1）；无进行中的过渡返回 1 */
     private fun crossfadeAlpha(): Float {
         if (crossfadeStartNanos == 0L) return 1f
@@ -406,10 +483,19 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         if (calibrate) {
             if (watercolorTexId != 0) texturesToDelete.add(watercolorTexId)
             if (mountainTexId != 0) texturesToDelete.add(mountainTexId)
+            if (prefectureTexId != 0) texturesToDelete.add(prefectureTexId)
             watercolorTexId = 0
             watercolorQuad = null
             mountainTexId = 0
             mountainQuad = null
+            prefectureTexId = 0
+            prefectureQuad = null
+        }
+        // 时期切换：新时期无州府面时立即摘除旧描边纹理（避免旧州府线残留在新时期画面上）
+        if (model.prefectures.isEmpty()) {
+            if (prefectureTexId != 0) texturesToDelete.add(prefectureTexId)
+            prefectureTexId = 0
+            prefectureQuad = null
         }
         val p = if (calibrate || projection == null) {
             MercatorProjection.fit(OverlayParser.allPoints(model)).also { projection = it }
@@ -474,7 +560,13 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 // 河流由 RiverRibbonBuilder 几何渲染，纹理侧跳过（省 CPU 与显存）
                 model.copy(rivers = emptyList()), p, box, viewportW, viewportH, density,
             ).also { layers -> putCache(mountainsKey, layers.mountains) }
-        return watercolor to terrain
+        // 州府边界独立描边层（运行时生成、许可安全；与水彩同 worldBox 叠加）
+        val prefecturesKey = key?.let { "$it|terrain|prefectures" }
+        lastPrefectureKey = prefecturesKey
+        val prefectureLayer = peekCache(prefecturesKey)
+            ?: PrefectureStrokeBuilder.build(model, p, box, viewportW, viewportH, density)
+                ?.also { putCache(prefecturesKey, it) }
+        return watercolor to TerrainLayers(terrain.mountains, terrain.rivers, prefectureLayer)
     }
 
     /** 挂接后台生成的纹理（主线程调用；GL 线程懒上传） */
@@ -482,12 +574,14 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 替换前若旧 pending 仍存在（尚未上传）且非缓存，回收其 bitmap，避免快速切换泄漏
         recyclePendingIfNotCached(pendingWatercolor)
         recyclePendingIfNotCached(pendingMountains)
+        recyclePendingIfNotCached(pendingPrefectures)
         // worldToScreen 的 y 镜像轴基准（水彩/山水共用同一 worldBox）
         if (watercolor != null) {
             textureWorldBox = watercolor.worldBox
             pendingWatercolor = PendingTexture(watercolor, buildTexQuad(watercolor.worldBox))
         }
         terrain?.mountains?.let { pendingMountains = PendingTexture(it, buildTexQuad(it.worldBox)) }
+        terrain?.prefectures?.let { pendingPrefectures = PendingTexture(it, buildTexQuad(it.worldBox)) }
     }
 
     /** 非缓存 pending 纹理被覆盖前回收 bitmap（缓存副本由 LRU 统一回收） */
@@ -507,6 +601,12 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
     fun viewportWidth(): Int = viewportW
 
     fun viewportHeight(): Int = viewportH
+
+    /** 世界包围盒宽（LOD s 判据分母；无数据返回 0） */
+    fun worldWidth(): Float = worldBounds?.width() ?: 0f
+
+    /** 可见世界宽（= 800 × zoom × viewport 宽高比；LOD s 判据分子） */
+    fun visibleWorldWidth(): Float = 800f * zoom * (if (viewportH > 0) viewportW.toFloat() / viewportH else 1f)
 
     /**
      * 政权屏幕域（政权名 → 外环屏幕顶点）：标签布局用「位于本政权域内」约束。
@@ -754,7 +854,6 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         val bodyC = MapTokens.Colors.RIVER_BODY
         GLES20.glUseProgram(riverProgram)
         GLES20.glUniformMatrix4fv(uViewProjRiver, 1, false, buildViewProjMatrix(), 0)
-        GLES20.glUniform1f(uRiverAlpha, 1f)
         GLES20.glUniform3f(
             uRiverFlow, mp.RIVER_FLOW_WAVE, mp.RIVER_FLOW_SPEED,
             (System.nanoTime() / 1_000_000_000f) % 3600f,
@@ -764,28 +863,26 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         GLES20.glEnableVertexAttribArray(aSRiver)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
 
-        fun draw(meshes: List<RiverMesh>, fracs: FloatArray, majorRiver: Boolean) {
-            if (meshes.isEmpty()) return
+        for (mesh in ribbons.meshes) {
+            val majorRiver = mesh.rank <= 1
+            val alpha = riverAlphaSmooth[(mesh.rank - 1).coerceIn(0, 2)]
+            if (alpha <= 0.003f) continue
+            GLES20.glUniform1f(uRiverAlpha, alpha)
             GLES20.glUniform4f(uRiverWash, washC.red, washC.green, washC.blue,
                 (if (majorRiver) MapTokens.Alpha.MAJOR_RIVER_WASH else MapTokens.Alpha.MINOR_RIVER_WASH) / 255f)
             GLES20.glUniform4f(uRiverBody, bodyC.red, bodyC.green, bodyC.blue,
                 (if (majorRiver) MapTokens.Alpha.MAJOR_RIVER_BODY else MapTokens.Alpha.MINOR_RIVER_BODY) / 255f)
             GLES20.glUniform4f(uRiverSpine, bodyC.red, bodyC.green, bodyC.blue,
                 MapTokens.Alpha.MAJOR_RIVER_SPINE / 255f)
-            GLES20.glUniform4f(uRiverFracs, fracs[0], fracs[1], if (majorRiver) 1f else 0f, mp.RIVER_FLOW_AMP)
-            for (mesh in meshes) {
-                mesh.buffer.position(0)
-                GLES20.glVertexAttribPointer(aPosRiver, 2, GLES20.GL_FLOAT, false, 16, mesh.buffer)
-                mesh.buffer.position(2)
-                GLES20.glVertexAttribPointer(aSideRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
-                mesh.buffer.position(3)
-                GLES20.glVertexAttribPointer(aSRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
-                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, mesh.vertexCount)
-            }
+            GLES20.glUniform4f(uRiverFracs, mesh.fracs[0], mesh.fracs[1], if (majorRiver) 1f else 0f, mp.RIVER_FLOW_AMP)
+            mesh.buffer.position(0)
+            GLES20.glVertexAttribPointer(aPosRiver, 2, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+            mesh.buffer.position(2)
+            GLES20.glVertexAttribPointer(aSideRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+            mesh.buffer.position(3)
+            GLES20.glVertexAttribPointer(aSRiver, 1, GLES20.GL_FLOAT, false, 16, mesh.buffer)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, mesh.vertexCount)
         }
-
-        draw(ribbons.major, ribbons.majorFracs, majorRiver = true)
-        draw(ribbons.minor, ribbons.minorFracs, majorRiver = false)
         GLES20.glDisableVertexAttribArray(aPosRiver)
         GLES20.glDisableVertexAttribArray(aSideRiver)
         GLES20.glDisableVertexAttribArray(aSRiver)

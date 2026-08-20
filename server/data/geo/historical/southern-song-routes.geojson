@@ -1,0 +1,159 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-shaoxing",
+      "geometry": { "type": "Point", "coordinates": [120.58, 30.0] },
+      "properties": {
+        "id": "ss-route-seat-shaoxing",
+        "name": "绍兴府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "两浙东路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋两浙东路治所（今绍兴）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-longxing",
+      "geometry": { "type": "Point", "coordinates": [115.9, 28.68] },
+      "properties": {
+        "id": "ss-route-seat-longxing",
+        "name": "隆兴府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "江南西路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋江南西路治所（今南昌）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-luzhou",
+      "geometry": { "type": "Point", "coordinates": [117.28, 31.86] },
+      "properties": {
+        "id": "ss-route-seat-luzhou",
+        "name": "庐州", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "淮南西路",
+        "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋淮南西路治所（今合肥）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-xiangyang",
+      "geometry": { "type": "Point", "coordinates": [112.14, 32.04] },
+      "properties": {
+        "id": "ss-route-seat-xiangyang",
+        "name": "襄阳府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "京西南路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋京西南路治所（今襄阳）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-jiangling",
+      "geometry": { "type": "Point", "coordinates": [112.24, 30.33] },
+      "properties": {
+        "id": "ss-route-seat-jiangling",
+        "name": "江陵府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "荆湖北路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋荆湖北路治所（今荆州）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-fuzhou",
+      "geometry": { "type": "Point", "coordinates": [119.3, 26.08] },
+      "properties": {
+        "id": "ss-route-seat-fuzhou",
+        "name": "福州", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "福建路",
+        "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋福建路治所（今福州）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-jingjiang",
+      "geometry": { "type": "Point", "coordinates": [110.29, 25.28] },
+      "properties": {
+        "id": "ss-route-seat-jingjiang",
+        "name": "静江府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "广南西路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋广南西路治所（今桂林）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-tongchuan",
+      "geometry": { "type": "Point", "coordinates": [105.05, 31.22] },
+      "properties": {
+        "id": "ss-route-seat-tongchuan",
+        "name": "潼川府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "潼川府路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋潼川府路治所（今三台）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-xingyuan",
+      "geometry": { "type": "Point", "coordinates": [107.03, 33.07] },
+      "properties": {
+        "id": "ss-route-seat-xingyuan",
+        "name": "兴元府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "利州东路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋利州东路治所（今汉中）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-mianzhou",
+      "geometry": { "type": "Point", "coordinates": [106.16, 33.33] },
+      "properties": {
+        "id": "ss-route-seat-mianzhou",
+        "name": "沔州", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "利州西路",
+        "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋利州西路治所（今略阳）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ss-route-seat-chongqing",
+      "geometry": { "type": "Point", "coordinates": [106.55, 29.56] },
+      "properties": {
+        "id": "ss-route-seat-chongqing",
+        "name": "重庆府", "kind": "prefecture-seat",
+        "rank": 2, "style": "ink-seat", "route": "夔州路",
+        "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋夔州路治所（今重庆）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    }
+  ]
+}

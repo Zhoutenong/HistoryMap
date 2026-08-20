@@ -13,9 +13,14 @@ import kotlin.math.min
 
 /**
  * 山水分层产物（design 图层序：山脉在水彩之下、河流在水彩之上）：
- * [TerrainLayers.mountains] 山脉笔触层，[TerrainLayers.rivers] 河流水痕层。
+ * [TerrainLayers.mountains] 山脉笔触层，[TerrainLayers.rivers] 河流水痕层，
+ * [TerrainLayers.prefectures] 州府边界独立描边层（水彩之上、LOD 调 alpha）。
  */
-class TerrainLayers(val mountains: WatercolorTexture?, val rivers: WatercolorTexture?)
+class TerrainLayers(
+    val mountains: WatercolorTexture?,
+    val rivers: WatercolorTexture?,
+    val prefectures: WatercolorTexture? = null,
+)
 
 /**
  * 山水纹理：河流水痕 + 山脉笔触（CPU 离屏生成，与水彩纹理同包围盒叠加）。

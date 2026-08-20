@@ -1,1 +1,252 @@
-{"type":"FeatureCollection","features":[{"type":"Feature","id":"city-kaifeng","geometry":{"type":"Point","coordinates":[114.35,34.78]},"properties":{"id":"city-kaifeng","name":"南京开封府","kind":"city","rank":1,"style":"ink-city","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期都会示意点位","periods":["song-1111","song-1142","jin-1142","jin-1200"]}},{"type":"Feature","id":"city-linan","geometry":{"type":"Point","coordinates":[120.16,30.25]},"properties":{"id":"city-linan","name":"临安","kind":"city","rank":1,"style":"ink-city","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"南宋都城示意点位","periods":["song-1142","song-1279","jin-1142"]}},{"type":"Feature","id":"city-zhongdu","geometry":{"type":"Point","coordinates":[116.4,39.9]},"properties":{"id":"city-zhongdu","name":"中都","kind":"city","rank":1,"style":"ink-city","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金中都示意点位","periods":["jin-1142","jin-1200"]}},{"type":"Feature","id":"city-shangjing","geometry":{"type":"Point","coordinates":[126.57,45.55]},"properties":{"id":"city-shangjing","name":"上京会宁府","kind":"city","rank":1,"style":"ink-city","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金前期都城示意点位","periods":["jin-1120"]}}]}
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "city-dongjing",
+      "geometry": { "type": "Point", "coordinates": [114.35, 34.52] },
+      "properties": {
+        "id": "city-dongjing", "name": "东京开封府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "京府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "北宋四京之首都",
+        "periods": ["song-1111"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-xijing",
+      "geometry": { "type": "Point", "coordinates": [112.47, 34.72] },
+      "properties": {
+        "id": "city-xijing", "name": "西京河南府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "京府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "北宋四京之一",
+        "periods": ["song-1111"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-nanjing-song",
+      "geometry": { "type": "Point", "coordinates": [115.85, 34.42] },
+      "properties": {
+        "id": "city-nanjing-song", "name": "南京应天府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "京府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "北宋四京之一",
+        "periods": ["song-1111"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-beijing",
+      "geometry": { "type": "Point", "coordinates": [115.05, 36.28] },
+      "properties": {
+        "id": "city-beijing", "name": "北京大名府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "京府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "北宋四京之一",
+        "periods": ["song-1111"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-linan",
+      "geometry": { "type": "Point", "coordinates": [120.16, 30.25] },
+      "properties": {
+        "id": "city-linan", "name": "临安", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "行在",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋行在（都城）",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-jiankang",
+      "geometry": { "type": "Point", "coordinates": [118.78, 32.06] },
+      "properties": {
+        "id": "city-jiankang", "name": "建康府", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "南宋留都、江南东路治所",
+        "periods": ["song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-zhongdu",
+      "geometry": { "type": "Point", "coordinates": [116.4, 39.9] },
+      "properties": {
+        "id": "city-zhongdu", "name": "中都", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "都城",
+        "source": "金史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "金中都（今北京）",
+        "periods": ["jin-1142", "jin-1200"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-shangjing",
+      "geometry": { "type": "Point", "coordinates": [126.98, 45.35] },
+      "properties": {
+        "id": "city-shangjing", "name": "上京会宁府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "都城",
+        "source": "金史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "金上京（今哈尔滨阿城）",
+        "periods": ["jin-1120"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-nanjing-jin",
+      "geometry": { "type": "Point", "coordinates": [114.35, 34.52] },
+      "properties": {
+        "id": "city-nanjing-jin", "name": "南京开封府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "京府",
+        "source": "金史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "金南京（原北宋东京）",
+        "periods": ["jin-1142", "jin-1200"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-xingqing",
+      "geometry": { "type": "Point", "coordinates": [106.17, 38.52] },
+      "properties": {
+        "id": "city-xingqing", "name": "兴庆府", "kind": "city",
+        "style": "ink-city",
+        "rank": 1, "type": "都城",
+        "source": "西夏书事", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "西夏都城（今银川）",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-yanjing",
+      "geometry": { "type": "Point", "coordinates": [116.4, 39.9] },
+      "properties": {
+        "id": "city-yanjing", "name": "燕京", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "都城",
+        "source": "辽史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "辽南京析津府",
+        "periods": ["liao-1111", "jin-1120"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-taiyuan",
+      "geometry": { "type": "Point", "coordinates": [112.55, 37.87] },
+      "properties": {
+        "id": "city-taiyuan", "name": "太原", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "河东路治所",
+        "periods": ["song-1111"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-guangzhou",
+      "geometry": { "type": "Point", "coordinates": [113.27, 23.13] },
+      "properties": {
+        "id": "city-guangzhou", "name": "广州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "广南东路治所",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-chengdu",
+      "geometry": { "type": "Point", "coordinates": [104.06, 30.65] },
+      "properties": {
+        "id": "city-chengdu", "name": "成都府", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "府",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "成都府路治所",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-quanzhou",
+      "geometry": { "type": "Point", "coordinates": [118.58, 24.92] },
+      "properties": {
+        "id": "city-quanzhou", "name": "泉州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "海上丝路大港",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-yangzhou",
+      "geometry": { "type": "Point", "coordinates": [119.41, 32.39] },
+      "properties": {
+        "id": "city-yangzhou", "name": "扬州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "淮南东路治所",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-suzhou",
+      "geometry": { "type": "Point", "coordinates": [120.62, 31.31] },
+      "properties": {
+        "id": "city-suzhou", "name": "苏州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "两浙路区域中心",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-zhou",
+      "geometry": { "type": "Point", "coordinates": [112.94, 28.23] },
+      "properties": {
+        "id": "city-zhou", "name": "潭州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "荆湖南路治所（今长沙）",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "city-zhou-e",
+      "geometry": { "type": "Point", "coordinates": [114.33, 30.55] },
+      "properties": {
+        "id": "city-zhou-e", "name": "鄂州", "kind": "city",
+        "style": "ink-city",
+        "rank": 2, "type": "州",
+        "source": "宋史·地理志", "license": "CC-BY-4.0", "confidence": "high",
+        "note": "荆湖北路军事重镇",
+        "periods": ["song-1111", "song-1142", "song-1279"]
+      }
+    }
+  ]
+}

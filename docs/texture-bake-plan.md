@@ -74,6 +74,7 @@ penpot-v1 版对齐：canvas 宽高比 1.220 == worldBox 宽高比，非空像�
 | Web（main.js） | ✅ 已接入 | `ensureProjection()` 用 fit-geojson.json 统一标定投影 |
 | Android（assets 同步） | ✅ 已接入 | prepare-android.mjs 自动同步贴图目录（验证：10 文件 ~1.7MB 进 assets） |
 | Android（渲染接入） | ✅ 已接入 | MapRenderer 水彩纹理烘焙优先：BakedWatercolorLoader 读 assets 贴图（manifest byPeriod → PNG），worldBox 由 watercolorWorldBox 计算（与 Web 同逻辑）；失败回退 WatercolorBuilder |
+| Android（州府描边） | ✅ 已接入 | 独立运行时通道 PrefectureStrokeBuilder（离屏 Canvas → GL 纹理 quad），**不烘焙**（CHGIS 派生坐标许可红线）；WatercolorBuilder 原 4e 州府描边分支已移除，贴图永不含州府线（2026-08-20） |
 | Penpot 制作（MCP） | ✅ 已接入 | 双端共用同一投影管线：penpot-prepare-svg.mjs（几何 SVG）+ 三层化样式 + 参数提取 → 本地渲染 |
 
 ## 五、后续步骤（TODO）

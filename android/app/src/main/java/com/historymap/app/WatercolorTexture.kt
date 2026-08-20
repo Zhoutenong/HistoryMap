@@ -304,41 +304,9 @@ object WatercolorBuilder {
             canvas.drawPath(path, dryEdgePaint)
         }
 
-        // 4e. 州府边界（元丰九域志基准，Voronoi 近似面）：仅墨色细描边，不填充。
-        // 干笔虚线 + 极低 alpha：大色块内不被读作数据网格，仅作隐约肌理（放大细看可辨）。
-        if (model.prefectures.isNotEmpty()) {
-            val prefPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                isAntiAlias = true
-                style = Paint.Style.STROKE
-                strokeWidth = max(1f, W / m.PREFECTURE_STROKE_WIDTH_DIV)
-                strokeJoin = Paint.Join.ROUND
-                pathEffect = android.graphics.DashPathEffect(
-                    floatArrayOf(max(5f, W / 200f), max(7f, W / 140f)), 0f,
-                )
-                color = Color.argb(
-                    m.PREFECTURE_STROKE_ALPHA, INK_RGB[0], INK_RGB[1], INK_RGB[2],
-                )
-            }
-            for (pref in model.prefectures) {
-                val path = Path()
-                for (ring in pref.rings) {
-                    if (ring.size < 3) continue
-                    var first = true
-                    for (p in ring) {
-                        val xy = projection.project(p)
-                        val px = toPx(xy[0], xy[1])
-                        if (first) {
-                            path.moveTo(px[0], px[1])
-                            first = false
-                        } else {
-                            path.lineTo(px[0], px[1])
-                        }
-                    }
-                    path.close()
-                }
-                if (!path.isEmpty) canvas.drawPath(path, prefPaint)
-            }
-        }
+        // 4e. 州府边界：已移出本纹理——独立描边通道（PrefectureStrokeBuilder + GL quad，
+        // 见 docs/zoom-lod-requirements.md §3.2 裁决：不烘焙、独立开关、LOD 调 alpha）。
+        // 烘焙贴图不含州府描边，若此处保留会在程序化回退时双绘。
 
         // 4f. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）
         canvas.drawBitmap(noiseTile, null, RectF(0f, 0f, W.toFloat(), H.toFloat()), Paint().apply {

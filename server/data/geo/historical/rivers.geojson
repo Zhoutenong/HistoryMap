@@ -1,8 +1,185 @@
 {
   "type": "FeatureCollection",
   "features": [
-    {"type":"Feature","id":"river-yellow","geometry":{"type":"LineString","coordinates":[[95.5,35],[100,35.5],[104,36.5],[107,38],[110.5,40],[113.5,40.5],[116,38.5],[119,37],[122,37.5],[125,37.8],[127.5,37.8]]},"properties":{"id":"river-yellow","name":"黄河","kind":"river","rank":1,"style":"ink-blue","source":"historical periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期示意路径；非水文测绘","periods":["song-1111","song-1142","song-1279","jin-1120","jin-1142","jin-1200"]}},
-    {"type":"Feature","id":"river-yangtze","geometry":{"type":"LineString","coordinates":[[90.5,29.5],[96,31],[102,30.8],[108,30.5],[112,30.2],[116,30.8],[120,31.8],[122.5,30.8]]},"properties":{"id":"river-yangtze","name":"长江","kind":"river","rank":1,"style":"ink-blue","source":"historical periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"宋金时期示意路径；非水文测绘","periods":["song-1111","song-1142","song-1279","jin-1120","jin-1142","jin-1200"]}},
-    {"type":"Feature","id":"river-huai","geometry":{"type":"LineString","coordinates":[[112.5,33.5],[115.5,33.2],[118.5,33.4],[120.3,34.3]]},"properties":{"id":"river-huai","name":"淮河","kind":"river","rank":2,"style":"ink-blue","source":"periods.json legacy sketch","license":"CC-BY-4.0","confidence":"medium","note":"金宋对峙时期示意路径","periods":["song-1142","song-1279","jin-1142","jin-1200"]}}
+    {
+      "type": "Feature",
+      "id": "river-yellow-north",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[95.5,35],[100,35.5],[104,36.5],[107,38],[110.5,40],[113.5,40.5],[116,38.5],[119,37],[122,37.5],[125,37.8],[127.5,37.8]]
+      },
+      "properties": {
+        "id": "river-yellow-north",
+        "name": "黄河",
+        "kind": "river",
+        "rank": 1,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "黄河·北线（北宋故道，入海 37.8°N）；1128 杜充决河前（song-1111/jin-1120/liao-1111/tang-800）",
+        "periods": ["song-1111", "jin-1120", "liao-1111", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-yellow-south",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[95.5,35],[100,35.5],[104,36.5],[107,37.8],[110.5,36.5],[113,35.3],[117.2,34.3],[119,33.6],[120.3,34.3]]
+      },
+      "properties": {
+        "id": "river-yellow-south",
+        "name": "黄河",
+        "kind": "river",
+        "rank": 1,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch + 1128 夺淮史实校正",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "黄河·南线（1128 杜充决河后夺泗水入淮、夺淮入海，入海 34.3°N 沿淮河下游）；song-1142/song-1279/jin-1142/jin-1200/yuan",
+        "periods": ["song-1142", "song-1279", "jin-1142", "jin-1200", "yuan-1279", "yuan-1300"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-yangtze",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[90.5,29.5],[96,31],[100,30.5],[104,30],[107.5,29.5],[111,30.5],[114,30.5],[116,30.5],[118,31],[120.5,31.5],[122,31.5],[124,31],[126,31.5]]
+      },
+      "properties": {
+        "id": "river-yangtze",
+        "name": "长江",
+        "kind": "river",
+        "rank": 1,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "宋金时期示意路径；非水文测绘",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-huai",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[112.5,33.5],[114,33.6],[115.5,33.2],[117,33],[118.5,33.4],[119.8,34],[120.3,34.3]]
+      },
+      "properties": {
+        "id": "river-huai",
+        "name": "淮河",
+        "kind": "river",
+        "rank": 2,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "金宋对峙时期示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-liao",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[116.8,43.3],[118.5,43.2],[120,42.8],[121.8,42.3],[122.8,41.8],[122.5,40.9]]
+      },
+      "properties": {
+        "id": "river-liao",
+        "name": "辽河",
+        "kind": "river",
+        "rank": 2,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "辽/金 东北方向示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-pearl",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[107,23.4],[109.3,23.3],[110.8,23],[112.3,23],[113.2,22.9],[113.7,22.4]]
+      },
+      "properties": {
+        "id": "river-pearl",
+        "name": "珠江",
+        "kind": "river",
+        "rank": 2,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "岭南示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-qiantang",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[117.8,29.9],[118.8,29.8],[119.6,29.9],[120.3,30.05],[120.7,30.2]]
+      },
+      "properties": {
+        "id": "river-qiantang",
+        "name": "钱塘江",
+        "kind": "river",
+        "rank": 3,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "两浙示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-min",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[116.6,26.7],[117.6,26.5],[118.5,26.4],[119.3,26.2],[119.6,26.05]]
+      },
+      "properties": {
+        "id": "river-min",
+        "name": "闽江",
+        "kind": "river",
+        "rank": 3,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "福建示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "river-songhua",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[127.3,42.5],[126.6,43.7],[126.3,44.9],[126.6,45.9],[127.8,46.4],[130,46.9],[132,47.5]]
+      },
+      "properties": {
+        "id": "river-songhua",
+        "name": "松花江",
+        "kind": "river",
+        "rank": 3,
+        "style": "ink-blue",
+        "source": "historical periods.json legacy sketch",
+        "license": "CC-BY-4.0",
+        "confidence": "medium",
+        "note": "辽/金/元 东北方向示意路径",
+        "periods": ["song-1111", "song-1142", "song-1279", "jin-1120", "jin-1142", "jin-1200", "liao-1111", "yuan-1279", "yuan-1300", "tang-800"]
+      }
+    }
   ]
 }

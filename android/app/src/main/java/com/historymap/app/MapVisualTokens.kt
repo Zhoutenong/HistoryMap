@@ -255,10 +255,18 @@ object MapTokens {
         const val WATERCOLOR_POOLING_DARK = 0.78f
         /** 斑驳明 variant：tint 向纸色 #E6D8B5 混合比例 */
         const val WATERCOLOR_MOTTLE_LIGHT_MIX = 0.35f
-        /** 州府边界（Voronoi 近似面）细描边：alpha 与宽度除数（默认视图中不抢政权色；
-         *  R3 第五轮 46→26→16 + 干笔虚线：规则网格在大色块内仍被感知为数据网格，仅作隐约肌理） */
-        const val PREFECTURE_STROKE_ALPHA = 16
-        const val PREFECTURE_STROKE_WIDTH_DIV = 1300f
+        /** 独立州府描边通道（PrefectureStrokeBuilder 运行时生成，不烘焙）：
+         * 线色 rgba(58,52,40,0.36)（对齐 Web buildPrefectureCanvas）。
+         * 旧 4e 的 PREFECTURE_STROKE_ALPHA/WIDTH_DIV 已随 4e 移除（死常量清理）。 */
+        const val PREFECTURE_LINE_ALPHA_FRAC = 0.36f
+        /** 独立州府描边通道：线宽（设计 px，1080 画布；对齐 Web 1.1 CSS px） */
+        const val PREFECTURE_LINE_WIDTH_DESIGN = 1.1f
+        /** 州府描边 LOD 调光：L2 首现 alpha ×0.6，L3 ×1.0 */
+        const val LOD_PREFECTURE_L2_ALPHA = 0.6f
+        /** 山脉纹理 L3 透明度（降至 ~30%，避免放大后纹理过粗） */
+        const val LOD_MOUNTAIN_L3_ALPHA = 0.3f
+        /** GL 侧 LOD 档位切换的 alpha 过渡时长（ms） */
+        const val LOD_TRANSITION_MS = 250L
         /** 水彩羽化层模糊半径（相对纹理宽度的比例基数；max(基, W/除数)） */
         const val WATERCOLOR_BLOOM_BLUR_BASE = 16f
         const val WATERCOLOR_BLOOM_BLUR_DIV = 85f

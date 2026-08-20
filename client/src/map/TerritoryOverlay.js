@@ -393,6 +393,75 @@ function itemPath(item) {
   return null;
 }
 
+/**
+ * LOD 档位准入（docs/zoom-lod-requirements.md §4.2 矩阵，与 Android LodLevel.kt 同源）：
+ * tier 0=L0 全国（s≥0.40）/ 1=L1 区域 / 2=L2 省域 / 3=L3 州府级。
+ * - 政权：主叙事全档，次要 L1+
+ * - 城市/治所：rank1 全档，rank2 L1+，rank3 L2+，rank4+ L3
+ * - 山脉：rank≤2 全档，rank3 L1+
+ * - 河流名：rank1 全档，rank2 L1+，rank3 L2+
+ * - 地点：rank1 全档，rank2 L1+
+ */
+function tierAdmits(item, tier, isMajor = false) {
+  if (!item) return true;
+  const kind = item.kind;
+  const rank = Number(item.rank || 0);
+  switch (kind) {
+    case 'regime': return isMajor ? true : tier >= 1;
+    case 'city':
+    case 'prefecture-seat':
+      if (rank <= 1) return true;
+      if (rank === 2) return tier >= 1;
+      if (rank === 3) return tier >= 2;
+      return tier >= 3;
+    case 'mountain': return rank <= 2 ? true : tier >= 1;
+    case 'river':
+      if (rank <= 1) return true;
+      if (rank === 2) return tier >= 1;
+      return tier >= 2;
+    case 'capital':
+    case 'battlefield':
+    case 'academy':
+      return rank <= 1 ? true : tier >= 1;
+    default: return true;
+  }
+}
+
+/**
+ * LOD s 判据分母（docs/zoom-lod-requirements.md §4.1）：世界包围盒。
+ * 与 Android boundsOf 同源（政权 + 河流 + 山脉，+ 6% 边距），避免河流/山脉
+ * 超出政权 bbox 的时期（tang-800 天山、松花江）双端档位偏差。
+ * 不包含城市/地点/治所（与 Android 严格一致）。
+ */
+function computeLodWorldBox(geojson) {
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  const acc = (lng, lat) => {
+    if (lng < xmin) xmin = lng;
+    if (lng > xmax) xmax = lng;
+    if (lat < ymin) ymin = lat;
+    if (lat > ymax) ymax = lat;
+  };
+  asArray(geojson?.features).forEach((f) => {
+    normalizePolygons(f.geometry).forEach((rings) => {
+      rings.forEach((ring) => ring.forEach(([lng, lat]) => acc(lng, lat)));
+    });
+  });
+  ['rivers', 'mountains'].forEach((kind) => {
+    asArray(geojson?.properties?.[kind]).forEach((item) => {
+      const path = itemPath(item);
+      if (path) path.forEach(([lng, lat]) => acc(lng, lat));
+      else {
+        const coord = itemCoord(item);
+        if (coord) acc(coord[0], coord[1]);
+      }
+    });
+  });
+  if (!(isFinite(xmin) && isFinite(ymin) && xmax > xmin && ymax > ymin)) return null;
+  const padX = (xmax - xmin) * 0.06;
+  const padY = (ymax - ymin) * 0.06;
+  return { xmin: xmin - padX, xmax: xmax + padX, ymin: ymin - padY, ymax: ymax + padY };
+}
+
 function isVisibleAt(item, year) {
   if (!item) return false;
   // visiblePeriods is the preferred year-window field. Keep `periods` as a
@@ -602,8 +671,8 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     applyBakedWatercolor(washMesh, geojson);
   }
 
-  // 州府边界描边 plane（独立开关 showPrefectures 控制）
-  let prefectureMesh = null;
+  // 州府边界描边 plane（独立开关 showPrefectures 控制；LOD/显隐经
+  // currentPrefectureMesh() 按 name 动态查找，时期切换后仍生效）
   const prefectureCanvas = buildPrefectureCanvas(geojson, renderConfig);
   if (prefectureCanvas) {
     const { canvas, worldBox } = prefectureCanvas;
@@ -612,7 +681,7 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     const box = worldBox;
     const planeGeo = new THREE.PlaneGeometry(box.xmax - box.xmin, box.ymax - box.ymin);
     const planeMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide });
-    prefectureMesh = new THREE.Mesh(planeGeo, planeMat);
+    const prefectureMesh = new THREE.Mesh(planeGeo, planeMat);
     prefectureMesh.name = 'prefecture-strokes';
     prefectureMesh.position.set((box.xmin + box.xmax) / 2, (box.ymin + box.ymax) / 2, 7.02);
     root.add(prefectureMesh);
@@ -627,23 +696,70 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     if (label) root.add(label);
   });
 
-  // 辅助层显隐状态（settings 驱动）+ 时间窗口可见性（年份驱动）合并管理：
+  // 辅助层显隐状态（settings 驱动）+ 时间窗口可见性（年份驱动）+ LOD 档位准入合并管理：
   // CSS2DRenderer 只检查 CSS2DObject.visible（不传播 group.visible），
-  // 且 update(year) 每帧轮询——两处必须合并，否则设置开关被年份轮询覆盖。
-  const visibility = { rivers: true, mountains: true, cities: true, places: true, prefectures: true };
+  // 且 update(year) 每帧轮询——三处必须合并，否则设置开关被年份轮询覆盖。
+  // 图层组动态按 name 从 root 查找：时期切换时新子组迁移进 root，闭包持有的旧组
+  // 已被 dispose——动态定位保证切换后 settings/LOD/年份过滤仍然生效。
+  // 显隐状态：rivers/mountains/cities/places = 辅助层开关，prefectures = 州府边界，
+  // seats = 治所标注（Web 与 Android 拆双开关对齐）。
+  const visibility = { rivers: true, mountains: true, cities: true, places: true, prefectures: true, seats: true };
   let lastYear = 0;
+  let currentTier = 0; // 0=L0 全国 .. 3=L3 州府级（main.js 按 s 判据计算后写入）
+  const LAYER_KEYS = { rivers: 'rivers', mountains: 'mountains', cities: 'cities', places: 'places', prefectureSeats: 'seats' };
+  const layerGroups = () => root.children.filter((c) => LAYER_KEYS[c.name]);
+  const currentPrefectureMesh = () => root.getObjectByName('prefecture-strokes') || null;
+  // 州府描边 alpha 平滑（250ms easeOutCubic；L2 ×0.6 / L3 ×1.0 / 其余隐藏）
+  let prefAlphaCurrent = 0;
+  let prefAlphaTarget = 0;
+  let prefAlphaRaf = 0;
+  const startPrefAlphaTween = () => {
+    cancelAnimationFrame(prefAlphaRaf);
+    const from = prefAlphaCurrent;
+    const start = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - start) / 250);
+      prefAlphaCurrent = from + (prefAlphaTarget - from) * (1 - Math.pow(1 - k, 3));
+      const mesh = currentPrefectureMesh();
+      if (mesh && mesh.material) mesh.material.opacity = prefAlphaCurrent;
+      if (k < 1) prefAlphaRaf = requestAnimationFrame(step);
+    };
+    prefAlphaRaf = requestAnimationFrame(step);
+  };
   const applyVisibility = () => {
-    const layers = [
-      [rivers, 'rivers'], [mountains, 'mountains'], [cities, 'cities'],
-      [places, 'places'], [prefectureSeats, 'prefectures'],
-    ];
-    layers.forEach(([{ group, items }, key]) => {
+    layerGroups().forEach((group) => {
+      const layerOn = visibility[LAYER_KEYS[group.name]];
       group.children.forEach((child) => {
-        child.visible = visibility[key] && isVisibleAt(child.userData.overlayItem, lastYear);
+        const item = child.userData.overlayItem;
+        if (group.name === 'rivers') {
+          // 河流几何按 rank 分级淡化（§4.2 矩阵）：rank2 L0 ×0.4、rank3 L1 ×0.4
+          // （不整条隐藏，几何 alpha 渐变与 Android riverLodAlpha 一致）
+          const rank = Number(item?.rank || 1);
+          let alpha = 1;
+          if (rank === 2 && currentTier === 0) alpha = 0.4;
+          else if (rank >= 3) alpha = currentTier === 0 ? 0 : (currentTier === 1 ? 0.4 : 1);
+          child.visible = layerOn && isVisibleAt(item, lastYear) && alpha > 0;
+          if (child.material?.transparent) child.material.opacity = 0.38 * alpha;
+          return;
+        }
+        child.visible = layerOn && isVisibleAt(item, lastYear) && tierAdmits(item, currentTier, false);
       });
-      group.visible = items.some((item) => isVisibleAt(item, lastYear));
+      const anyItemVisible = group.children.some((c) => isVisibleAt(c.userData.overlayItem, lastYear));
+      group.visible = anyItemVisible;
     });
-    if (prefectureMesh) prefectureMesh.visible = visibility.prefectures;
+    // 政权名标签（root 直接子级）：主叙事全档，次要 L1+
+    root.children.forEach((child) => {
+      if (child.isCSS2DObject && child.element?.classList.contains('regime-label')) {
+        const major = child.element.classList.contains('major');
+        child.visible = tierAdmits({ kind: 'regime' }, currentTier, major);
+      }
+    });
+    // 州府边界描边 plane：L2 首现（alpha ×0.6）、L3 全显（×1.0）；opacity 走平滑值
+    const mesh = currentPrefectureMesh();
+    if (mesh) {
+      mesh.visible = visibility.prefectures && currentTier >= 2;
+      mesh.material.opacity = prefAlphaCurrent;
+    }
   };
   const update = (year) => {
     lastYear = Number.isFinite(Number(year)) ? Number(year) : lastYear;
@@ -656,27 +772,67 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     visibility.mountains = !!settings.showMountains;
     visibility.cities = !!settings.showCities;
     visibility.places = !!settings.showPlaces;
-    visibility.prefectures = !!settings.showPrefectures;
+    visibility.prefectures = !!settings.showPrefectures; // 州府边界
+    visibility.seats = !!settings.showSeats;             // 治所标注
     applyVisibility();
+  };
+  /**
+   * LOD 档位切换：更新准入 + 州府描边 alpha 平滑过渡（250ms），
+   * 标签层只对新准入（上档隐藏→本档可见）的元素做 250ms 淡入，
+   * 跨档保持可见的标签不动（避免切换瞬间全标签闪烁）。
+   */
+  const setLod = (tier) => {
+    if (tier === currentTier) return;
+    // 记录切换前每个标签的可见性
+    const prevSeen = new Map();
+    root.traverse((child) => {
+      if (child.isCSS2DObject && child.element) prevSeen.set(child.element, child.visible);
+    });
+    currentTier = tier;
+    applyVisibility();
+    // 州府描边 alpha 平滑（不跳变）
+    prefAlphaTarget = tier >= 3 ? 1 : (tier === 2 ? 0.6 : 0);
+    startPrefAlphaTween();
+    // 只对新准入的标签做淡入
+    const entering = [];
+    root.traverse((child) => {
+      if (!child.isCSS2DObject || !child.element) return;
+      if (child.visible && !prevSeen.get(child.element)) entering.push(child.element);
+    });
+    if (entering.length === 0) return;
+    entering.forEach((el) => {
+      el.style.transition = 'opacity 250ms ease';
+      el.style.opacity = '0';
+    });
+    requestAnimationFrame(() => {
+      entering.forEach((el) => { el.style.opacity = '1'; });
+      setTimeout(() => entering.forEach((el) => { el.style.transition = ''; }), 320);
+    });
   };
   // EventBubbles consumes these as screen-space, fixed obstacles. Return only
   // currently visible city/regime labels so hidden historical items do not
   // reserve space for events. 州府治所 rank>3 不参与（避免小州标签过度占位）。
+  // 动态按 name 查找图层组：时期切换后新组已迁移进 root，且 LOD 档位隐藏的
+  // 标签（child.visible=false）自动不占位——「getCollisionObstacles 跟随可见集」。
   const getCollisionObstacles = () => {
     if (!root.visible) return [];
     const obstacles = [];
-    if (cities.group.visible) {
-      cities.group.children.forEach((child) => {
+    const groupByName = (name) => root.children.find((c) => c.name === name) || null;
+    const citiesGroup = groupByName('cities');
+    const placesGroup = groupByName('places');
+    const seatsGroup = groupByName('prefectureSeats');
+    if (citiesGroup && citiesGroup.visible) {
+      citiesGroup.children.forEach((child) => {
         if (child.visible && child.element && child.element.classList.contains('city-label')) obstacles.push(child.element);
       });
     }
-    if (places.group.visible) {
-      places.group.children.forEach((child) => {
+    if (placesGroup && placesGroup.visible) {
+      placesGroup.children.forEach((child) => {
         if (child.visible && child.element && child.element.classList.contains('place-label')) obstacles.push(child.element);
       });
     }
-    if (prefectureSeats.group.visible) {
-      prefectureSeats.group.children.forEach((child) => {
+    if (seatsGroup && seatsGroup.visible) {
+      seatsGroup.children.forEach((child) => {
         if (child.visible && child.element && child.element.classList.contains('prefecture-label')
           && Number(child.element.dataset.rank) <= 3) obstacles.push(child.element);
       });
@@ -686,7 +842,15 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     });
     return obstacles;
   };
-  return { group: root, update, setAuxiliaryVisibility, getCollisionObstacles };
+  return {
+    group: root,
+    update,
+    setAuxiliaryVisibility,
+    getCollisionObstacles,
+    setLod,
+    // LOD s 判据分母：全要素包围盒（政权+河流+山脉 + 6% pad，与 Android boundsOf 同源）
+    worldBox: computeLodWorldBox(geojson),
+  };
 }
 
 /**

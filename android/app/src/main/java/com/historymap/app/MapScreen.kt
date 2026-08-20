@@ -169,6 +169,8 @@ fun MapScreen() {
     var playSpeed by remember { mutableStateOf("normal") }
     var showTerritory by remember { mutableStateOf(true) }
     var showRivers by remember { mutableStateOf(true) }
+    var showPrefectures by remember { mutableStateOf(true) }
+    var showSeats by remember { mutableStateOf(true) }
     var legendCollapsed by remember { mutableStateOf(true) } // 手机端图例默认折叠
 
     // 设置持久化：初始读 + 变更写（等价 Web 版 settings/store.js）
@@ -178,14 +180,17 @@ fun MapScreen() {
         playSpeed = s.speed
         showTerritory = s.showTerritory
         showRivers = s.showRivers
+        showPrefectures = s.showPrefectures
+        showSeats = s.showSeats
         renderer.showTerritory = s.showTerritory
         renderer.showWatercolor = s.showTerritory
         renderer.showRivers = s.showRivers
+        renderer.showPrefectures = s.showPrefectures
     }
     fun persistSettings() {
         SettingsStore.save(
             context.applicationContext,
-            SettingsStore.Settings(activeCategories, playSpeed, showTerritory, showRivers),
+            SettingsStore.Settings(activeCategories, playSpeed, showTerritory, showRivers, showPrefectures, showSeats),
         )
     }
 
@@ -446,9 +451,38 @@ fun MapScreen() {
     val bubbleSafeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
     val bubbleSafeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
 
+    // —— LOD 档位（docs/zoom-lod-requirements.md §4.2：s = 可见世界宽 / 世界包围盒宽，
+    // 滞回 ±0.02 防缩放临界抖动；档位变化时标签层做 250ms 淡入过渡）——
+    var lodTierLevel by remember { mutableIntStateOf(LodTier.L0.level) }
+    LaunchedEffect(
+        renderer.zoom, renderer.cx, renderer.cy,
+        renderer.viewportWidth(), renderer.viewportHeight(), layoutRevision,
+    ) {
+        val w = renderer.worldWidth()
+        val vpW = renderer.viewportWidth().toFloat()
+        val vpH = renderer.viewportHeight().toFloat()
+        val aspect = if (vpH > 0f) vpW / vpH else 1f
+        val s = mapScale(renderer.zoom, aspect, w)
+        val next = nextLod(LodTier.fromLevel(lodTierLevel), s)
+        if (next.level != lodTierLevel) lodTierLevel = next.level
+        renderer.lodTier = next.level
+    }
+    val lodTier = LodTier.fromLevel(lodTierLevel)
+    // 标签层档位切换过渡（250ms 淡入；首帧 L0 不淡入，
+    // 之后任意档位变化含「降回 L0」都过渡，与升档对称）
+    val labelAlpha = remember { androidx.compose.animation.core.Animatable(1f) }
+    var prevLodLevel by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(lodTierLevel) {
+        if (prevLodLevel >= 0 && lodTierLevel != prevLodLevel) {
+            labelAlpha.snapTo(0f)
+            labelAlpha.animateTo(1f, tween(250))
+        }
+        prevLodLevel = lodTierLevel
+    }
+
     val placedLabels = remember(
         renderer.labels, layoutRevision, renderer.zoom, renderer.cx, renderer.cy, designScale,
-        topBarBottomPx, timelineTopPx, viewH,
+        topBarBottomPx, timelineTopPx, viewH, lodTierLevel, showSeats,
     ) {
         if (renderer.viewportWidth() <= 0) emptyList()
         else {
@@ -459,10 +493,22 @@ fun MapScreen() {
                 val (sx, sy) = renderer.worldToScreen(l.wx, l.wy)
                 MapRenderer.WorldLabel(l.text, sx, sy, l.kind, l.major, l.rank)
             }
+            // 治所标注开关（settings.showSeats）：隐藏州府/路治治所标签
+            val base = if (showSeats) screenLabels else screenLabels.filter { it.kind != "prefecture" }
+            // LOD 档位准入（§4.2 矩阵：rank 决定各档显隐）
+            val admitted = base.filter { admitAtTier(it, lodTier) }
+            // L3 视口剔除：290 个治所全量布局是 O(n²) 碰撞，P20 会掉帧；
+            // 只布局「锚点在视口 +15% 缓冲内」的标签，视口外随相机平移自然换入
+            val layoutInput = if (lodTierLevel == 3) {
+                admitted.filter { l ->
+                    l.wx >= -0.15f * viewW && l.wx <= 1.15f * viewW &&
+                        l.wy >= -0.15f * viewH && l.wy <= 1.15f * viewH
+                }
+            } else admitted
             val safeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
             val safeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
             layoutMapLabels(
-                labels = screenLabels,
+                labels = layoutInput,
                 screenRegimes = renderer.screenRegimePolygons(),
                 textPaints = labelTextPaints(designScale, densityPx),
                 viewW = viewW,
@@ -480,9 +526,11 @@ fun MapScreen() {
                 ),
                 // 移动端紧凑：辅助/城市/地点标签收紧（政权不限），避免中下部文字堆叠。
                 // 横屏纵向地图区更窄，进一步收紧标签上限，防止地名堆叠压住事件泡泡。
+                // LOD 档位模式下 maxCityLabels/maxPlaceLabels 让位于档位×rank 上限表。
                 maxAuxLabels = if (isLandscape) 14 else 24,
                 maxCityLabels = if (isLandscape) 4 else 7,
                 maxPlaceLabels = if (isLandscape) 3 else 5,
+                tier = lodTier,
             )
         }
     }
@@ -522,9 +570,13 @@ fun MapScreen() {
             letterSpacing = with(LocalDensity.current) { 8.dp.toSp() },
         )
 
-        // 标注层（政权/城市/地点/山脉/河流名，布局结果含避让与隐藏）
+        // 标注层（政权/城市/地点/山脉/河流名，布局结果含避让与隐藏；
+        // LOD 档位切换时整体 250ms 淡入过渡）
         if (showTerritory) {
-            LabelLayer(placedLabels = placedLabels, modifier = Modifier.fillMaxSize())
+            LabelLayer(
+                placedLabels = placedLabels,
+                modifier = Modifier.fillMaxSize().alpha(labelAlpha.value),
+            )
         }
 
         // 事件泡泡层（点击命中；按设置分类过滤；地图手势由 GLSurfaceView 自己消费）
@@ -797,6 +849,8 @@ fun MapScreen() {
                 speed = playSpeed,
                 showTerritory = showTerritory,
                 showRivers = showRivers,
+                showPrefectures = showPrefectures,
+                showSeats = showSeats,
                 onCategoriesChange = {
                     activeCategories = it
                     persistSettings()
@@ -819,6 +873,15 @@ fun MapScreen() {
                 onRiversChange = {
                     showRivers = it
                     renderer.showRivers = it
+                    persistSettings()
+                },
+                onPrefecturesChange = {
+                    showPrefectures = it
+                    renderer.showPrefectures = it
+                    persistSettings()
+                },
+                onSeatsChange = {
+                    showSeats = it
                     persistSettings()
                 },
                 onDismiss = { settingsOpen = false },

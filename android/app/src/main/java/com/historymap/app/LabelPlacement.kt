@@ -48,6 +48,9 @@ fun layoutMapLabels(
     maxAuxLabels: Int = 32,
     maxCityLabels: Int = 8,
     maxPlaceLabels: Int = 5,
+    /** 非 null 时按档位×rank 准入矩阵 + 每档数量上限（docs/zoom-lod-requirements.md §4.2）；
+     *  null 退回旧行为（maxCityLabels/maxPlaceLabels/maxAuxLabels + rank 硬限制） */
+    tier: LodTier? = null,
 ): List<PlacedMapLabel> {
     if (labels.isEmpty()) return emptyList()
     // 优先级：政权 > 主政权城市/京府次府 > 普通城市/州府 > 山脉 > 河流名 > 普通地点
@@ -65,6 +68,11 @@ fun layoutMapLabels(
     var auxCount = 0
     var cityCount = 0
     var placeCount = 0
+    // 档位×rank 上限表（tier 模式）：城市/州府治所 与 地点 各按 rank 计次
+    val cityCaps = tier?.let { LodTier.CITY_CAPS[it] }
+    val placeCaps = tier?.let { LodTier.PLACE_CAPS[it] }
+    val cityCounts = mutableMapOf<Int, Int>()
+    val placeCounts = mutableMapOf<Int, Int>()
 
     for (l in sorted) {
         val paint = textPaints[l.kind] ?: continue
@@ -79,25 +87,42 @@ fun layoutMapLabels(
         val bw = w + pad * 2
         val bh = h + (if (l.kind == "regime") 8f else 6f) * density
 
-        // 各类标签限流（移动端紧凑：政权不限；城市/地点上限收紧，避免中下部文字堆叠）
+        // 各类标签限流：tier 模式按「档位×rank 矩阵 + 每档数量上限」；旧模式收紧城市/地点上限
         when (l.kind) {
             "regime" -> { /* 政权不限 */ }
-            "cities" -> {
-                if (cityCount >= maxCityLabels) continue
-                cityCount++
+            "cities", "prefecture" -> {
+                if (cityCaps != null) {
+                    val cap = cityCaps[l.rank] ?: continue // rank 未进档位表 = 该档隐藏
+                    val used = cityCounts[l.rank] ?: 0
+                    if (used >= cap) continue
+                    cityCounts[l.rank] = used + 1
+                } else {
+                    if (cityCount >= maxCityLabels) continue
+                    cityCount++
+                }
             }
             "places" -> {
-                if (l.rank > 2) continue // 手机紧凑：次要地点默认隐藏
-                if (placeCount >= maxPlaceLabels) continue
-                placeCount++
+                if (placeCaps != null) {
+                    val cap = placeCaps[l.rank] ?: continue
+                    val used = placeCounts[l.rank] ?: 0
+                    if (used >= cap) continue
+                    placeCounts[l.rank] = used + 1
+                } else {
+                    if (l.rank > 2) continue // 手机紧凑：次要地点默认隐藏
+                    if (placeCount >= maxPlaceLabels) continue
+                    placeCount++
+                }
             }
             else -> { // 山脉/河流等辅助
                 if (auxCount >= maxAuxLabels) continue
                 auxCount++
             }
         }
-        if (l.kind == "rivers" && l.rank > 1) continue
-        if (l.kind == "mountains" && l.rank > 2) continue
+        // 旧模式下 rank 硬限制；tier 模式由准入矩阵统一控制（admitAtTier 已在调用方过滤）
+        if (tier == null) {
+            if (l.kind == "rivers" && l.rank > 1) continue
+            if (l.kind == "mountains" && l.rank > 2) continue
+        }
 
         // 候选位：锚点 + 上下左右（偏移随 density 缩放，与大字号成比例）
         val cx = l.wx

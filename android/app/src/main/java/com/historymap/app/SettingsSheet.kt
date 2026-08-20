@@ -39,10 +39,14 @@ fun SettingsSheet(
     speed: String,
     showTerritory: Boolean,
     showRivers: Boolean,
+    showPrefectures: Boolean,
+    showSeats: Boolean,
     onCategoriesChange: (List<String>) -> Unit,
     onSpeedChange: (String) -> Unit,
     onTerritoryChange: (Boolean) -> Unit,
     onRiversChange: (Boolean) -> Unit,
+    onPrefecturesChange: (Boolean) -> Unit,
+    onSeatsChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AppBottomSheet(onDismiss = onDismiss) {
@@ -105,6 +109,8 @@ fun SettingsSheet(
             InkSectionTitle("显示")
             SettingRow("水彩疆域", showTerritory, MapTokens.VERMILION, onToggle = { onTerritoryChange(!showTerritory) })
             SettingRow("河流与山脉", showRivers, CATEGORY_COLORS["invention"] ?: CATEGORY_COLORS["era"]!!, onToggle = { onRiversChange(!showRivers) })
+            SettingRow("州府边界", showPrefectures, MapTokens.INK, onToggle = { onPrefecturesChange(!showPrefectures) })
+            SettingRow("治所标注", showSeats, MapTokens.INK_SOFT, onToggle = { onSeatsChange(!showSeats) })
         }
     }
 }

@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 // 历史边界数据目录
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
 // prefectures.geojson：州府级数据（元丰九域志基准，本地生成，含 CHGIS 派生坐标——见 docs/data-improvement-plan.md）
-const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson', 'prefectures.geojson'];
+const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson', 'prefectures.geojson', 'southern-song-routes.geojson'];
 
 /**
  * 地点类要素 kind 白名单（places.geojson 中的点位要素）。
@@ -101,7 +101,10 @@ router.get('/', (req, res) => {
 
   // 政权名标签位：labelCoord 为人工标定的视觉中心（[lng, lat]），
   // labelMajor 用于前端区分主叙事政权（字号/墨色更重）。缺省回落几何质心。
+  // labelsByPeriod 支持按时期覆写（如南宋「宋」锚点南移到 [113.5, 28]）：
+  // 优先级 feature 自带 labelCoord > 时期覆写 > 全局 labels > null。
   const labels = periodsIndex.labels || {};
+  const labelsByPeriod = periodsIndex.labelsByPeriod?.[periodDef.id] || {};
   const labelMajorSet = new Set(periodsIndex.labelMajor || []);
 
   // 读取所有文件并合并 features
@@ -127,8 +130,8 @@ router.get('/', (req, res) => {
           entity: props.entity || '未知政权',
           color: props.color || fallback.color || '#888888',
           fillOpacity: props.fillOpacity !== undefined ? props.fillOpacity : 0.35,
-          // 政权名标签位（仅注入，不覆盖 feature 自带值）
-          labelCoord: props.labelCoord || labels[props.entity] || null,
+          // 政权名标签位（仅注入，不覆盖 feature 自带值；时期覆写优先于全局）
+          labelCoord: props.labelCoord || labelsByPeriod[props.entity] || labels[props.entity] || null,
           labelMajor: props.labelMajor !== undefined ? props.labelMajor : labelMajorSet.has(props.entity),
         },
       });
@@ -147,13 +150,22 @@ router.get('/', (req, res) => {
   }, Object.fromEntries(KNOWN_KINDS.map((kind) => [kind, []])));
   const legacy = featureCollectionToLegacy(standardFeatures);
   const legacyByKind = (kind) => legacy.filter((item) => item.kind === kind);
-  const rivers = standardByKind.river.length ? legacyByKind('river') : (periodDef.rivers || periodsIndex.rivers || []);
-  const mountains = standardByKind.mountain.length ? legacyByKind('mountain') : (periodDef.mountains || periodsIndex.mountains || []);
-  const cities = standardByKind.city.length ? legacyByKind('city') : (periodDef.cities || periodsIndex.cities || []);
+  // 标准文件优先；缺失（tang-800/yuan-* 等未覆盖时期）回落 periods.json 旧数组。
+  // 回落条目需补 kind（legacy 数组本身无 kind 字段），否则前端 tierAdmits 的
+  // LOD 准入矩阵走 default 分支全部全档显示——rank/kind 齐备矩阵才生效。
+  const rivers = standardByKind.river.length
+    ? legacyByKind('river')
+    : (periodDef.rivers || periodsIndex.rivers || []).map((r) => ({ kind: 'river', ...r }));
+  const mountains = standardByKind.mountain.length
+    ? legacyByKind('mountain')
+    : (periodDef.mountains || periodsIndex.mountains || []).map((m) => ({ kind: 'mountain', ...m }));
+  const cities = standardByKind.city.length
+    ? legacyByKind('city')
+    : (periodDef.cities || periodsIndex.cities || []).map((c) => ({ kind: 'city', ...c }));
   // 地点（都城/战场/书院等）：标准文件优先，其次 periods.json 旧数组兼容
   const places = PLACE_KINDS.some((kind) => standardByKind[kind].length > 0)
     ? legacy.filter((item) => PLACE_KINDS.includes(item.kind))
-    : (periodDef.places || periodsIndex.places || []);
+    : (periodDef.places || periodsIndex.places || []).map((p) => ({ kind: 'capital', ...p }));
   // 州府级（元丰九域志基准）：
   // - prefectures：Polygon 面**保留完整 feature**（geometry 供前端画边界，
   //   featureCollectionToLegacy 会剥掉 Polygon 的 geometry，不能走 legacy 通道）
