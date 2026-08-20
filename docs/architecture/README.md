@@ -11,6 +11,7 @@
 | [temporal-db-plan.md](temporal-db-plan.md) | 宋代时空数据库：PostgreSQL + PostGIS 逐实体时间版本化、Schema、事件提取规则 | 已实施 |
 | [data-improvement-plan.md](data-improvement-plan.md) | 州府级数据管线：古籍解析 → 治所坐标 → Voronoi 州府面、许可矩阵 | 已实施 |
 | [data-sources-research.md](data-sources-research.md) | 数据源调研：古籍/历史地图/坐标源评估与选型 | 调研记录 |
+| [codebase-review-plan.md](codebase-review-plan.md) | 全库评审与改进计划：双端一致性、缓存、迁移语义、内容加深、分享、考据感等 A1-A6/P1-P5 任务 | 待实施 |
 
 ## 阅读顺序
 
