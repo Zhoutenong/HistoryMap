@@ -93,7 +93,7 @@ node server/scripts/fetch_historical_basemaps.js
 古籍解析 + CHGIS 治所坐标 + Voronoi 近似边界），由 `scripts/build-song-prefectures.mjs` 生成：
 
 - **本地生成**：文件含 CHGIS 派生坐标（不可再分发），**不入 git**（见
-  `docs/data-improvement-plan.md` 许可矩阵）；克隆后需先跑
+  `docs/architecture/data-improvement-plan.md` 许可矩阵）；克隆后需先跑
   `npm run data:classics && npm run data:seats && npm run data:prefectures`。
 - **kind 取值**：
   - `prefecture`：州府面（Polygon，Voronoi 近似 + 宋政权轮廓裁剪，`style: stroke-only`）

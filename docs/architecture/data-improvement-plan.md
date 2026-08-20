@@ -1,7 +1,7 @@
 # 宋朝州府级地图数据改善计划（实施文档）
 
 > 状态：已批准实施（2026-08-14）。范围：北宋 `song-1111`（960–1126）州府级政区 + 治所标注 + 府州详情面板。
-> 配套调研：`docs/data-sources-research.md`。
+> 配套调研：`docs/architecture/data-sources-research.md`。
 
 ## 一、目标
 

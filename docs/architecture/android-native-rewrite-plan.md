@@ -1,6 +1,6 @@
 # Android 原生重构方案（Kotlin + Compose，弃用 WebView）
 
-> 状态：**已落地**（2026-08 由 WebView 壳重构为 GLES 自研 + Kotlin 投影 + Compose UI，Web 桌面版保留）。M1–M6 里程碑全部完成，P20 实测 55–59fps；见 `AGENTS.md`「Android 原生版」章节与 `docs/texture-bake-plan.md` M1/M2 视觉调优记录。
+> 状态：**已落地**（2026-08 由 WebView 壳重构为 GLES 自研 + Kotlin 投影 + Compose UI，Web 桌面版保留）。M1–M6 里程碑全部完成，P20 实测 55–59fps；见 `AGENTS.md`「Android 原生版」章节与 `docs/technical/texture-bake-plan.md` M1/M2 视觉调优记录。
 >
 > 目标：Android 端从「WebView + three.js + JS bridge」改为 Kotlin 原生实现。
 > 动机：P20 等低端机上 WebView 链路（JS 解释 + WebGL 桥接 + CSS2D 每帧 DOM 布局）性能差；

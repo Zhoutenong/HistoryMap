@@ -1,6 +1,6 @@
 # 宋代时空数据库实施记录（PostgreSQL + PostGIS）
 
-> 状态：已实施（2026-08-14）。与 `docs/data-improvement-plan.md`（州府级数据管线）为姊妹篇：
+> 状态：已实施（2026-08-14）。与 `docs/architecture/data-improvement-plan.md`（州府级数据管线）为姊妹篇：
 > 前者是渲染数据（单时点快照 + Voronoi 面），本文是**时间版本化时空库**（逐实体生命周期）。
 
 ## 一、目标与设计

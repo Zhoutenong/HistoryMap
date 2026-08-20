@@ -1,6 +1,6 @@
 # HistoryMap 视觉还原执行计划
 
-> 目标：让当前运行效果与 `docs/design/ChatGPT Image Aug 6, 2026, 02_33_01 PM.png` / `...02_33_10 PM.png` 两张效果图在视觉气质上完全一致。
+> 目标：让当前运行效果与 `docs/design_optimize/prompt_1.png` / `prompt_4.png` 两张效果图在视觉气质上完全一致。
 > 本计划面向**无法识别图片**的执行模型，因此所有目标效果都用文字、CSS 值、代码位置精确描述，并给出可验收的验证步骤。
 
 ---

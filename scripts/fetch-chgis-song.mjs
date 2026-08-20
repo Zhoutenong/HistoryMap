@@ -9,7 +9,7 @@
  *   node scripts/fetch-chgis-song.mjs
  *
  * 许可：TGaz 为 CHGIS 在线查询接口（复旦/哈佛，非商业学术用途）。派生坐标表
- * 仅本地使用，不随仓库分发（见 docs/data-improvement-plan.md 许可矩阵）。
+ * 仅本地使用，不随仓库分发（见 docs/architecture/data-improvement-plan.md 许可矩阵）。
  *
  * 数据流：
  *   jiuyuzhi-1080.json（古籍解析）→ TGaz 查询 → song-seats-1080.json

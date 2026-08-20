@@ -191,7 +191,7 @@ function main() {
     type: 'FeatureCollection',
     features,
     properties: {
-      note: '元丰九域志（1080）州府级数据：Voronoi 近似边界 + CHGIS/人工治所坐标。数据含 CHGIS 派生坐标，不入 git（见 docs/data-improvement-plan.md）。',
+      note: '元丰九域志（1080）州府级数据：Voronoi 近似边界 + CHGIS/人工治所坐标。数据含 CHGIS 派生坐标，不入 git（见 docs/architecture/data-improvement-plan.md）。',
       year: 1080,
     },
   };

@@ -1,7 +1,7 @@
 package com.historymap.app
 
 /**
- * 地图 LOD 档位（docs/zoom-lod-requirements.md §4.2 矩阵）：
+ * 地图 LOD 档位（docs/requirements/zoom-lod-requirements.md §4.2 矩阵）：
  * 以 s = 可见世界宽 / 世界包围盒宽 为判据（双端通用），档位越低越「全国」。
  *
  * - L0（s ≥ 0.40）：全国取景。主政权名 + 大江大河 + rank≤2 山名 + 四京 + 主地点。

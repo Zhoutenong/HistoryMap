@@ -5,7 +5,7 @@
     "date": "2026-08-13",
     "status": "superseded-by-design-optimize",
     "deprecated": "本文件为旧像素采样草稿，已不再作为设计输入。唯一设计真相源（canonical）为 docs/design_optimize/design-tokens.json（Android 视觉优化实施计划的唯一设计输入）。Kotlin token 源与 scripts/check-visual-tokens.mjs 均只认 canonical。保留本文件仅作历史参考，勿再引用其中的数值。",
-    "note": "数值来自像素采样，可信；语义(哪个色块是哪个政权/控件)与文字类 token 待 ChatGPT 看图确认后回填。见 docs/android-visual-polish-ai-pipeline.md 第 5.2 节"
+    "note": "数值来自像素采样，可信；语义(哪个色块是哪个政权/控件)与文字类 token 待 ChatGPT 看图确认后回填。见 docs/technical/android-visual-polish-ai-pipeline.md 第 5.2 节"
   },
   "colors": {
     "paperMap": "#F8E8C8",

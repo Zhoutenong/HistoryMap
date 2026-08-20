@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 // 历史边界数据目录
 const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
-// prefectures.geojson：州府级数据（元丰九域志基准，本地生成，含 CHGIS 派生坐标——见 docs/data-improvement-plan.md）
+// prefectures.geojson：州府级数据（元丰九域志基准，本地生成，含 CHGIS 派生坐标——见 docs/architecture/data-improvement-plan.md）
 const STANDARD_GEO_FILES = ['rivers.geojson', 'mountains.geojson', 'cities.geojson', 'places.geojson', 'prefectures.geojson', 'southern-song-routes.geojson'];
 
 /**

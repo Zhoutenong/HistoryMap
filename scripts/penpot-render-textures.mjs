@@ -1,7 +1,7 @@
 /**
  * 用 Penpot 样式渲染水彩疆域贴图（美术重做管线）。
  *
- * 分工（见 docs/texture-bake-plan.md）：
+ * 分工（见 docs/technical/texture-bake-plan.md）：
  *   - Penpot：制作贴图设计稿（每政权三层：bloom 晕染 / body 主体 / edge 描边），
  *     fill/blur/透明度 可视可调（penpot-prepare-svg.mjs 提供几何 SVG）；
  *   - 本脚本：读取 geojson 几何（与 bake 同投影同 worldBox）+ artifacts/penpot/styles.json

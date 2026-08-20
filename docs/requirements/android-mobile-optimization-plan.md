@@ -2,7 +2,7 @@
 
 > **⚠️ 历史文档（WebView 架构时代）**：本计划基于早期「Android WebView 壳 + three.js + JS bridge」实现，部分问题与方案仅适用于该架构。
 > Android 端已于 2026-08 重构为 Kotlin 原生实现（Compose + GLES2，弃用 WebView），当前架构与最终落地见
-> `AGENTS.md`「Android 原生版」章节、`docs/refactor-requirements.md` 与 `docs/android-native-rewrite-plan.md`。
+> `AGENTS.md`「Android 原生版」章节、`docs/requirements/refactor-requirements.md` 与 `docs/architecture/android-native-rewrite-plan.md`。
 > 本文件仅作历史参考，其中的 Room/Android Bridge/WebView 描述已不反映现状。
 
 > 适用设备：当时基于华为 P20（EML_AL00，Android 10）WebView 验证

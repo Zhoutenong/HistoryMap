@@ -305,7 +305,7 @@ object WatercolorBuilder {
         }
 
         // 4e. 州府边界：已移出本纹理——独立描边通道（PrefectureStrokeBuilder + GL quad，
-        // 见 docs/zoom-lod-requirements.md §3.2 裁决：不烘焙、独立开关、LOD 调 alpha）。
+        // 见 docs/requirements/zoom-lod-requirements.md §3.2 裁决：不烘焙、独立开关、LOD 调 alpha）。
         // 烘焙贴图不含州府描边，若此处保留会在程序化回退时双绘。
 
         // 4f. 纸张颗粒：纸棕色噪声 tile soft-light 叠加（design paperGrain；只作用于政权区域）

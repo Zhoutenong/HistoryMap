@@ -394,7 +394,7 @@ function itemPath(item) {
 }
 
 /**
- * LOD 档位准入（docs/zoom-lod-requirements.md §4.2 矩阵，与 Android LodLevel.kt 同源）：
+ * LOD 档位准入（docs/requirements/zoom-lod-requirements.md §4.2 矩阵，与 Android LodLevel.kt 同源）：
  * tier 0=L0 全国（s≥0.40）/ 1=L1 区域 / 2=L2 省域 / 3=L3 州府级。
  * - 政权：主叙事全档，次要 L1+
  * - 城市/治所：rank1 全档，rank2 L1+，rank3 L2+，rank4+ L3
@@ -428,7 +428,7 @@ function tierAdmits(item, tier, isMajor = false) {
 }
 
 /**
- * LOD s 判据分母（docs/zoom-lod-requirements.md §4.1）：世界包围盒。
+ * LOD s 判据分母（docs/requirements/zoom-lod-requirements.md §4.1）：世界包围盒。
  * 与 Android boundsOf 同源（政权 + 河流 + 山脉，+ 6% 边距），避免河流/山脉
  * 超出政权 bbox 的时期（tang-800 天山、松花江）双端档位偏差。
  * 不包含城市/地点/治所（与 Android 严格一致）。

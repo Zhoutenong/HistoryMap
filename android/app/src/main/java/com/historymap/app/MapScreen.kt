@@ -451,7 +451,7 @@ fun MapScreen() {
     val bubbleSafeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
     val bubbleSafeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
 
-    // —— LOD 档位（docs/zoom-lod-requirements.md §4.2：s = 可见世界宽 / 世界包围盒宽，
+    // —— LOD 档位（docs/requirements/zoom-lod-requirements.md §4.2：s = 可见世界宽 / 世界包围盒宽，
     // 滞回 ±0.02 防缩放临界抖动；档位变化时标签层做 250ms 淡入过渡）——
     var lodTierLevel by remember { mutableIntStateOf(LodTier.L0.level) }
     LaunchedEffect(

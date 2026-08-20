@@ -285,7 +285,7 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 （bloom 晕染/body 主体/edge 描边，样式可视化可调）→ 提取样式 → `npm run penpot:render`
 （本地 `@napi-rs/canvas` 水彩渲染：斑驳/干边/羽化，覆盖贴图并更新 manifest status=penpot）。
 当前 8 张均为 penpot-v1（水彩版），样式默认 token + 宋政权示范样式（`artifacts/penpot/styles.json`）。
-**状态标注在 `docs/texture-bake-plan.md`**（占位=placeholder-rework，水彩=penpot-v1，定稿=done），
+**状态标注在 `docs/technical/texture-bake-plan.md`**（占位=placeholder-rework，水彩=penpot-v1，定稿=done），
 每次改动贴图/管线后必须更新该文档。数据变更后先重跑 bake 再走 penpot 两步，勿手改贴图。
 
 ## 扩展指南（后续加朝代）
@@ -304,7 +304,7 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 
 ## 时空数据库（PostgreSQL + PostGIS，时间版本化）
 
-与渲染数据（overlay GeoJSON）平行的一套**逐实体时间版本化**体系（`docs/temporal-db-plan.md`）：
+与渲染数据（overlay GeoJSON）平行的一套**逐实体时间版本化**体系（`docs/architecture/temporal-db-plan.md`）：
 
 - **存储**：本机 PostgreSQL 16.4（`C:/pg16`，数据目录 `C:/pgdata`）+ PostGIS 3.6.2，库 `historymap`；
   连接串在 `server/.env` 的 `DATABASE_URL`（gitignore）。启动：
@@ -314,7 +314,7 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
   `place_events`（变更事件，可溯源）
 - **管线**：`npm run data:songshi`（宋史·地理志 ctext + 事件提取）→ `npm run data:temporal`
   （三源合并写 PG）→ `npm run data:temporal:check`（时间线一致性校验）。
-  事件提取规则经验（年号表/县级甄别/军额vs政区/快照优先）见 `docs/temporal-db-plan.md` §四。
+  事件提取规则经验（年号表/县级甄别/军额vs政区/快照优先）见 `docs/architecture/temporal-db-plan.md` §四。
 - **API**：`GET /api/places`（按年/类型/名称/路查有效版本）、`/api/places/:id`（详情+事件时间线）、
   `/api/places/sources`。时空库未启用（无 DATABASE_URL）时返回 503，**不影响** SQLite 既有 API。
 - **前端**：`api.js` 的 `getPlaces/getPlace/getPlaceSources`；州府详情面板异步加载

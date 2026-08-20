@@ -78,7 +78,7 @@ npm audit              # 查看根目录依赖安全报告（CI 以 high 级别�
 
 ## 州府级数据管线（北宋州府边界 + 治所标注 + 府州详情）
 
-地图的北宋州府级数据（元丰九域志 1080 基准：287 个州府近似边界 + 290 个治所 + 户口/土贡/沿革）由古籍与 CHGIS 派生，**克隆后需先本地生成**（含 CHGIS 派生坐标的文件不入 git，见 `docs/data-improvement-plan.md` 许可矩阵）：
+地图的北宋州府级数据（元丰九域志 1080 基准：287 个州府近似边界 + 290 个治所 + 户口/土贡/沿革）由古籍与 CHGIS 派生，**克隆后需先本地生成**（含 CHGIS 派生坐标的文件不入 git，见 `docs/architecture/data-improvement-plan.md` 许可矩阵）：
 
 ```bash
 npm run data:classics     # ① 古籍解析：元丰九域志（kanripo）+ 舆地广记（维基文库，交叉比对）
@@ -152,7 +152,7 @@ HistoryMap/
 ```
 
 详细架构、约定、已知坑见 [AGENTS.md](./AGENTS.md)。
-当前未完成工作、优先级、验收标准与进度标记见 [docs/roadmap.md](./docs/roadmap.md)。
+当前未完成工作、优先级、验收标准与进度标记见 [docs/requirements/roadmap.md](./docs/requirements/roadmap.md)。
 
 ## 已接入朝代
 
@@ -190,7 +190,7 @@ Android 原生版的全部视觉参数以 **`docs/design_optimize/design-tokens.
 
 ## 宋代时空数据库（PostgreSQL + PostGIS，时间版本化）
 
-在州府渲染数据之上，另有一套**逐实体时间版本化**的时空库（`docs/temporal-db-plan.md`）：
+在州府渲染数据之上，另有一套**逐实体时间版本化**的时空库（`docs/architecture/temporal-db-plan.md`）：
 每个州府实体带 `valid_from/valid_to` 生命周期（升府/废州/新置/复置/改名切分）、PostGIS 几何、
 史料 Source（元丰九域志/舆地广记/宋史·地理志）、数值化 Confidence。
 

@@ -48,7 +48,7 @@ fun layoutMapLabels(
     maxAuxLabels: Int = 32,
     maxCityLabels: Int = 8,
     maxPlaceLabels: Int = 5,
-    /** 非 null 时按档位×rank 准入矩阵 + 每档数量上限（docs/zoom-lod-requirements.md §4.2）；
+    /** 非 null 时按档位×rank 准入矩阵 + 每档数量上限（docs/requirements/zoom-lod-requirements.md §4.2）；
      *  null 退回旧行为（maxCityLabels/maxPlaceLabels/maxAuxLabels + rank 硬限制） */
     tier: LodTier? = null,
 ): List<PlacedMapLabel> {

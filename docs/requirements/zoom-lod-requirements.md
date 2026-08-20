@@ -100,7 +100,7 @@
 
 ### 3.2 州府边界：无贴图 → 裁决走**运行时矢量描边**，不烘焙
 
-两条理由（`docs/texture-bake-plan.md` §一/§六 既有决策，本次重申）：
+两条理由（`docs/technical/texture-bake-plan.md` §一/§六 既有决策，本次重申）：
 
 1. **许可红线**：州府坐标为 CHGIS 派生，禁止烘焙进可再分发贴图；
 2. **无美术难度**：细线描边程序化即可，不需要 Penpot 管线。
@@ -303,7 +303,7 @@ Web `setLod` 改为**只对新准入元素淡入**（`prevSeen` 对比，跨档�
 **P2-6 死常量**：删除 `MapVisualTokens.kt` 的 `PREFECTURE_STROKE_ALPHA/WIDTH_DIV`
 （4e 移除后无引用）。
 
-**P2-7 文档同步**：`docs/texture-bake-plan.md` 补充 Android 独立州府描边通道行
+**P2-7 文档同步**：`docs/technical/texture-bake-plan.md` 补充 Android 独立州府描边通道行
 （PrefectureStrokeBuilder 运行时生成不烘焙；4e 分支已移除，贴图永不含州府线）。
 
 **P2-8 Web 拆双开关**：`store.js` 新增 `showSeats`（默认 true）+ `BOOL_KEYS`；

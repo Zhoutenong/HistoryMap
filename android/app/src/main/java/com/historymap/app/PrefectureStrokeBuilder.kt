@@ -9,7 +9,7 @@ import android.graphics.RectF
 import kotlin.math.max
 
 /**
- * 州府边界描边纹理（docs/zoom-lod-requirements.md §3.2 裁决）：
+ * 州府边界描边纹理（docs/requirements/zoom-lod-requirements.md §3.2 裁决）：
  * - 独立离屏 Canvas → GL 纹理 quad，**不烘焙**进可再分发水彩贴图
  *   （州府坐标为 CHGIS 派生，入贴图即触碰许可红线——运行时生成不落盘，许可安全）；
  * - z 序在水彩层之上（等价 Web 版 z=7.02），由「州府边界」开关独立控制；

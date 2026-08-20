@@ -57,7 +57,7 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(200, -400, 600);
 scene.add(dirLight);
 
-// —— LOD 档位（docs/zoom-lod-requirements.md §4.2，与 Android LodLevel.kt:nextLod 状态机同源）——
+// —— LOD 档位（docs/requirements/zoom-lod-requirements.md §4.2，与 Android LodLevel.kt:nextLod 状态机同源）——
 // s = 可见世界宽 / 世界包围盒宽；0=L0 全国 / 1=L1 区域 / 2=L2 省域 / 3=L3 州府级。
 // 滞回 ±0.02：以「prev↔next 分界线」为判据（放大越过新档下限-滞回、缩小越过原档下限+滞回），
 // 缩放临界抖动不反复换档。animate 循环每帧计算，变化时驱动 overlay.setLod。

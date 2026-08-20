@@ -175,7 +175,7 @@ function tracePath(ctx, rings, toPx) {
 const manifest = {
   version: 1,
   bakedAt: new Date().toISOString().slice(0, 10),
-  status: 'placeholder', // 全部为占位版：待美术重做（见 docs/texture-bake-plan.md）
+  status: 'placeholder', // 全部为占位版：待美术重做（见 docs/technical/texture-bake-plan.md）
   width: TEX_WIDTH,
   fitBoxLngLat: [geoXmin, geoYmin, geoXmax, geoYmax],
   byPeriod: {},

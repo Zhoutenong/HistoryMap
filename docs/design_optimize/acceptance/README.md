@@ -1,6 +1,6 @@
 # Android 视觉验收资料（P4）
 
-> 依据 `docs/android-visual-polish-ai-pipeline.md` 第二阶段 P4 建立。
+> 依据 `docs/technical/android-visual-polish-ai-pipeline.md` 第二阶段 P4 建立。
 > 设计目标：`docs/design_optimize/design-tokens.json`（唯一设计输入）+ `history_map_android_prototype.html` + `prompt_1/4/5.png`。
 
 ## R6 地图描画向效果图靠拢（2026-08-14，本轮）

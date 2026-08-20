@@ -31,7 +31,7 @@
 
 ### 1.2 设计宪法（视觉红线，重构必须原样继承）
 
-来源 `docs/android-visual-polish-ai-pipeline.md`：
+来源 `docs/technical/android-visual-polish-ai-pipeline.md`：
 
 - **宋代文人美学**：宣纸、水墨、留白、朱砂印章、淡金点缀；
 - 饱和度 ≤ 35%；禁霓虹色、纯黑纯白、玻璃拟态、多层阴影；
@@ -242,7 +242,7 @@ Android 现有设置项：
 
 **FR-11.1 渲染**：【已实现-Android】州府 Voronoi 近似面仅描边（隐约肌理：低 alpha + 干笔虚线，画在水彩层内）；治所标注 `kind=prefecture`（rank≤2 京府/次府 major 大字）。
 
-**FR-11.2 府州详情面板**：【已实现-Web，Android 缺失，重构决策（docs/data-improvement-plan 已列为「Web 验证交互后移植 Android」）】点击州府治所标注打开，内容：
+**FR-11.2 府州详情面板**：【已实现-Web，Android 缺失，重构决策（docs/architecture/data-improvement-plan.md 已列为「Web 验证交互后移植 Android」）】点击州府治所标注打开，内容：
 
 - 头部：路（route）· 类型（府/州/军/监）+ 等级（grade）徽章；标题「{名} · 府州详情」；
 - 治所行：治所县名 + 坐标；
@@ -470,7 +470,7 @@ periods.json 索引结构：`periods[]`（id/year/start/end/label/files + 可选
 - `docs/design_optimize/design-tokens.json`（唯一设计真相源）与 acceptance 基线。
 
 **退役**：
-- `client/`（three.js Web 前端及其测试）、`server/index.js` + `server/routes/`（Express 运行时；其中 overlay.js/meta.js 的合并逻辑已由 OverlayLoader.kt 复刻，periods 合并语义以 Kotlin 版为准）、Playwright e2e、WebView 壳资产（assets/web/）与 ApiBridge.kt、`docs/design/implementation-plan.md` 与 roadmap 中 Web 专属条目；
+- `client/`（three.js Web 前端及其测试）、`server/index.js` + `server/routes/`（Express 运行时；其中 overlay.js/meta.js 的合并逻辑已由 OverlayLoader.kt 复刻，periods 合并语义以 Kotlin 版为准）、Playwright e2e、WebView 壳资产（assets/web/）与 ApiBridge.kt、`docs/technical/design/implementation-plan.md` 与 roadmap 中 Web 专属条目；
 - 根 package.json 的 dev/dev:client/build/lint(client)/test(vitest) 脚本——数据管线脚本保留。
 
 **迁移决策表（Web 有 / Android 无）**：
