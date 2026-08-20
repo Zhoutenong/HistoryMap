@@ -39,3 +39,9 @@ server/data/geo/historical/_generated/
 # 州府级数据生成物（含 CHGIS 派生坐标，不可再分发——本地生成，见 docs/data-improvement-plan.md）
 server/data/geo/historical/prefectures.geojson
 server/.env
+
+# 效果图像素化分析的可重生成大产物（脚本在 scripts/，源图 prompt_1.png 本就 gitignore；
+# pixelize-svg.ps1 / render-mockup-svg.mjs 可随时重跑：prompt_1.png 在本地即可）
+docs/design_optimize/prompt_1_pixelized.svg
+docs/design_optimize/inline_pixelized.html
+docs/design_optimize/prompt_1_recreated.svg
