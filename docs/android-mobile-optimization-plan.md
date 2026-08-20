@@ -1,12 +1,17 @@
 # Android 手机端体验优化计划
 
-> 适用设备：当前已验证的华为 P20（EML_AL00，Android 10，自带 Chrome 83 WebView）
+> **⚠️ 历史文档（WebView 架构时代）**：本计划基于早期「Android WebView 壳 + three.js + JS bridge」实现，部分问题与方案仅适用于该架构。
+> Android 端已于 2026-08 重构为 Kotlin 原生实现（Compose + GLES2，弃用 WebView），当前架构与最终落地见
+> `AGENTS.md`「Android 原生版」章节、`docs/refactor-requirements.md` 与 `docs/android-native-rewrite-plan.md`。
+> 本文件仅作历史参考，其中的 Room/Android Bridge/WebView 描述已不反映现状。
+
+> 适用设备：当时基于华为 P20（EML_AL00，Android 10）WebView 验证
 >
-> 目标：在不改变 Room、Android Bridge、GeoJSON 数据契约的前提下，优化移动端布局、可读性、触摸交互和播放流程。
+> 目标：优化移动端布局、可读性、触摸交互和播放流程。
 >
-> 状态：`[ ]` 未开始　`[~]` 进行中　`[x]` 已完成　`[-]` 暂缓
+> 状态：`[ ]` 未开始　`[~]` 进行中　`[x]` 已完成　`[-]` 暂缓　（**历史文档，不再更新**）
 >
-> 最后更新：2026-08-10
+> 最后更新：2026-08-10（已冻结）
 
 ## 一、当前观察结论
 

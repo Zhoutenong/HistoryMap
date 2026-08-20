@@ -36,29 +36,28 @@ npm run dev
 
 ## Android 版（原生 APK）
 
-同一份 three.js 前端跑在 Android WebView 中，数据层由原生 Kotlin（Room + assets GeoJSON）经 `window.AndroidAPI` bridge 提供——与 Web 版共用 `client/src/api.js`（自动检测 bridge，Web 版零影响）。
+Android 端为 **Kotlin + Jetpack Compose + 自研 GLES2 渲染器**的原生实现（已弃用早期 WebView 壳），与 Web 版共用同一份数据契约与数据源：渲染（`MapRenderer.kt`，宣纸底/水彩疆域/河道带/山脉）、UI（`MapScreen.kt` 时间轴/泡泡/详情/设置）、数据层（Room + assets GeoJSON，`MapRepository.kt`）。详见 `AGENTS.md`「Android 原生版」章节。
+
+构建流程（不需要先构建 Web 前端；数据由脚本同步进 assets）：
 
 ```bash
-# 1. 构建前端（vite base './'，产物供 file:// 加载）
-npm run build
-
-# 2. 同步构建产物与后端数据到 Android assets（数据单一来源：只复制）
+# 1. 同步服务端数据（seed SQL + geo JSON + 烘焙贴图）到 android/app/src/main/assets/（只复制不加工）
 node scripts/prepare-android.mjs
 
-# 3. 构建 APK（Gradle wrapper 8.9 + AGP 8.7.3 + Kotlin 2.0.21 + Room 2.6.1 + KSP）
+# 2. 构建 APK（Gradle wrapper 8.9 + AGP 8.7.3 + Kotlin 2.0.21 + Compose BOM + KSP）
 cd android && ./gradlew assembleDebug
 
-# 4. 安装并启动（真机需开启 USB 调试）
+# 3. 安装并启动（真机需开启 USB 调试）
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.historymap.app/.MainActivity
 ```
 
 要点：
 
-- **数据层**：Room schema 对齐 `server/data/schema.sql`；首次建库时重放 `assets/seed/*.sql`（与后端同一份 SQL，`INSERT OR IGNORE` 幂等）。`ApiBridge` 后台线程预载朝代/事件/元信息到内存缓存，bridge 调用零阻塞。
-- **GeoJSON**：`assets/geo/` 打包 china.json + periods.json + regimes/jin + 4 个辅助 geojson；`OverlayLoader`（Kotlin/org.json）复刻 `server/routes/overlay.js` 的合并/注入逻辑，输出与 `/api/map/overlay` 完全一致的 JSON。
-- **前端兼容**：vite 构建 `base: './'` + `target: 'chrome83'`（旧 WebView 可用）；`replaceChildren()` 等 Chrome 86+ API 在 `client/src/dom.js` 提供兼容实现。
-- **存储**：WebView 开启 DOM Storage，设置经 localStorage 持久化（重启保持）。
+- **数据层**：Room（`HistoryDb.kt`）schema 对齐 `server/data/schema.sql`；首次建库时重放 `assets/seed/*.sql`（与后端同一份 SQL，`INSERT OR IGNORE` 幂等）；`OverlayParser` / `OverlayLoader`（Kotlin/org.json）复刻服务端 overlay 合并/注入逻辑，输出与 `/api/map/overlay` 完全一致的 JSON 契约。
+- **渲染**：GLSurfaceView + 自研 GLES2 渲染器（`MapRenderer.kt`）——宣纸底、水彩疆域纹理、河道带几何、山脉纹理、正交相机（单指拖动/双指缩放/双击复位）；投影 `Projection.kt` 翻译 d3-geo geoMercator + fitSize，与 Web 版 `project()` 输出一致。
+- **贴图**：水彩疆域层优先使用 `client/public/textures/overlay/` 烘焙贴图（经 `prepare-android.mjs` 同步进 assets），失败静默回退程序化渲染；`watercolorWorldBox` 与 Web 同逻辑保证对齐。
+- **离线**：完全离线运行，无网络依赖；时空库详情接口（`/api/places`）未启用时 503 静默降级，不影响主流程。
 - 地理数据源自 [aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps)（GPL-3.0），随 App 一并分发。
 
 ## 单独运行 / 构建 / 检查
@@ -135,17 +134,17 @@ HistoryMap/
 ├── eslint.config.mjs     # ESLint 扁平配置
 ├── start-dev.*           # Windows 双击启动/停止器
 ├── scripts/              # 构建/契约检查脚本（含 prepare-android.mjs 数据同步）
-├── android/              # Android 原生壳（Kotlin + Room + WebView）
+├── android/              # Android 原生版（Kotlin + Compose + GLES2 自研渲染器）
 │   └── app/src/main/
-│       ├── java/com/historymap/app/   # MainActivity / ApiBridge / HistoryDb / OverlayLoader
-│       └── assets/                    # 构建产物 + seed SQL + GeoJSON（prepare-android.mjs 生成）
+│       ├── java/com/historymap/app/   # MainActivity / MapScreen / MapRenderer / Projection / HistoryDb / OverlayLoader 等
+│       └── assets/                    # seed SQL + GeoJSON + 烘焙贴图（prepare-android.mjs 同步）
 ├── server/               # Express + better-sqlite3 后端
 │   ├── routes/           # map / events / meta / overlay / dynasties
 │   └── data/             # schema.sql + seed/*.sql + geo/（含 historical 疆域）
-└── client/               # three.js 前端（Web + Android WebView 双端共用）
+└── client/               # three.js Web 前端（桌面端；Android 原生版与 Web 共用同源数据契约）
     └── src/
-        ├── api.js        # 数据层（Web: fetch / Android: window.AndroidAPI bridge 自动切换）
-        ├── dom.js        # 旧 WebView 兼容 DOM 工具（clearChildren）
+        ├── api.js        # 数据层（fetch 访问后端 API；早期也兼容 Android bridge 自动切换）
+        ├── dom.js        # DOM 兼容工具（clearChildren，兼顾旧 WebView 时代）
         ├── map/          # 地图层（ChinaMap / TerritoryOverlay / Legend）
         ├── timeline/     # 时间轴 + calc.js（纯函数）+ __tests__
         ├── events/       # 事件泡泡 / 事件流 / collisions.js（纯函数）+ __tests__
@@ -181,13 +180,13 @@ Android 原生版的全部视觉参数以 **`docs/design_optimize/design-tokens.
 - Kotlin 单源：`android/.../MapVisualTokens.kt` 分层组织 `Colors / Alpha / Dimensions / Typography / MapParams / Bubble / Timeline`；
 - 校验：`npm run check:tokens`（`scripts/check-visual-tokens.mjs`）逐项核对 token 值，并软告警渲染代码中的视觉魔法数；
 - 尺寸换算：`DesignMetrics.kt` 把设计画布（1080×2244 @480dpi）换算为 dp/sp/px，禁止把设计 px 直接写成同名 dp；
-- `docs/design-tokens.json` 为**已废弃的旧像素采样草稿**（`_meta.status=superseded`），仅作历史参考，勿引用其数值。
+- `docs/_archive/design-tokens.json` 为**已废弃的旧像素采样草稿**（`_meta.status=superseded`），已归档仅作历史参考，勿引用其数值。
 
 ## 技术栈
 
 - 前端：three.js + d3-geo + Vite；测试 vitest
 - 后端：Express + better-sqlite3（原生同步驱动，Windows 预编译二进制免编译）；ESLint 静态检查
-- Android：Kotlin + Room（KSP）+ WebView；Gradle 8.9 / AGP 8.7.3
+- Android：Kotlin + Jetpack Compose + GLES2 自研渲染器 + Room（KSP）；Gradle 8.9 / AGP 8.7.3
 
 ## 宋代时空数据库（PostgreSQL + PostGIS，时间版本化）
 

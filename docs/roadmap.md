@@ -4,9 +4,18 @@
 >
 > 状态：`[ ]` 未开始　`[~]` 进行中　`[x]` 已完成　`[-]` 暂缓
 >
-> 最后更新：2026-08-10
+> 最后更新：2026-08-18
 
 ## 当前状态摘要
+
+> 新增（2026-08-11 ~ 2026-08-18，早期 Web 路线图未覆盖的里程碑）：
+> - [x] 州府级数据管线（元丰九域志 1080 基准：州府近似边界 + 治所 + 户口/土贡/沿革，`docs/data-improvement-plan.md`）
+> - [x] 宋代时空数据库（PostgreSQL + PostGIS 时间版本化，`docs/temporal-db-plan.md`）
+> - [x] Android 原生重构落地（Kotlin + Compose + GLES2 自研渲染器，弃用 WebView 壳；`docs/android-native-rewrite-plan.md`）
+> - [x] 水彩疆域贴图烘焙管线（8 张 penpot-v1 贴图，Web/Android 双端接入；`docs/texture-bake-plan.md`）
+> - [x] M1/M2 视觉调优（字体/水彩/色相/河道，P20 实测 55–59fps）
+>
+> 下述早期 Web 端条目为 Web 功能路线图；Android 原生版实现与验收见 `docs/refactor-requirements.md`。
 
 - [x] 宋朝首期地图、时间轴、事件泡泡、详情面板
 - [x] better-sqlite3 数据层迁移

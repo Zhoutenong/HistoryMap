@@ -1,6 +1,6 @@
 # Android 原生重构方案（Kotlin + Compose，弃用 WebView）
 
-> 状态：**已定案**（渲染层 GLES 自研 + Kotlin 投影 + Compose UI + 保留 Web 版），M1 实施中
+> 状态：**已落地**（2026-08 由 WebView 壳重构为 GLES 自研 + Kotlin 投影 + Compose UI，Web 桌面版保留）。M1–M6 里程碑全部完成，P20 实测 55–59fps；见 `AGENTS.md`「Android 原生版」章节与 `docs/texture-bake-plan.md` M1/M2 视觉调优记录。
 >
 > 目标：Android 端从「WebView + three.js + JS bridge」改为 Kotlin 原生实现。
 > 动机：P20 等低端机上 WebView 链路（JS 解释 + WebGL 桥接 + CSS2D 每帧 DOM 布局）性能差；
@@ -129,4 +129,4 @@ JS 源码 → 解析执行（JS 引擎） → WebGL 调用（桥接开销）
 - [x] **M5 时期切换 + 事件流**：跨年自动重载疆域（投影保持首次标定）；事件流抽屉（已出现列表/当前年摘要/搜索）
 - [x] **M5b 设置面板**：分类过滤（泡泡+刻度点联动）/ 播放速度 / 图层显隐
 - [x] **M6 产品化**：设置持久化（SharedPreferences）、返回键分层（sheet 优先）、FPS 统计（P20 实测 55-59fps）、沉浸式修复
-- [ ] **M7 收尾**：WebView 版下线（保留 Web 桌面版）、构建流水线切换、P20 完整回归截图、性能压测
+- [x] **M7 收尾**：WebView 壳下线（Android 已是原生实现，无 WebView 依赖；Web 桌面版保留）、构建流水线就位（prepare-android.mjs 同步数据 → gradlew assembleDebug）、P20 完整回归截图（`docs/design_optimize/acceptance/`）、性能压测（FPS 55–59）
