@@ -74,7 +74,7 @@ fun TimelineBar(
                 Text(
                     text = "${timeline.year} 年",
                     fontFamily = MapFonts.Family,
-                    fontWeight = FontWeight.Normal,
+                    fontWeight = FontWeight.Bold,
                     fontSize = designSp(MapTokens.Typography.TIMELINE_YEAR.size.toFloat()),
                     letterSpacing = designSp(MapTokens.Typography.TIMELINE_YEAR.letterSpacing.toFloat()),
                     color = MapTokens.VERMILION,
@@ -142,10 +142,10 @@ fun TimelineBar(
                 val year = timeline.year
                 val progress = (year - startYear).toFloat() / (endYear - startYear).coerceAtLeast(1)
                 val markerColor = CATEGORY_COLORS
-                val trackH = DesignMetrics.designToPx(MapTokens.Timeline.TRACK_PX.toFloat(), scale)
-                val thumbR = DesignMetrics.designToPx(MapTokens.Timeline.THUMB_PX.toFloat(), scale) / 2f
-                val thumbStroke = DesignMetrics.designToPx(MapTokens.Timeline.THUMB_STROKE_PX.toFloat(), scale)
-                val dotR = DesignMetrics.designToPx(MapTokens.Timeline.EVENT_DOT_PX.toFloat(), scale) / 2f
+                val trackH = DesignMetrics.designToTextPx(MapTokens.Timeline.TRACK_PX.toFloat(), density, scale)
+                val thumbR = DesignMetrics.designToTextPx(MapTokens.Timeline.THUMB_PX.toFloat(), density, scale) / 2f
+                val thumbStroke = DesignMetrics.designToTextPx(MapTokens.Timeline.THUMB_STROKE_PX.toFloat(), density, scale)
+                val dotR = DesignMetrics.designToTextPx(MapTokens.Timeline.EVENT_DOT_PX.toFloat(), density, scale) / 2f
                 Canvas(modifier = Modifier.fillMaxWidth().height(designDp(44f))) {
                     val trackY = size.height / 2f
                     // 轨道底（timelineTrack alpha 36/255）
@@ -178,16 +178,18 @@ fun TimelineBar(
                     for ((ev, x, col) in dotsByYear) {
                         val isCurrentYear = ev.year == year
                         val fill = if (isCurrentYear) MapTokens.VERMILION else col.copy(alpha = 0.85f)
+                        // 刻度点画在轨道中心线上（对齐 Web .tl-marker top:50% 居中，
+                        // 盖在 5px 轨道上；滑块在其后绘制，层级与 Web z-index 一致）
                         // 1dp 浅色外描边（米白），与轨道背景分离
                         drawCircle(
                             color = MapTokens.PAPER_CARD,
-                            radius = dotR + DesignMetrics.designToPx(1f, scale),
-                            center = Offset(x, trackY + dotR + 2f),
+                            radius = dotR + DesignMetrics.designToTextPx(1f, density, scale),
+                            center = Offset(x, trackY),
                         )
                         drawCircle(
                             color = fill,
                             radius = dotR,
-                            center = Offset(x, trackY + dotR + 2f),
+                            center = Offset(x, trackY),
                         )
                     }
                 }
@@ -206,9 +208,11 @@ fun TimelineBar(
                     "invention" to "文化",
                 ).forEach { (id, label) ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // 分类色点：CSS px 语义（8dp 实心圆；EVENT_DOT_PX 是刻度点专用，
+                        // 勿再用 designToDp 换算物理画布值——那会缩成 2.7dp）
                         Box(
                             Modifier
-                                .size(DesignMetrics.designToDp(MapTokens.Timeline.EVENT_DOT_PX.toFloat(), density, scale).dp)
+                                .size(8.dp)
                                 .background(CATEGORY_COLORS[id] ?: CATEGORY_COLORS["era"]!!, CircleShape),
                         )
                         Spacer(Modifier.height(designDp(4f)))
@@ -226,7 +230,11 @@ fun TimelineBar(
     }
 }
 
-/** 播放按钮：56px 视觉圆角印章（外层 44dp 点击区，可点击 Surface 自带最小触摸尺寸） */
+/**
+ * 播放按钮：对齐 Web #tl-play（38×38px、圆角 10、icon 13px 手机端值；
+ * 米白底 + 朱砂描边）。外层 44dp 点击区，可点击 Surface 自带最小触摸尺寸。
+ * 旧实现 Surface 用 56 设计 px（÷3 仅 18.7dp）却配 20sp 图标，框小字大溢出。
+ */
 @Composable
 private fun PlayButton(timeline: TimelineController) {
     val icon = when {
@@ -239,13 +247,18 @@ private fun PlayButton(timeline: TimelineController) {
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = RoundedCornerShape(designDp(6f)),
-            color = MapTokens.PAPER_CARD.copy(alpha = 0.55f),
+            shape = RoundedCornerShape(10.dp),
+            color = MapTokens.PAPER_CARD.copy(alpha = 0.9f),
             border = BorderStroke(1.dp, MapTokens.VERMILION),
-            modifier = Modifier.size(designDp(MapTokens.Dimensions.PLAY_BUTTON_WIDTH.toFloat())),
+            modifier = Modifier.size(38.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(icon, fontFamily = MapFonts.Family, fontSize = designSp(20f), color = MapTokens.VERMILION)
+                Text(
+                    icon,
+                    fontFamily = MapFonts.Family,
+                    fontSize = scaledSp(13f),
+                    color = MapTokens.VERMILION,
+                )
             }
         }
     }

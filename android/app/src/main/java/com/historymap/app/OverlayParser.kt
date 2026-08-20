@@ -103,9 +103,15 @@ object OverlayParser {
                     rings = rings,
                 )
             )
-            // 政权名标签：labelCoord 优先，缺省用顶点平均作质心兜底；同 entity 只取首个
+            // 政权名标签：labelCoord 优先，缺省用面积质心兜底；同 entity 只取首个
             if (seenRegimeLabels.add(entity)) {
-                val labelPos = labelCoord ?: centroidOf(rings)
+                var labelPos = labelCoord ?: centroidOf(rings)
+                // 对齐 Web buildRegimeLabel：质心路径对「宋」北移 8% 特征高度
+                //（世界坐标 y 向上；经纬度近似用纬度跨度，微调量级下墨卡托非线性可忽略）
+                if (labelCoord == null && entity == "宋") {
+                    val latSpan = rings.maxOf { r -> r.maxOf { it.lat } - r.minOf { it.lat } }
+                    labelPos = LngLat(labelPos.lng, labelPos.lat + 0.08 * latSpan)
+                }
                 labels.add(OverlayLabel(entity, labelPos, "regime", major, rank = 0))
             }
         }
@@ -260,18 +266,80 @@ object OverlayParser {
     }
 
     /**
-     * 政权名标签兜底位置：用最大环的顶点平均（近似视觉重心）。
-     * 简单全顶点平均会被小岛/远方飞地拉偏，最大环代表主体疆域。
+     * 政权标签锚点：面积最大环的 shoelace 面积加权质心（对齐 Web 版 d3-geo
+     * geoCentroid 的视觉中心）。旧实现是顶点平均——会被顶点密集侧拉偏：
+     * 实测「宋」偏 511km 至闽赣交界（东部海岸线顶点密），「大越」顶点平均
+     * 落在域外，域内约束只能把标签按到贴边候选位（显示在色块交界处）。
+     *
+     * 域内兜底：凹多边形（如 1200 蒲甘）面积质心也可能落域外——此时从质心
+     * 起螺旋网格搜索最近的域内点，保证锚点在本政权域内。
      */
     private fun centroidOf(rings: List<List<LngLat>>): LngLat {
-        var best = rings.maxByOrNull { it.size } ?: return LngLat(0.0, 0.0)
-        var sumLng = 0.0
-        var sumLat = 0.0
-        for (p in best) {
-            sumLng += p.lng
-            sumLat += p.lat
+        var best = rings.firstOrNull() ?: return LngLat(0.0, 0.0)
+        var bestArea = -1.0
+        for (ring in rings) {
+            var a = 0.0
+            for (i in ring.indices) {
+                val p1 = ring[i]
+                val p2 = ring[(i + 1) % ring.size]
+                a += p1.lng * p2.lat - p2.lng * p1.lat
+            }
+            a = kotlin.math.abs(a) / 2.0
+            if (a > bestArea) {
+                bestArea = a
+                best = ring
+            }
         }
-        return LngLat(sumLng / best.size, sumLat / best.size)
+        var cx = 0.0
+        var cy = 0.0
+        var a = 0.0
+        for (i in best.indices) {
+            val p1 = best[i]
+            val p2 = best[(i + 1) % best.size]
+            val cross = p1.lng * p2.lat - p2.lng * p1.lat
+            a += cross
+            cx += (p1.lng + p2.lng) * cross
+            cy += (p1.lat + p2.lat) * cross
+        }
+        if (kotlin.math.abs(a) < 1e-12) return best.first()
+        val centroid = LngLat(cx / (3.0 * a), cy / (3.0 * a))
+        if (pointInAnyRing(centroid, rings)) return centroid
+        // 凹形域：螺旋搜索最近域内点（步长 0.4°，最远 6°；近似圆周采样）
+        val step = 0.4
+        var radius = step
+        while (radius <= 6.0) {
+            val samples = 16
+            for (i in 0 until samples) {
+                val ang = 2.0 * Math.PI * i / samples
+                val candidate = LngLat(
+                    centroid.lng + radius * kotlin.math.cos(ang),
+                    centroid.lat + radius * kotlin.math.sin(ang),
+                )
+                if (pointInAnyRing(candidate, rings)) return candidate
+            }
+            radius += step
+        }
+        return centroid
+    }
+
+    /** 射线法：点是否在任一环内（政权域判定；忽略极少见的洞） */
+    private fun pointInAnyRing(pt: LngLat, rings: List<List<LngLat>>): Boolean {
+        for (ring in rings) {
+            var inside = false
+            var j = ring.size - 1
+            for (i in ring.indices) {
+                val pi = ring[i]
+                val pj = ring[j]
+                if ((pi.lat > pt.lat) != (pj.lat > pt.lat) &&
+                    pt.lng < (pj.lng - pi.lng) * (pt.lat - pi.lat) / (pj.lat - pi.lat) + pi.lng
+                ) {
+                    inside = !inside
+                }
+                j = i
+            }
+            if (inside) return true
+        }
+        return false
     }
 
     private fun parseColor(hex: String): FloatArray {

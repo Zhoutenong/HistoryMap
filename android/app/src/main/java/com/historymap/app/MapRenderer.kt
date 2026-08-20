@@ -522,7 +522,10 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         val out = HashMap<String, List<android.graphics.PointF>>()
         for (r in model.regimes) {
             if (out.containsKey(r.entity)) continue
-            val outer = r.rings.firstOrNull() ?: continue
+            // 取面积最大的环作域约束：多块政权（1200 高丽 18 块 / 1279 元 20 块 /
+            // 蒙古 / 宋 3 块）的 rings[0] 可能只是边角小岛，质心在主块——旧实现
+            // 用 firstOrNull 会把主块质心误判域外，标签被按到贴边候选位或消失
+            val outer = largestRing(r.rings) ?: continue
             if (outer.size < 3) continue
             val pts = outer.map { pt ->
                 val xy = p.project(pt.lng, pt.lat)
@@ -532,6 +535,26 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
             out[r.entity] = pts
         }
         return out
+    }
+
+    /** 面积最大的环（shoelace；政权主体） */
+    private fun largestRing(rings: List<List<LngLat>>): List<LngLat>? {
+        var best: List<LngLat>? = null
+        var bestArea = -1.0
+        for (ring in rings) {
+            var a = 0.0
+            for (i in ring.indices) {
+                val p1 = ring[i]
+                val p2 = ring[(i + 1) % ring.size]
+                a += p1.lng * p2.lat - p2.lng * p1.lat
+            }
+            a = kotlin.math.abs(a)
+            if (a > bestArea) {
+                bestArea = a
+                best = ring
+            }
+        }
+        return best
     }
 
     // ================= 水彩/山水缓存 =================
@@ -792,11 +815,17 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
         cy -= dyPx * worldPerPx
     }
 
-    /** 缩放：围绕屏幕焦点 (fx, fy)（viewport 内 CSS 像素） */
+    /**
+     * 缩放：围绕屏幕焦点 (fx, fy)（viewport 内 CSS 像素）。
+     * factor 为 ScaleGestureDetector 的捏合系数（>1 = 两指张开）。
+     * 注意本相机的 [zoom] 是「可见世界范围倍率」（越大视野越广、画面越小，
+     * 见 resetCamera 注释），与视觉放大率互为倒数——两指张开（放大画面）要
+     * 缩小可见范围，故用除法；曾误用乘法导致捏合方向反转（张开缩小、合拢放大）。
+     */
     fun zoom(factor: Float, fx: Float, fy: Float) {
         if (viewportH <= 0 || factor <= 0f) return
         val old = zoom
-        val new = (old * factor).coerceIn(0.25f, 24f)
+        val new = (old / factor).coerceIn(0.25f, 24f)
         if (new == old) return
         // 焦点世界坐标保持不变：world = center + (focus - screenCenter) * worldPerPx
         val worldPerPx = (2f * 400f * old) / viewportH
@@ -812,9 +841,9 @@ class MapRenderer(private val context: Context) : GLSurfaceView.Renderer {
      * 回到默认取景（对齐效果图 prompt_1：地图纵向充满顶栏与时间轴之间的地图区，
      * 左右两侧适度裁切、水平锚定中原）。
      *
-     * zoom 是放大率（越大看到的世界范围越大）：视口可见世界范围 =
-     * 宽 800×zoom×aspect、高 800×zoom。竖屏先 contain-fit 到**地图区**
-     * （设计 token mapTop/mapBottom，而非整屏），再乘 [MapTokens.MapParams.CAMERA_FIT_BOOST]
+     * zoom 是「可见世界范围倍率」（越大视野越广、画面越小，与视觉放大率互为倒数）：
+     * 视口可见世界范围 = 宽 800×zoom×aspect、高 800×zoom。竖屏先 contain-fit 到**地图区**
+     * （设计 token mapTop/mapBottom，而非整屏），再除以 [MapTokens.MapParams.CAMERA_FIT_BOOST]
      * 放大——真实疆域投影后约 2:1 宽扁，contain 时地图呈横条带、上下留白大；
      * 放大后纵向填满地图区、东西边缘政权（吐蕃西缘/金东缘）允许部分出屏。
      * 横屏地图区即整屏，保持 contain 不裁切。

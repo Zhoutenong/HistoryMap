@@ -244,6 +244,8 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 - **WebView 兼容（Android 真机）**：部分真机自带 WebView 很旧（华为 P20 = Chrome 83）。前端因此做了两处兼容：① vite `build.target: 'chrome83'`（产物语法层面）；② `Element.replaceChildren()`（Chrome 86+）在 `client/src/dom.js` 提供 `clearChildren()` 兼容实现，禁止再引入 Chrome 86+ 的 DOM API 到业务代码。
 - **Kotlin 注释陷阱**：KDoc 里写 `assets/seed/*.sql`、`/api/*` 会触发 Kotlin 嵌套块注释解析错误（Unclosed comment），文案改为「seed 目录的 .sql 文件」。
 - **Android 本地构建**：机器需有 `android/local.properties`（sdk.dir 用正斜杠 `D:/Android/SDK`，反斜杠转义会致 `SdkLocator` 抛 IOException）；Gradle 8.9 + AGP 8.7.3 + Kotlin 2.0.21 + KSP 2.0.21-1.0.28 组合与本地缓存匹配，可离线构建。
+- **AndroidView 手势收口（Compose interop 大坑）**：GLSurfaceView（AndroidView）之上只要叠任何全屏 Compose `pointerInput` modifier（哪怕手势不 consume 事件），Compose 就会接管整个手势流，GLSurfaceView 的 `setOnTouchListener` 收不到 down——地图拖动/缩放/双击**全部静默失效**（曾被误判为「时期切换导致视野变化」）。正确做法：地图区所有手势（泡泡 tap 命中/拖动/双指缩放/双击复位）**统一收口在 GLSurfaceView 的 touch listener**（GestureDetector + ScaleGestureDetector，pinch 期间 `isInProgress` 守卫跳过 scroll），泡泡命中用 `hitTestBubble` 纯函数在 `onSingleTapConfirmed` 里做，命中参数经 `bubbleHitArgs` 状态快照桥接组合期数据（见 MapScreen.kt）。地图区之上只允许无输入的层（Canvas/Text）。
+- **Android 字体换算双语义**：`MapTokens.Typography` 与 Web 版 CSS px **同值**（viewport=width=device-width 下 1 CSS px ≈ 1sp，逻辑单位），换算用 `DesignMetrics.designToSp`（×宽度比例，**不除** BASE_DENSITY）/ `designToTextPx`（×density）；而 `MapTokens.Dimensions` 是 1080 物理画布 px（布局尺寸），换算用 `designToDp`（÷3）。曾因 Typography 误除 3 导致全部 UI/地图标签字号缩小 ~60%（P20 上顶栏仅 7.5sp），用 FONT_SCALE=1.25 打补丁治标不治本，2026-08 修正换算并归一 FONT_SCALE=1.0。
 
 ## Android 原生版（已落地，见 `android/`；2026-08 由 WebView 壳重构而来）
 

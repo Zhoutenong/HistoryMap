@@ -149,24 +149,25 @@ object MapTokens {
         const val EVENT_DOT_DIAMETER = 10
     }
 
-    // ===================== 字体（design-tokens.json → typographyPx，设计画布 px）=====================
+    // ===================== 字体（design-tokens.json → typographyPx）=====================
     object Typography {
         data class TypeSpec(val size: Int, val weight: Int, val letterSpacing: Int, val lineHeight: Int)
 
-        // M1-字体：字号已对齐 design-tokens.json 标称值，消除此前双重放大（DesignMetrics
-        // 的 FONT_SCALE=1.25 已含全局可读性放大，Typography 无需再在设计稿基础上加 1~2px）。
-        // FONT_SCALE=1.25 是唯一全局可读性放大系数。
+        // 注意：typographyPx 与 Web 版 CSS px 同值（逻辑单位，viewport=width=device-width
+        // 下 1 CSS px ≈ 1sp），Android 端经 DesignMetrics.designToSp 直接 ×宽度比例换算，
+        // 不除 BASE_DENSITY（那是 1080 物理画布布局尺寸的换算，勿混用）。
+        // TIMELINE_YEAR/RANGE 取 Web 手机端媒体查询值（22px/11px，styles.css @640px）。
         val TOP_TITLE = TypeSpec(18, 400, 4, 26)
         val DYNASTY = TypeSpec(15, 700, 2, 22)
         val MENU = TypeSpec(14, 400, 2, 20)
         val LEGEND_TITLE = TypeSpec(14, 700, 2, 20)
         val LEGEND_ITEM = TypeSpec(13, 400, 1, 22)
         val MAP_LABEL = TypeSpec(13, 400, 1, 20)
-        val BUBBLE_TITLE = TypeSpec(14, 700, 1, 20)
+        val BUBBLE_TITLE = TypeSpec(13, 400, 1, 18)
         val BUBBLE_BODY = TypeSpec(11, 400, 0, 18)
         val WATERMARK = TypeSpec(120, 400, 8, 130)
-        val TIMELINE_YEAR = TypeSpec(42, 400, 3, 52)
-        val TIMELINE_RANGE = TypeSpec(13, 400, 1, 18)
+        val TIMELINE_YEAR = TypeSpec(22, 700, 3, 26)
+        val TIMELINE_RANGE = TypeSpec(11, 400, 1, 16)
         val TIMELINE_CATEGORY = TypeSpec(11, 400, 1, 16)
     }
 
@@ -363,53 +364,49 @@ object MapTokens {
 
     // ===================== 事件泡泡（Bubble）=====================
     object Bubble {
-        /** 泡泡最大宽度（设计 px） */
-        const val MAX_WIDTH = 260
         /**
-         * 普通泡泡高度（设计 px，对齐 design-tokens.json 标称 112；
-         * MAX_WIDTH=260 × HEIGHT=112 为设计目标尺寸）。
+         * 泡泡尺寸（CSS px 语义，对齐 Web 版 .bubble-inner 单行胶囊形态：
+         * 印章竖条 + 事件简称一行，13px 字、padding 2px 8px 2px 3px、
+         * 边框 1px、圆角左 2 右 10、总高 ≈24px——不是设计稿的大卡片）。
+         * 旧值（260×112）是 1080 设计画布 3x 值被误当 CSS px，泡泡占满半屏。
          */
-        const val HEIGHT = 112
-        /** 选中泡泡高度（设计 px，标题+年份+两行摘要） */
-        const val HEIGHT_SELECTED = 116
-        /** 聚合泡泡高度（设计 px，紧凑「简称 +N」） */
-        const val HEIGHT_COMPACT = 44
-        /** 普通泡泡最小宽度（设计 px） */
-        const val MIN_WIDTH = 120
-        /** 文字起点：左侧分类条(11) + 间距 → 30px */
-        const val TEXT_LEFT = 30
-        /** 右侧内边距（设计 px） */
-        const val PAD_X = 14
-        /** 顶部内边距（设计 px） */
-        const val PAD_TOP = 14
-        /** 底部内边距（设计 px） */
-        const val PAD_BOTTOM = 12
-        /** 标题行高（设计 px，15px/700） */
-        const val TITLE_LINE = 22
-        /** 年份行高（设计 px，12px） */
-        const val YEAR_LINE = 16
-        /** 摘要行高（设计 px，12px） */
-        const val BODY_LINE = 20
-        /** 行间间隙（设计 px） */
-        const val LINE_GAP = 2
-        /** 选中泡泡摘要最大行数（移动端方案：两行摘要） */
-        const val BODY_MAX_LINES = 2
+        /** 泡泡最大宽度 */
+        const val MAX_WIDTH = 200f
+        /** 泡泡最小宽度 */
+        const val MIN_WIDTH = 60f
+        /** 泡泡高度（单行文字 + 上下 padding） */
+        const val HEIGHT = 24f
+        /** 选中泡泡高度（同普通——选中只变色不展开，对齐 Web is-focus） */
+        const val HEIGHT_SELECTED = 24f
+        /** 聚合泡泡高度（「简称 +N」同样单行） */
+        const val HEIGHT_COMPACT = 24f
+        /** 文字起点：左侧留白 3 + 印章条 5 + 间距 5 + margin 2 ≈ 15px */
+        const val TEXT_LEFT = 15f
+        /** 右侧内边距（Web padding-right 8px） */
+        const val PAD_X = 8f
+        /** 印章竖条宽（Web .bubble-seal 5px） */
+        const val SEAL_WIDTH = 5f
+        /** 圆角（Web border-radius: 2px 10px 10px 2px——左小右大书签感） */
+        const val RADIUS_LEFT = 2f
+        const val RADIUS_RIGHT = 10f
         /** 聚合折叠阈值（屏幕距离，dp） */
         const val CLUSTER_DIST_DP = 80
-        /** 指向线/描边等细线基础宽度（设计 px） */
+        /** 指向线/描边等细线基础宽度 */
         const val STROKE_PX = 1.2f
     }
 
     // ===================== 时间轴（Timeline）=====================
     object Timeline {
-        /** 轨道视觉高度（设计 px） */
-        const val TRACK_PX = 6
-        /** 滑块直径（设计 px） */
-        const val THUMB_PX = 32
-        /** 滑块朱砂描边（设计 px） */
-        const val THUMB_STROKE_PX = 3
-        /** 事件分类点直径（设计 px） */
-        const val EVENT_DOT_PX = 10
+        // 以下均为 CSS px 语义（对齐 Web 版 styles.css），经 designToTextPx ×density 换屏幕 px：
+        // 轨道 5px、滑块 14px/描边 2.5px、刻度点 8px（Web #tl-track/#tl-thumb/.tl-marker）
+        /** 轨道视觉高度 */
+        const val TRACK_PX = 5f
+        /** 滑块直径 */
+        const val THUMB_PX = 14f
+        /** 滑块朱砂描边 */
+        const val THUMB_STROKE_PX = 2.5f
+        /** 事件刻度点直径（画在轨道中心线上，对齐 Web top:50% 居中） */
+        const val EVENT_DOT_PX = 8f
     }
 
     // ===================== 兼容旧引用（避免无关模块回归）=====================

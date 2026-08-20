@@ -18,6 +18,11 @@ import androidx.compose.ui.unit.sp
  * - 文字用 sp（[designSp]）；
  * - 地图纹理用独立像素参数（MapRenderer 内直接用设计 px × dpr，不经过本工具）。
  *
+ * ⚠ 两类「设计 px」语义不同，勿混用换算：
+ * - [DesignMetrics.designToDp]（Dimensions/布局类 token）：1080 物理画布 px → ÷3。
+ * - 字体类 token（Typography/Canvas 文本）：与 Web 版 CSS px 同值（viewport=width=device-width
+ *   下 1 CSS px ≈ 1dp），是逻辑单位，**不除** BASE_DENSITY。
+ *
  * 纯函数部分不依赖 Android 框架，可直接做 JVM 单测。
  */
 object DesignMetrics {
@@ -29,10 +34,11 @@ object DesignMetrics {
     const val BASE_DENSITY = 3f
     /**
      * 全局字体放大系数：所有文字（designSp / scaledSp / Canvas 文本）统一放大。
-     * 1.0 = 设计画布 1:1（P20 上设计 px 即物理 px）；用户反馈安卓端字偏小，
-     * 1.0 → 1.25（整体放大约 25%）。如需微调只改这一处。
+     * 1.0 = 与 Web 版（viewport=width=device-width，1 CSS px ≈ 1sp）一致。
+     * 历史：曾用 1.25 补偿 designToSp 误除 BASE_DENSITY 导致的字小；换算修正后归 1。
+     * 如需整体微调只改这一处。
      */
-    const val FONT_SCALE = 1.25f
+    const val FONT_SCALE = 1.0f
     /** 最小触摸区（dp） */
     const val TOUCH_MIN_DP = 44f
 
@@ -52,11 +58,20 @@ object DesignMetrics {
         designPx / BASE_DENSITY * scale
 
     /**
-     * 设计 px → sp（字体；按屏幕宽度比例缩放，再乘 [FONT_SCALE] 全局放大）。
+     * 字体设计 px → sp（字体 token 与 Web CSS px 同值，逻辑单位：×宽度比例，不÷基准密度）。
+     * P20（360dp 宽，scale=1）上 TOP_TITLE 18 → 18sp ≈ Web 手机端 19px。
+     *
      * @param scale 宽度比例（[widthScale]）
      */
     fun designToSp(designPx: Float, scale: Float): Float =
-        designPx / BASE_DENSITY * scale * FONT_SCALE
+        designPx * scale * FONT_SCALE
+
+    /**
+     * 字体设计 px → 屏幕 px（Compose/Android Canvas 原生绘制；逻辑单位 × density）。
+     * 用于 Canvas 文本（地图标签/泡泡）与 CSS px 语义的控件尺寸（轨道/滑块）。
+     */
+    fun designToTextPx(designPx: Float, density: Float, scale: Float): Float =
+        designPx * density * scale * FONT_SCALE
 
     /**
      * 设计 px → 屏幕 px（Canvas 原生绘制；按屏幕宽度比例缩放）。

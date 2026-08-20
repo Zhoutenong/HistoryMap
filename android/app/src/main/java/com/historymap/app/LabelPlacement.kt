@@ -44,6 +44,7 @@ fun layoutMapLabels(
     viewW: Float,
     viewH: Float,
     zones: List<ScreenZone>,
+    density: Float = 1f,
     maxAuxLabels: Int = 32,
     maxCityLabels: Int = 8,
     maxPlaceLabels: Int = 5,
@@ -71,12 +72,12 @@ fun layoutMapLabels(
         val fm = paint.fontMetrics
         val h = fm.descent - fm.ascent
         val pad = when (l.kind) {
-            "regime" -> 10f
-            "cities" -> 7f
-            else -> 5f
+            "regime" -> 10f * density
+            "cities" -> 7f * density
+            else -> 5f * density
         }
         val bw = w + pad * 2
-        val bh = h + if (l.kind == "regime") 8f else 6f
+        val bh = h + (if (l.kind == "regime") 8f else 6f) * density
 
         // 各类标签限流（移动端紧凑：政权不限；城市/地点上限收紧，避免中下部文字堆叠）
         when (l.kind) {
@@ -98,13 +99,13 @@ fun layoutMapLabels(
         if (l.kind == "rivers" && l.rank > 1) continue
         if (l.kind == "mountains" && l.rank > 2) continue
 
-        // 候选位：锚点 + 上下左右
+        // 候选位：锚点 + 上下左右（偏移随 density 缩放，与大字号成比例）
         val cx = l.wx
         val cy = l.wy
         val anchors = if (l.kind == "regime") {
-            listOf(Offset(cx, cy), Offset(cx, cy - 26f), Offset(cx, cy + 26f), Offset(cx - bw / 2f - 30f, cy), Offset(cx + bw / 2f + 30f, cy))
+            listOf(Offset(cx, cy), Offset(cx, cy - 26f * density), Offset(cx, cy + 26f * density), Offset(cx - bw / 2f - 30f * density, cy), Offset(cx + bw / 2f + 30f * density, cy))
         } else {
-            listOf(Offset(cx, cy - 14f), Offset(cx, cy + 14f), Offset(cx - 22f, cy), Offset(cx + 22f, cy), Offset(cx, cy))
+            listOf(Offset(cx, cy - 14f * density), Offset(cx, cy + 14f * density), Offset(cx - 22f * density, cy), Offset(cx + 22f * density, cy), Offset(cx, cy))
         }
         val region: List<android.graphics.PointF>? = screenRegimes[l.text]
 

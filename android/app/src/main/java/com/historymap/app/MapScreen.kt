@@ -46,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +97,20 @@ private data class DynastyLoadResult(
     val periods: List<PeriodInfo>,
     val initialPeriod: String,
     val json: String,
+)
+
+/**
+ * 泡泡点击命中参数快照（组合期由 MapScreen 持续写入，GL touch listener 读取）。
+ * 地图手势统一收口在 GLSurfaceView 后，泡泡 tap 检测也走 Android 手势链路。
+ */
+private data class BubbleHitArgs(
+    val events: List<EventEntity>,
+    val labels: List<PlacedMapLabel>,
+    val selectedId: Long?,
+    val safeTop: Float,
+    val safeBottom: Float,
+    val density: Float,
+    val onTap: (EventEntity) -> Unit,
 )
 
 /**
@@ -354,6 +369,10 @@ fun MapScreen() {
         prevYear = y
     }
 
+    // 泡泡点击命中参数（组合期持续更新的快照；GL touch listener 单例闭包读取，
+    // 事件收口方案见 scrollDetector.onSingleTapConfirmed 注释）
+    var bubbleHitArgs by remember { mutableStateOf<BubbleHitArgs?>(null) }
+
     // —— GLSurfaceView（手势：平移/缩放/双击复位）——
     val glView = remember {
         GLSurfaceView(context).apply {
@@ -364,9 +383,26 @@ fun MapScreen() {
         }
     }
 
+    // 地图手势统一收口在 GLSurfaceView 的 touch listener（泡泡点击/拖动/缩放/双击复位）。
+    // 原因：AndroidView 之上只要存在任何 Compose pointerInput modifier（哪怕不消费事件），
+    // Compose 就会接管整个手势流，GLSurfaceView 收不到 down——实测地图拖动/缩放/双击
+    // 全部失效。泡泡命中（hitTestBubble 纯函数）因此并入本 listener 的 tap 检测。
     val scrollDetector = remember {
         android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: android.view.MotionEvent): Boolean = true
+            // 确认单击（排除双击第二击）后做泡泡命中测试；未命中则不消费（无地图侧作用）
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                val args = bubbleHitArgs ?: return false
+                val ev = hitTestBubble(
+                    args.events, args.labels, renderer, args.density, args.selectedId,
+                    e.x, e.y, args.safeTop, args.safeBottom,
+                )
+                if (ev != null) {
+                    args.onTap(ev)
+                    return true
+                }
+                return false
+            }
             override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, dx: Float, dy: Float): Boolean {
                 renderer.pan(dx, dy)
                 return true
@@ -385,6 +421,17 @@ fun MapScreen() {
             }
         })
     }
+    // 缩放进行中不让 scroll 检测器同时响应（双指移动也会触发 onScroll，
+    // 两个手势叠加会让地图在 pinch 时漂移——官方文档推荐的标准守卫）
+    val touchListener = remember {
+        android.view.View.OnTouchListener { _, event ->
+            scaleDetector.onTouchEvent(event)
+            if (!scaleDetector.isInProgress) {
+                scrollDetector.onTouchEvent(event)
+            }
+            true
+        }
+    }
 
     // 派生标签布局：相机/内容变化时重算（zoom/cx/cy 是 Compose 状态，变化即重算）
     val densityPx = LocalDensity.current.density
@@ -398,6 +445,7 @@ fun MapScreen() {
     var timelineTopPx by remember { mutableStateOf(0f) }
     val bubbleSafeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
     val bubbleSafeBottom = if (timelineTopPx > 0f) (viewH - timelineTopPx).coerceAtLeast(0f) else 160f * densityPx
+
     val placedLabels = remember(
         renderer.labels, layoutRevision, renderer.zoom, renderer.cx, renderer.cy, designScale,
         topBarBottomPx, timelineTopPx, viewH,
@@ -416,9 +464,10 @@ fun MapScreen() {
             layoutMapLabels(
                 labels = screenLabels,
                 screenRegimes = renderer.screenRegimePolygons(),
-                textPaints = labelTextPaints(designScale),
+                textPaints = labelTextPaints(designScale, densityPx),
                 viewW = viewW,
                 viewH = viewH,
+                density = densityPx,
                 zones = listOf(
                     // 顶栏（实测底边；图例小笺落在顶栏下方，单独 zone）
                     ScreenZone(Rect(0f, 0f, 10000f, safeTop)),
@@ -426,8 +475,8 @@ fun MapScreen() {
                     ScreenZone(Rect(0f, safeTop, 130f * densityPx, safeTop + 140f * densityPx)),
                     // 时间轴（实测顶边）
                     ScreenZone(Rect(0f, viewH - safeBottom, 10000f, viewH)),
-                    // 年份水印区域（地图上方 57.9% 起，避让大字号水印）
-                    ScreenZone(Rect(0.579f * viewW, 35f * densityPx, viewW, 80f * densityPx)),
+                    // 年份水印区域（右缘 4vw、垂直 42% 居中线、字号≈28% 屏宽，避让大字号水印）
+                    ScreenZone(Rect(0.55f * viewW, 0.42f * viewH - 0.30f * viewW, viewW, 0.42f * viewH + 0.20f * viewW)),
                 ),
                 // 移动端紧凑：辅助/城市/地点标签收紧（政权不限），避免中下部文字堆叠。
                 // 横屏纵向地图区更窄，进一步收紧标签上限，防止地名堆叠压住事件泡泡。
@@ -446,31 +495,31 @@ fun MapScreen() {
         // 地图层
         AndroidView(
             factory = {
-                glView.apply {
-                    setOnTouchListener { _, event ->
-                        scaleDetector.onTouchEvent(event)
-                        scrollDetector.onTouchEvent(event)
-                        true
-                    }
-                }
+                glView.apply { setOnTouchListener(touchListener) }
             },
             modifier = Modifier.fillMaxSize(),
         )
 
-        // 大年份水印（地图背景层：位于标签/泡泡之下，不遮挡叙事）
-        // 位置对齐设计图：left 625px（≈57.9% 宽）、top 105px；120px/字重400/字距8/墨色 10% alpha
-        val watermarkXpx = (DesignMetrics.CANVAS_WIDTH * 0.579f * rememberDesignScale()).roundToInt()
-        val watermarkTopPx = (105f * densityPx / DesignMetrics.BASE_DENSITY).roundToInt()
+        // 大年份水印（地图背景层：位于标签/泡泡之下，不遮挡叙事）。
+        // 对齐 Web 版 #year-watermark：右缘 4vw、垂直 42% 居中线、字号≈28% 屏宽
+        // （Web clamp(160px,28vw,380px) 的窄屏下限会溢出，取 28vw 上限语义）、淡墨 10%。
+        // 旧实现 top=105px 固定值落在顶栏（~75dp+）之下被纸面顶栏盖住。
+        val wmFontPx = 0.28f * viewW
         Text(
             text = "${timeline?.year ?: dynastyStart} 年",
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset { IntOffset(watermarkXpx, watermarkTopPx) },
+                .align(Alignment.TopEnd)
+                .offset {
+                    IntOffset(
+                        -(0.04f * viewW).roundToInt(),
+                        (0.42f * viewH - wmFontPx * 0.5f).roundToInt(),
+                    )
+                },
             fontFamily = MapFonts.Family,
             fontWeight = FontWeight.Normal,
-            fontSize = designSp(MapTokens.Typography.WATERMARK.size.toFloat()),
+            fontSize = with(LocalDensity.current) { wmFontPx.toSp() },
             color = MapTokens.INK.copy(alpha = MapTokens.Alpha.YEAR_WATERMARK / 255f),
-            letterSpacing = designSp(MapTokens.Typography.WATERMARK.letterSpacing.toFloat()),
+            letterSpacing = with(LocalDensity.current) { 8.dp.toSp() },
         )
 
         // 标注层（政权/城市/地点/山脉/河流名，布局结果含避让与隐藏）
@@ -482,18 +531,24 @@ fun MapScreen() {
         timeline?.let { tl ->
             val visibleEvents = tl.visibleEvents().filter { activeCategories.contains(it.category) }
             // 泡泡纵向安全区：实测顶栏底 / 时间轴顶（见上方 topBarBottomPx/timelineTopPx）
-            Box(modifier = Modifier.fillMaxSize().pointerInput(visibleEvents, placedLabels) {
-                detectTapGestures { pos ->
-                    val ev = hitTestBubble(
-                        visibleEvents, placedLabels, renderer, densityPx, selectedEvent?.id, pos.x, pos.y,
-                        bubbleSafeTop, bubbleSafeBottom,
-                    )
-                    if (ev != null) {
+            // 泡泡点击命中数据（最新值快照；GL touch listener 单例闭包经此读取，
+            // 避免 stale capture——见 scrollDetector.onSingleTapConfirmed。
+            // SideEffect：组合完成后再写状态，不在组合期间产生副作用写）
+            SideEffect {
+                bubbleHitArgs = BubbleHitArgs(
+                    events = visibleEvents,
+                    labels = placedLabels,
+                    selectedId = selectedEvent?.id,
+                    safeTop = bubbleSafeTop,
+                    safeBottom = bubbleSafeBottom,
+                    density = densityPx,
+                    onTap = { ev ->
                         tl.pause()
                         selectedEvent = ev
-                    }
-                }
-            }) {
+                    },
+                )
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
                 EventBubblesLayer(
                     events = visibleEvents,
                     placedLabels = placedLabels,
@@ -1128,10 +1183,10 @@ private fun shareEvent(context: Context, ev: EventEntity) {
  * P1-标签：评审要求地图地名可读——政权 16px/94%、核心城市 14px/83%、
  * 普通城市与河流/山脉/地点 13px/68%（旧值 13/12/11px + 55% 透明度几乎不可读）。
  */
-private fun labelTextPaints(scale: Float): Map<String, Paint> {
+private fun labelTextPaints(scale: Float, density: Float): Map<String, Paint> {
     fun make(designPx: Float, bold: Boolean, color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        // ×FONT_SCALE：与全局字号放大一致（布局测量与绘制共用同一 paints，尺寸自动同步）
-        textSize = DesignMetrics.designToPx(designPx, scale) * DesignMetrics.FONT_SCALE
+        // 字体 token 为 CSS px 逻辑单位（同 Web）：×density 换成屏幕物理 px
+        textSize = DesignMetrics.designToTextPx(designPx, density, scale)
         typeface = MapFonts.of(bold)
         this.color = color
     }
@@ -1162,14 +1217,14 @@ fun LabelLayer(
     // 统一左上光向的文字投影（右下偏移软影）：与政权贴图接触阴影（GL 侧）、
     // 泡泡阴影同一光向——HoMM3「焙烧阴影」的手机端移植，让元素有「贴在纸上」的厚度
     val paints = remember(designScale, density) {
-        labelTextPaints(designScale).mapValues { (_, p) ->
+        labelTextPaints(designScale, density).mapValues { (_, p) ->
             p.setShadowLayer(2.4f * density, 1.2f * density, 1.8f * density, 0x2E3A3428)
             p
         }
     }
     // 纸色 halo：与文字同字号描边（先描边后填充的双 pass 画法）
     val haloPaints = remember(designScale, density) {
-        labelTextPaints(designScale).mapValues { (_, p) ->
+        labelTextPaints(designScale, density).mapValues { (_, p) ->
             Paint(p).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = 1.2f * density
