@@ -1,6 +1,7 @@
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { project } from '../map/ChinaMap.js';
 import { resolveCollisions } from './collisions.js';
+import { COLLISION } from '../contract-tokens.js';
 
 // 事件泡泡层。
 // 显示规则：泡泡只在 [year, yearEnd] 时间窗口内可见，过期自动消失。
@@ -28,6 +29,8 @@ export class EventBubbles {
     this.scene = scene;
     this.events = events.slice().sort((a, b) => a.year - b.year);
     this.activeCategories = categories.slice();
+    /** 人物视角过滤（P1）：null = 不过滤；否则只显示 relatedPersons 含该 id 的事件 */
+    this.personFilter = null;
     this.onPick = onPick;
     this.onAppear = onAppear;
     this.toScreen = toScreen;
@@ -121,9 +124,12 @@ export class EventBubbles {
     // 年份变化：清掉旧折叠（聚合对象移除、成员恢复），重新按窗口评估
     this._clearFolds();
     const cats = this.activeCategories;
+    const personId = this.personFilter;
     this.items.forEach(({ obj, el, ev }) => {
       const inCat = cats.includes(ev.category);
-      const inWindow = inCat && year >= ev.year && year <= ev.yearEnd;
+      const inPerson = personId == null
+        || (ev.relatedPersons || []).some((p) => p.id === personId);
+      const inWindow = inCat && inPerson && year >= ev.year && year <= ev.yearEnd;
       obj.visible = inWindow;
 
       if (inWindow && prevYear !== undefined && prevYear < ev.year) {
@@ -158,6 +164,17 @@ export class EventBubbles {
     this.activeCategories = categories.slice();
     if (this._lastYear !== undefined) {
       // 静默刷新：把 prevYear 设为当前年，避免触发「刚出现」逻辑
+      this.update(this._lastYear, this._lastYear);
+    }
+  }
+
+  /**
+   * 人物视角（P1）：按人物过滤泡泡轨迹并即时重算（静默，不重发 pulse/onAppear）。
+   * @param {number|string|null} personId null = 清除过滤
+   */
+  setPersonFilter(personId) {
+    this.personFilter = personId == null || personId === '' ? null : Number(personId);
+    if (this._lastYear !== undefined) {
       this.update(this._lastYear, this._lastYear);
     }
   }
@@ -222,7 +239,7 @@ export class EventBubbles {
     // 推挤逻辑为纯函数（collisions.js），便于单测；障碍物（标签）标记 fixed 不可推
     const shifts = resolveCollisions(
       nodes.map((nd) => ({ ...nd, fixed: !nd.it })),
-      { gap: 6, maxPush: 64 }
+      { gap: COLLISION.gap, maxPush: COLLISION.maxPush }
     );
     nodes.forEach((nd, i) => {
       if (nd.it) this._setShift(nd.it, shifts[i].dx, shifts[i].dy);

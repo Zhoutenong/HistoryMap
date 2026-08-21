@@ -48,6 +48,9 @@ data class OverlayLabel(
 data class PrefecturePolygon(
     val name: String,
     val rings: List<List<LngLat>>,
+    /** 原始属性（P4 考据感：route/households/tribute/source/license/confidence/sourceFix 等，
+     *  治所标签点击打开府州考据卡片时读取，不依赖时空库） */
+    val props: JSONObject? = null,
 )
 
 /**
@@ -145,7 +148,7 @@ object OverlayParser {
         return OverlayModel(regimes, rivers, mountains, labels, prefectures, periodId)
     }
 
-    /** 州府面：properties.prefectures 的完整 feature（Polygon/MultiPolygon）→ 环列表 */
+    /** 州府面：properties.prefectures 的完整 feature（Polygon/MultiPolygon）→ 环列表 + 原始属性 */
     private fun parsePrefectures(arr: JSONArray?): List<PrefecturePolygon> {
         if (arr == null) return emptyList()
         val out = mutableListOf<PrefecturePolygon>()
@@ -154,7 +157,7 @@ object OverlayParser {
             val props = feat.optJSONObject("properties")
             val name = props?.optString("name").orEmpty()
             val rings = extractRings(feat.optJSONObject("geometry"))
-            if (rings.isNotEmpty()) out.add(PrefecturePolygon(name, rings))
+            if (rings.isNotEmpty()) out.add(PrefecturePolygon(name, rings, props))
         }
         return out
     }

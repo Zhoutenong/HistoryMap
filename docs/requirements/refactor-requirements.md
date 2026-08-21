@@ -470,7 +470,7 @@ periods.json 索引结构：`periods[]`（id/year/start/end/label/files + 可选
 - `docs/design_optimize/design-tokens.json`（唯一设计真相源）与 acceptance 基线。
 
 **退役**：
-- `client/`（three.js Web 前端及其测试）、`server/index.js` + `server/routes/`（Express 运行时；其中 overlay.js/meta.js 的合并逻辑已由 OverlayLoader.kt 复刻，periods 合并语义以 Kotlin 版为准）、Playwright e2e、WebView 壳资产（assets/web/）与 ApiBridge.kt、`docs/technical/design/implementation-plan.md` 与 roadmap 中 Web 专属条目；
+- `client/`（three.js Web 前端及其测试）、`server/index.js` + `server/routes/`（Express 运行时；overlay 合并的唯一实现已回到服务端 overlay-merge.js，Android OverlayMerge 为复刻方，双端由 golden 契约守护）、Playwright e2e、WebView 壳资产（assets/web/）与 ApiBridge.kt（✅ 后两者已于 2026-08-21 A1 删除）、`docs/technical/design/implementation-plan.md` 与 roadmap 中 Web 专属条目；
 - 根 package.json 的 dev/dev:client/build/lint(client)/test(vitest) 脚本——数据管线脚本保留。
 
 **迁移决策表（Web 有 / Android 无）**：
@@ -514,7 +514,7 @@ periods.json 索引结构：`periods[]`（id/year/start/end/label/files + 可选
 | EventBubblesLayer.kt / Collisions.kt / LabelPlacement.kt | 泡泡/碰撞/标签纯函数与绘制 | 保留（补单测） |
 | EventLogSheet.kt / SettingsSheet.kt / SettingsStore.kt / AppBottomSheet.kt / UiPrimitives.kt | 抽屉 UI 与设置持久化 | 保留 |
 | MapVisualTokens.kt / DesignMetrics.kt / Fonts.kt | token 单源/尺寸换算/字体 | 保留（check:tokens 闭环） |
-| ApiBridge.kt + assets/web/ | WebView 遗产 | 删除 |
+| ApiBridge.kt + assets/web/ | WebView 遗产 | 删除（✅ 已完成，2026-08-21 A1，见 docs/architecture/codebase-review-plan.md）|
 | client/src/* | Web 前端（府州详情/深链接/设置导入等功能参考） | 退役，功能按 §八 决策表迁移 |
 | server/routes/overlay.js · meta.js · places.js · db.js | API 契约定义（OverlayLoader 的语义源头）+ 时空库查询 | 运行时退役；places 查询逻辑随 Q1 决策保留或转导出脚本 |
 | scripts/prepare-android.mjs · data:* · check:* · capture-acceptance.mjs | 数据同步/管线/校验/截图 | 保留（prepare 裁剪 web 通道） |

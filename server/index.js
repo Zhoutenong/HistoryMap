@@ -8,6 +8,7 @@ import eventsRoutes from './routes/events.js';
 import overlayRoutes from './routes/overlay.js';
 import metaRoutes from './routes/meta.js';
 import dynastiesRoutes from './routes/dynasties.js';
+import personsRoutes from './routes/persons.js';
 import placesRoutes from './routes/places.js';
 
 const app = express();
@@ -28,6 +29,7 @@ app.use('/api/map', mapRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/dynasties', dynastiesRoutes);
+app.use('/api/persons', personsRoutes);
 app.use('/api/places', placesRoutes);
 
 // 健康检查

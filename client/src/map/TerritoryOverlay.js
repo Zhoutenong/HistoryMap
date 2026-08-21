@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { geoCentroid } from 'd3-geo';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { project } from './ChinaMap.js';
+// 地点类要素 kind 白名单：都城/战场/书院等点位在 overlay 响应顶层 properties.places 中透传，
+// 也允许直接出现在 features 里（kind 命中白名单）。数值来自 contract/tokens.json（双端唯一事实来源，
+// 与 Android ContractTokens.PLACE_KINDS / server overlay-merge.js 同源）。
+import { PLACE_KINDS } from '../contract-tokens.js';
 
 /**
  * 水墨晕染叠加层。
@@ -359,12 +363,6 @@ function buildRegimeLabel(feature, entity) {
  * @param {object} geojson FeatureCollection
  * @returns {{ group: THREE.Group, update: (year:number)=>void }}
  */
-/**
- * 地点类要素 kind 白名单（与 server/routes/overlay.js 的 PLACE_KINDS 一致）。
- * 都城/战场/书院等点位在 overlay 响应顶层 properties.places 中透传，
- * 也允许直接出现在 features 里（kind 命中白名单）。
- */
-const PLACE_KINDS = ['capital', 'battlefield', 'academy'];
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];

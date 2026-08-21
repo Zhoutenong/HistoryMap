@@ -1,0 +1,375 @@
+{
+  "description": "由 scripts/gen-overlay-golden.mjs 生成（服务端参考实现 overlay-merge.js），勿手改；重新生成前请评审 diff。",
+  "dynasty": "test",
+  "period": "100",
+  "expected": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                110,
+                35
+              ],
+              [
+                112,
+                35
+              ],
+              [
+                112,
+                37
+              ],
+              [
+                110,
+                37
+              ],
+              [
+                110,
+                35
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "entity": "宋",
+          "color": "#8E2F24",
+          "fillOpacity": 0.35,
+          "labelCoord": [
+            114,
+            33
+          ],
+          "labelMajor": true
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                115,
+                40
+              ],
+              [
+                118,
+                40
+              ],
+              [
+                118,
+                44
+              ],
+              [
+                115,
+                44
+              ],
+              [
+                115,
+                40
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "entity": "辽",
+          "color": "#123456",
+          "fillOpacity": 0.5,
+          "labelCoord": [
+            116,
+            42
+          ],
+          "labelMajor": false
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                88,
+                30
+              ],
+              [
+                95,
+                30
+              ],
+              [
+                95,
+                34
+              ],
+              [
+                88,
+                34
+              ],
+              [
+                88,
+                30
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "entity": "吐蕃",
+          "color": "#888888",
+          "fillOpacity": 0.35,
+          "labelCoord": [
+            95,
+            32
+          ],
+          "labelMajor": false
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                120,
+                22
+              ],
+              [
+                122,
+                22
+              ],
+              [
+                122,
+                24
+              ],
+              [
+                120,
+                24
+              ],
+              [
+                120,
+                22
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "entity": "未知政权",
+          "color": "#888888",
+          "fillOpacity": 0.35,
+          "labelCoord": null,
+          "labelMajor": false
+        }
+      }
+    ],
+    "properties": {
+      "period": "测试时期",
+      "year": 1000,
+      "_periodId": "test-100",
+      "rivers": [
+        {
+          "id": "river-1",
+          "name": "测试河",
+          "kind": "river",
+          "rank": 1,
+          "style": "ribbon",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "high",
+          "note": "占位",
+          "periods": [
+            "test-100"
+          ],
+          "path": [
+            [
+              100,
+              30
+            ],
+            [
+              102,
+              31
+            ],
+            [
+              104,
+              30
+            ]
+          ]
+        },
+        {
+          "id": "river-3",
+          "name": "全期河",
+          "kind": "river",
+          "rank": 1,
+          "style": "ribbon",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "medium",
+          "note": "无 periods 数组应全量保留",
+          "path": [
+            [
+              105,
+              28
+            ],
+            [
+              106,
+              29
+            ]
+          ]
+        }
+      ],
+      "mountains": [
+        {
+          "kind": "mountain",
+          "name": "兜底山",
+          "coord": [
+            101,
+            32
+          ]
+        }
+      ],
+      "cities": [
+        {
+          "id": "city-1",
+          "name": "测试城",
+          "kind": "city",
+          "rank": 1,
+          "style": "dot",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "high",
+          "note": "占位",
+          "periods": [
+            "test-100"
+          ],
+          "coord": [
+            114.3,
+            34.8
+          ]
+        }
+      ],
+      "places": [
+        {
+          "id": "place-1",
+          "name": "测试都",
+          "kind": "capital",
+          "rank": 1,
+          "style": "dot",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "high",
+          "note": "占位",
+          "periods": [
+            "test-100"
+          ],
+          "coord": [
+            114.35,
+            34.52
+          ]
+        },
+        {
+          "id": "place-2",
+          "name": "测试战场",
+          "kind": "battlefield",
+          "rank": 2,
+          "style": "dot",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "high",
+          "note": "无 periods 应保留",
+          "coord": [
+            112,
+            36
+          ]
+        }
+      ],
+      "prefectures": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "pref-1",
+            "name": "测试府",
+            "kind": "prefecture",
+            "rank": 2,
+            "style": "stroke-only",
+            "source": "fixture",
+            "license": "cc0",
+            "confidence": "medium",
+            "note": "面要素须保留完整 geometry",
+            "periods": [
+              "test-100"
+            ],
+            "route": "京畿路"
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  113,
+                  34
+                ],
+                [
+                  115,
+                  34
+                ],
+                [
+                  115,
+                  36
+                ],
+                [
+                  113,
+                  36
+                ],
+                [
+                  113,
+                  34
+                ]
+              ]
+            ]
+          }
+        }
+      ],
+      "prefectureSeats": [
+        {
+          "id": "seat-1",
+          "name": "测试治所",
+          "kind": "prefecture-seat",
+          "rank": 2,
+          "style": "dot",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "medium",
+          "note": "占位",
+          "periods": [
+            "test-100"
+          ],
+          "route": "京畿路",
+          "coord": [
+            114.1,
+            35.2
+          ]
+        },
+        {
+          "id": "ssr-1",
+          "name": "南路治所",
+          "kind": "prefecture-seat",
+          "rank": 1,
+          "style": "dot",
+          "source": "fixture",
+          "license": "cc0",
+          "confidence": "high",
+          "note": "Android 端文件清单曾漏本文件（A2 golden 抓漂移）",
+          "periods": [
+            "test-100"
+          ],
+          "route": "浙西路",
+          "coord": [
+            119.5,
+            30.3
+          ]
+        }
+      ]
+    }
+  }
+}

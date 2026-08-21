@@ -19,11 +19,11 @@ import kotlinx.coroutines.launch
  * configChanges，旋转不重建，无需 ViewModel 生命周期）。
  */
 class TimelineController(
-    val startYear: Int,
-    val endYear: Int,
+    startYear: Int,
+    endYear: Int,
     private val events: List<EventEntity>,
     private val scope: CoroutineScope,
-    tickMs: Long = 110,
+    tickMs: Long = ContractTokens.SPEED_TICK_NORMAL,
     autoplay: Boolean = true,
     private val onYearChange: ((Int) -> Unit)? = null,
     private val onComplete: (() -> Unit)? = null,
@@ -36,12 +36,31 @@ class TimelineController(
     var completed by mutableStateOf(false)
         private set
 
+    // 边界改为可变状态（P2 全时期模式：时间轴范围在朝代并集 ↔ 单朝代间切换）
+    var startYear by mutableStateOf(startYear)
+        private set
+    var endYear by mutableStateOf(endYear)
+        private set
+
     private var job: Job? = null
     var tickMs: Long = tickMs
         private set
 
     init {
         if (autoplay) play()
+    }
+
+    /** 更新时间轴范围（全时期模式切换用）：clamp 当前年并退出「播放完毕」态 */
+    fun setRange(start: Int, end: Int) {
+        startYear = start
+        endYear = end
+        if (yearState !in start..end) {
+            completed = false
+            yearState = yearState.coerceIn(start, end)
+            onYearChange?.invoke(yearState)
+        } else if (yearState >= end) {
+            completed = true
+        }
     }
 
     /** 调整播放速度（播放中重建定时器，等价 Web 版 setTickMs） */

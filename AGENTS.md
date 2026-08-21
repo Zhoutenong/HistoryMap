@@ -24,6 +24,7 @@ HistoryMap/
 ├── README.md                       # 一键启动与说明
 ├── package.json                    # 根：concurrently 一键启动 + lint/test 脚本
 ├── eslint.config.mjs               # ESLint 扁平配置（client + server）
+├── contract/                       # 双端契约（golden 数值集 + tokens.json 唯一事实来源，A2）
 ├── start-dev.bat / start-dev.ps1   # Windows 双击启动器（环境检查 + 拉起前后端）
 ├── stop-dev.bat  / stop-dev.ps1    # Windows 双击停止器
 ├── scripts/
@@ -37,9 +38,15 @@ HistoryMap/
 │       ├── AndroidManifest.xml
 │       ├── java/com/historymap/app/
 │       │   ├── MainActivity.kt     # Compose 入口 + 沉浸式全屏
-│       │   ├── MapScreen.kt        # 主界面：顶栏/地图/泡泡/时间轴/图例/详情/事件流/设置
+│       │   ├── MapScreen.kt        # 主界面装配（A5 拆分后 <40KB；状态/手势/装载）
+│       │   ├── MapTopBar.kt        # 顶栏（A5 拆分：标题/全时期开关/朝代章钮/入口）
+│       │   ├── MapUiBlocks.kt      # UI 块（A5 拆分：图例/标签层/详情/考据卡/菜单/横幅）
+│       │   ├── MapScreenState.kt   # 状态类（A5 拆分：DynastyLoadResult/BubbleHitArgs）
+│       │   ├── MapShaders.kt       # GLSL 着色器常量（A5 拆分自 MapRenderer）
+│       │   ├── EventSummary.kt     # 事件摘要纯函数（detail 首句截断）
 │       │   ├── MapRenderer.kt      # GLES2 渲染器：宣纸底/水彩纹理+接触阴影/河道带/相机/标签数据
 │       │   ├── Projection.kt       # d3-geo geoMercator + fitSize 的 Kotlin 翻译（与 Web 版坐标一致）
+│       │   ├── ContractTokens.kt   # 双端共享数值契约（由 gen-contract-tokens.mjs 生成，A2 第二步 codegen）
 │       │   ├── WatercolorTexture.kt# 水彩离屏生成（羽化/斑驳/边界/颗粒，对齐 TerritoryOverlay.js）
 │       │   ├── RiverRibbons.kt     # 河道带几何（变宽三角带+弧长属性；着色器内三层河带/羽化/顺流微动画）
 │       │   ├── OverlayParser.kt    # overlay JSON → 渲染模型（政权/河流/标签）
@@ -59,24 +66,32 @@ HistoryMap/
 │   ├── index.js                    # Express 入口，挂载路由（含 /api/dynasties）
 │   ├── db.js                       # better-sqlite3 连接 + 建表 + seed + 自动迁移
 │   ├── routes/
-│   │   ├── map.js                  # GET /api/map         基础地图 GeoJSON
-│   │   ├── overlay.js              # GET /api/map/overlay  朝代疆域叠加层（按时期）
-│   │   ├── events.js               # GET /api/events       朝代事件（含 place 字段）
+│   │   ├── map.js                  # GET /api/map         基础地图 GeoJSON（A3 内存缓存 + ETag）
+│   │   ├── overlay.js              # GET /api/map/overlay 朝代疆域叠加层（按时期，A3 结果级缓存）
+│   │   │                            # GET /api/map/overlay/all?year=  全时期模式（P2）
+│   │   ├── events.js               # GET /api/events      朝代事件（含 relatedPersons/source 等）
+│   │   ├── persons.js              # GET /api/persons     人物列表（P1 人物视角）
 │   │   ├── meta.js                 # GET /api/meta         朝代起止年 + 时期边界
 │   │   └── dynasties.js            # GET /api/dynasties    朝代列表（顶栏下拉）
 │   ├── data/
-│   │   ├── schema.sql              # 建表语句（含 events.place / impact / category）
+│   │   ├── schema.sql              # 建表语句（events 含 place/impact/category/source/confidence/license；persons/event_person）
 │   │   ├── seed/
-│   │   │   └── 01-song-events.sql  # 宋朝 seed（30 条事件，换朝代加新文件）
+│   │   │   ├── 01-song-events.sql  # 宋朝 seed 第一批（30 条，upsert 语义）
+│   │   │   ├── 06/07-song-*-events.sql  # P1 内容加深（北宋 40 + 南宋 39，song 共 109 条）
+│   │   │   ├── 08-song-persons.sql # P1 人物（60 人 + event_person 关联，按事件身份 SELECT 定位）
+│   │   │   └── 09-song-provenance.sql   # P4 考据（按分类 UPDATE source/confidence/license）
 │   │   └── geo/china.json          # 基础地图（静态托管）
+│   │   └── geo/historical/
+│   │       ├── overlay-merge.js    # overlay 合并纯函数（A2 契约入口，Android OverlayMerge 复刻）
+│   │       └── periods.js          # periods.json 共享单例（A3，meta/overlay 同源）
 │   └── history.db                  # SQLite 持久化文件（gitignore，自动生成）
-└── client/                         # 前端（独立 package.json，Web + Android WebView 双端共用）
+└── client/                         # 前端（独立 package.json，Web 端 three.js；Android 已原生实现，不共用本目录）
     ├── index.html                  # 含顶栏朝代下拉、事件流抽屉、设置面板
     ├── vite.config.js              # base './' + target 'chrome83'；/api → localhost:3001 代理
     └── src/
         ├── main.js                 # 装配入口（loadDynasty 装配函数 + 相机取景/聚焦）
-        ├── api.js                  # 【数据层】封装所有数据访问（fetch / Android bridge 自动切换）
-        ├── dom.js                  # 旧 WebView 兼容工具（clearChildren 等）
+        ├── api.js                  # 【数据层】封装所有数据访问（fetch；Android 侧等价实现为 MapRepository.kt）
+        ├── dom.js                  # 旧浏览器 DOM 兼容工具（clearChildren 等）
         ├── theme.js                # 古典水墨·宣纸主题
         ├── styles.css              # 含移动端 @media (max-width:640px) 适配
         ├── map/
@@ -88,10 +103,11 @@ HistoryMap/
         │   ├── calc.js             # 纯函数：年份↔轨道百分比、刻度步长
         │   └── __tests__/calc.test.js
         ├── events/
-        │   ├── EventBubbles.js     # 泡泡层：CSS2DObject + 同屏折叠(+N) + 指向线
+        │   ├── EventBubbles.js     # 泡泡层：CSS2DObject + 同屏折叠(+N) + 指向线 + 人物过滤（P1）
+        │   ├── EventCard.js        # P3 分享卡片：SVG 合成 + PNG 导出 + 剪贴板
         │   ├── EventLog.js         # 右侧事件流抽屉（搜索框 + 未读徽标）
         │   ├── collisions.js       # 纯函数：屏幕空间碰撞推挤算法
-        │   └── __tests__/collisions.test.js
+        │   └── __tests__/          # collisions / search / EventLog / EventCard
         └── settings/
             ├── SettingsMenu.js     # 分类/速度/自动播放/底图显隐设置面板
             └── store.js            # 设置持久化 + SPEED_MAP / CATEGORIES 常量
@@ -118,23 +134,34 @@ npm run build          # 输出到 client/dist/
 # 静态检查（ESLint，扫描 client/src 与 server）
 npm run lint
 
-# 单元测试（vitest，client 内 11 个用例：collisions 7 + calc 4）
+# 单元测试（vitest，client 内：collisions/calc/search/store/share/EventCard/projection golden 等）
 npm run test
 
+# 双端契约 golden 校验（投影 + overlay 合并，A2）
+npm run contract:golden
+
+# 双端契约 token 校验（A2 第二步：contract/tokens.json ↔ 双端生成产物 diff）
+npm run contract:tokens        # 校验（已并入 npm run contract，CI 会自动跑）
+npm run contract:tokens:write  # 改契约后重新生成 client/src/contract-tokens.js + ContractTokens.kt
+
+# 数据迁移契约（A4：升级/回滚/幂等/seed 修订生效）
+npm run contract:db-migration
+
 # ===== Android（详见 README「Android 版」章节）=====
-npm run build                    # 先构建前端（base './' 相对路径产物）
-node scripts/prepare-android.mjs # 同步 dist + 数据 → android/app/src/main/assets/
+node scripts/prepare-android.mjs # 同步后端数据 → android/app/src/main/assets/（Android 原生版不打包前端产物）
 cd android && ./gradlew assembleDebug   # 构建 APK（Gradle 8.9 wrapper）
 adb install -r app/build/outputs/apk/debug/app-debug.apk   # 安装到真机
 ```
 
-## API 契约（平台无关 — Web 后端 / Android bridge 双实现）
+## API 契约（平台无关 — Web 后端 / Android MapRepository 双实现）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/map` | 基础中国地图 GeoJSON（FeatureCollection）|
 | GET | `/api/map/overlay?dynasty=song&period=1111` | 朝代疆域叠加层（按时期返回政权 FeatureCollection，`period` 取 `1111/1200/1279`）|
-| GET | `/api/events?dynasty=song` | 朝代全部事件数组（含 `place` 字段；可选 `&category=` 过滤）|
+| GET | `/api/map/overlay/all?year=1111` | 全时期模式（P2）：给定年份返回当时全部政权；`properties._range` 为命中集合稳定年份区间，年份未出区间响应不变 |
+| GET | `/api/events?dynasty=song` | 朝代全部事件数组（含 `place` 字段；可选 `&category=` 过滤；P1 起附 `relatedPersons`，P4 起附 `source/confidence/license`——均为**新增可选字段，老契约兼容**）|
+| GET | `/api/persons?dynasty=song` | 朝代人物列表（P1 人物视角：`[{id,name,title,birthYear,deathYear,note,eventCount}]`，按关联事件数降序）|
 | GET | `/api/meta?dynasty=song` | 朝代元信息（起止年 + 时期边界 periods）|
 | GET | `/api/dynasties` | 全部朝代列表（顶栏下拉数据源，按 start_year 升序）|
 | GET | `/api/health` | 健康检查（返回 `{ ok: true }`）|
@@ -198,10 +225,37 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 2. **事件层**：`EventBubbles.js` 不直接操作 three geometry，只通过 `CSS2DObject` 挂到 scene，位置由统一投影函数给出。同屏挤压时由 `collisions.js` 推挤或折叠成 `+N` 聚合泡泡；指向线（`bubble-leaders` SVG）每帧在 `animate()` 里 `syncLeaders()` 跟随。
 3. **时间轴**：`Timeline.js` 是唯一的「当前年份」状态源。地图/泡泡都不维护时间，只接受 `onChange` 回调。
 
+### 双端契约 golden（A2 第一步）
+
+- 双端共享的数值/语义契约锚定在 `contract/golden/`（fixture 手写 + expected 由参考实现生成）：
+  投影（`projection.*.json`，标定必须是 **MultiPoint 点集语义**——d3 对 Polygon 做 fitSize 量的是
+  整个墨卡托世界方块）与 overlay 合并（`overlay-merge.*.json`）。
+- 重新生成：`node scripts/gen-projection-golden.mjs` / `node scripts/gen-overlay-golden.mjs`
+  （先评审 diff 再提交）；Node 侧校验：`npm run contract:golden`；Web 侧：vitest
+  `client/src/map/__tests__/projection.golden.test.js`；Android 侧：
+  `ProjectionGoldenTest` / `OverlayMergeGoldenTest`（`./gradlew testDebugUnitTest`）。
+- 改任一端投影/合并逻辑前先跑双端 golden；服务端 overlay 合并的**唯一实现**是
+  `server/data/geo/historical/overlay-merge.js`（纯函数，路由只做缓存与 IO 注入），
+  Android 侧 `OverlayMerge`（OverlayLoader.kt 内）逐行复刻。
+
+### 双端共享数值契约（A2 第二步 codegen）
+
+- **唯一事实来源**：`contract/tokens.json`（投影 fitSize、LOD 档位矩阵、碰撞参数、
+  kind 白名单、设置项 schema）。改数值只改这里，重跑 `npm run contract:tokens:write`。
+- **双端产物（提交进仓库）**：Web `client/src/contract-tokens.js`（ESM，由
+  `scripts/gen-contract-tokens.mjs` 生成；业务代码 import 它，不再本地写死一份）与
+  Android `ContractTokens.kt`（object + 派生表）。服务端参考实现 `overlay-merge.js`
+  也直接读契约文件的 `placeKinds`——三端同源。
+- **校验**：`npm run contract:tokens`（生成物与契约 diff 一致才 PASS，已并入
+  `npm run contract`）；Web vitest `client/src/__tests__/contract-tokens.test.js`
+  断言生成模块与契约 JSON 一致（防手改生成文件）。
+- **颜色例外**：事件分类 color 属视觉层（design-tokens.json / MapVisualTokens 管线），
+  不入本契约，Web 端在 `settings/store.js` 本地维护。
+
 ### 数据分层（前后端解耦的核心）
 
 1. **后端**：只管数据存储与查询，不关心渲染。
-2. **前端数据层**：`client/src/api.js` 是前端访问后端的**唯一入口**（含 `getMap/getOverlay/getEvents/getMeta/getDynasties`），业务代码（main.js 等）不直接写 URL。换端（Android WebView bridge、mock）只改这一个文件。
+2. **前端数据层**：`client/src/api.js` 是前端访问后端的**唯一入口**（含 `getMap/getOverlay/getEvents/getMeta/getDynasties`），业务代码（main.js 等）不直接写 URL。换 mock 或数据源只改这一个文件；Android 原生版由 `MapRepository.kt` 等价实现。
 3. **前端业务层**：main.js 只做装配；核心装配函数 `loadDynasty(dynastyId)` 统一处理初始加载与朝代切换（重建 overlay/泡泡/时间轴范围），从 api.js 取数据后喂给地图/时间轴/泡泡三模块。
 
 ### 坐标与投影
@@ -224,10 +278,18 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 - **基础底图 GeoJSON**：静态文件 `server/data/geo/china.json`（现代中国省界），由 `/api/map` 路由直接读出返回。**不进数据库**——大 JSON 进库查询慢，且 GeoJSON 走文件更易替换。默认隐藏，作"现代对比层"用。
 - **历史疆域 GeoJSON**：`server/data/geo/historical/regimes-{1100,1200,1279}.json`，由 `/api/map/overlay` 路由按 `periods.json` 索引读取。**数据源**：[aourednik/historical-basemaps](https://github.com/aourednik/historical-basemaps) (GPL-3.0)，含宋/辽/西夏/金/吐蕃/大理/蒙古/高丽/大越/高棉/占婆/蒲甘等政权的真实历史轮廓。重新生成：`node server/scripts/fetch_historical_basemaps.js`。详见 `server/data/geo/historical/README.md`。
 - **seed**：`server/data/seed/*.sql`，按文件名排序执行；以 dynasties 表是否有记录判定是否需要 seed。换朝代加新 SQL 文件即可（顶栏下拉会自动出现）。
+  **upsert 语义（A4）**：启动全量重放是有意自愈设计；seed 语句按 `(dynasty_id, year, short)`
+  身份 upsert（dynasties 按 id）——修订既有行重启即生效，seed 文件即事实来源；新增 seed 需在
+  `server/db.js` 的 `MIGRATIONS` 注册版本号。Android 侧 `SeedImporter` 对 SQLite<3.24
+  （API 28 以下框架库）自动降级为 INSERT OR IGNORE。
 
 ## 前端能力概览
 
 - **顶栏朝代下拉**：`#dynasty-select`，数据来自 `/api/dynasties`，切换朝代走 `loadDynasty()`（无需改代码常量）。
+- **全时期模式（P2）**：顶栏 `#allperiod-toggle` 开关，时间轴范围切全朝代并集，
+  overlay 走 `/api/map/overlay/all?year=`（`_range` 区间内不重取）；1111 年宋/辽/西夏等同屏。
+- **人物视角（P1）**：设置面板「人物视角」下拉（数据 `/api/persons`），选中后泡泡层仅显示
+  该人物关联事件；详情面板人物徽章点击直达过滤；Android 端为设置抽屉人物芯片条。
 - **事件流抽屉**：`EventLog` 右侧抽屉，顶栏 ☰ 开关，含搜索框（按简称/标题模糊匹配）与未读徽标。
 - **事件泡泡**：同屏拥挤时折叠为 `+N` 聚合泡泡；指向线（`bubble-leaders` SVG）从事件真实位置连到泡泡，带箭头，每帧 `syncLeaders()` 跟随。
 - **详情面板**：含地点徽章（`place`）、影响栏、相关事件；打开时地图缩小左移让位并相机聚焦。
@@ -244,7 +306,7 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 - **顶层 await**：esbuild 默认 target 不支持顶层 await，main.js 用 async IIFE 启动。
 - **OrbitControls**：地图锁定旋转、只保留缩放/平移；事件泡泡是 HTML 层，拖动/缩放时标签会跟随相机重投影（debounce 150ms 后重排碰撞）。不要禁用 `CSS2DRenderer` 的更新循环。
 - **CSS2DObject 残留**：时期切换/朝代切换清空 overlay group 时，`CSS2DObject` 缓存不会自动清理已从 scene 移除对象的 DOM，需手动摘除（见 `clearOverlayGroup`），否则旧政权名标签残留。
-- **WebView 兼容（Android 真机）**：部分真机自带 WebView 很旧（华为 P20 = Chrome 83）。前端因此做了两处兼容：① vite `build.target: 'chrome83'`（产物语法层面）；② `Element.replaceChildren()`（Chrome 86+）在 `client/src/dom.js` 提供 `clearChildren()` 兼容实现，禁止再引入 Chrome 86+ 的 DOM API 到业务代码。
+- **旧浏览器兼容（历史包袱，源自早期 WebView 壳）**：Web 产物仍按 Chrome 83 级别编译：① vite `build.target: 'chrome83'`；② `Element.replaceChildren()`（Chrome 86+）在 `client/src/dom.js` 提供 `clearChildren()` 兼容实现，禁止再引入 Chrome 86+ 的 DOM API 到业务代码。Android 已原生实现，不再依赖该兼容层，如确认无需支持旧浏览器可一并放宽。
 - **Kotlin 注释陷阱**：KDoc 里写 `assets/seed/*.sql`、`/api/*` 会触发 Kotlin 嵌套块注释解析错误（Unclosed comment），文案改为「seed 目录的 .sql 文件」。
 - **Android 本地构建**：机器需有 `android/local.properties`（sdk.dir 用正斜杠 `D:/Android/SDK`，反斜杠转义会致 `SdkLocator` 抛 IOException）；Gradle 8.9 + AGP 8.7.3 + Kotlin 2.0.21 + KSP 2.0.21-1.0.28 组合与本地缓存匹配，可离线构建。
 - **AndroidView 手势收口（Compose interop 大坑）**：GLSurfaceView（AndroidView）之上只要叠任何全屏 Compose `pointerInput` modifier（哪怕手势不 consume 事件），Compose 就会接管整个手势流，GLSurfaceView 的 `setOnTouchListener` 收不到 down——地图拖动/缩放/双击**全部静默失效**（曾被误判为「时期切换导致视野变化」）。正确做法：地图区所有手势（泡泡 tap 命中/拖动/双指缩放/双击复位）**统一收口在 GLSurfaceView 的 touch listener**（GestureDetector + ScaleGestureDetector，pinch 期间 `isInProgress` 守卫跳过 scroll），泡泡命中用 `hitTestBubble` 纯函数在 `onSingleTapConfirmed` 里做，命中参数经 `bubbleHitArgs` 状态快照桥接组合期数据（见 MapScreen.kt）。地图区之上只允许无输入的层（Canvas/Text）。
@@ -262,7 +324,7 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
    （河道带/阴影借鉴 HoMM3 美术纪律：有机衔接、统一光向焙烧阴影、稀疏动画；token 见 MapTokens.MapParams
    RIVER_TAPER_*/RIVER_FLOW_*/REGIME_SHADOW_*）
 2. **数据层**：`MapRepository.kt`（Room + OverlayLoader）等价 Web 版 api.js 职责；Room schema 与
-   seed 重放机制同 WebView 时代（`HistoryDb.kt` 不变）；assets 数据由 `scripts/prepare-android.mjs` 同步。
+   seed 重放机制沿用早期壳版本（`HistoryDb.kt` 不变）；assets 数据由 `scripts/prepare-android.mjs` 同步。
 3. **UI 层**：Compose——时间轴（`TimelineController` 是「当前年份」唯一状态源，播放/暂停/拖动/播放完毕/重播）、
    事件泡泡（碰撞推挤翻译 collisions.js + 指向线 + 出屏回收）、详情/事件流/设置（ModalBottomSheet）、
    图例、时期切换（跨年自动重载疆域，投影首次标定后不再变）。
@@ -300,7 +362,10 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 ## 工程规范
 
 - **Lint**：`npm run lint`（ESLint flat config，扫描 `client/src` 与 `server`；`no-unused-vars` 为 warn，`_` 前缀变量/参数忽略）。测试文件目录（`__tests__/**`）被忽略。
-- **单测**：`npm run test`（vitest，client 内 11 用例：`events/__tests__/collisions.test.js` 7 个 + `timeline/__tests__/calc.test.js` 4 个）。纯函数（`collisions.js` / `calc.js`）已从业务模块抽出，便于复用与测试。改算法时同步更新对应测试。
+- **单测**：`npm run test`（vitest，client 内 61 用例 + contract-tokens 契约快照：collisions/calc/search/store/transfer/share/EventLog/EventCard/projection golden）。纯函数（`collisions.js` / `calc.js` / `EventCard.js`）已从业务模块抽出，便于复用与测试。改算法时同步更新对应测试。
+- **Android 单测**：`cd android && ./gradlew testDebugUnitTest`（37+ 用例：Collisions/DesignMetrics/EventSummary/OverlayParser/Projection + ProjectionGolden/OverlayMergeGolden 双端契约）。
+- **契约校验**：`npm run contract`（GeoJSON+API+双端契约产物 diff）、`npm run contract:golden`（双端数值）、`npm run contract:db-migration`（迁移升级/回滚/seed 修订）。
+- **e2e**：`npm run e2e`（Playwright：smoke + features（P1-P5）+ visual（视口矩阵与截图基线，基线更新 `--update-snapshots`））。
 
 ## 时空数据库（PostgreSQL + PostGIS，时间版本化）
 

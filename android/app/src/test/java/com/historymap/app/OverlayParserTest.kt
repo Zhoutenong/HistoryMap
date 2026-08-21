@@ -36,12 +36,13 @@ class OverlayParserTest {
     fun `labelCoord 缺失时用质心兜底`() {
         val json = JSONObject("""{"type":"FeatureCollection","features":[${polygonFeature("song")}]}""")
         val model = OverlayParser.parse(json)
-        // RegimePolygon.labelCoord 保持 null；兜底质心作用于政权名标签
+        // RegimePolygon.labelCoord 保持 null；兜底质心作用于政权名标签。
+        // 质心为面积最大环的 shoelace 面积加权质心（对齐 Web geoCentroid）：
+        // 矩形 110..112 × 35..37 的面积质心即几何中心 (111, 36)。
         assertEquals(null, model.regimes[0].labelCoord)
         val label = model.labels.first { it.kind == "regime" }
-        // 环顶点平均（含闭合点共 5 点）：lng (110+112+112+110+110)/5=110.8，lat (35+35+37+37+35)/5=35.8
-        assertEquals(110.8, label.coord.lng, 0.01)
-        assertEquals(35.8, label.coord.lat, 0.01)
+        assertEquals(111.0, label.coord.lng, 0.01)
+        assertEquals(36.0, label.coord.lat, 0.01)
     }
 
     @Test

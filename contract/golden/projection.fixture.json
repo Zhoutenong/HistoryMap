@@ -1,0 +1,32 @@
+{
+  "description": "双端投影 golden 标定输入（手写，勿放生成产物）：Web 端 ChinaMap.js fitProjection(project) 与 Android 端 MercatorProjection.fit(project) 必须用同一份 calibration 标定、对同一组 probes 输出 contract/golden/projection.expected.json 的值。expected 由 scripts/gen-projection-golden.mjs 以 Web 参考实现（d3-geo）生成；修改任一端投影数学前必须先重生成并评审差异。标定几何必须是 MultiPoint（点集语义）：d3 对 Polygon 做 fitSize 时量的是整个墨卡托世界方块（球面流副作用，scale 恒为 min(W,H)/2π），只有点集才走「点集盒 fit」——这正是双端公式共享的数学（见 docs/architecture/codebase-review-plan.md A2 备注：生产端 Web 用 Polygon 标定得世界方块 fit、Android 用多边形点集 fit，为已记录的既有分歧，另行 reconciled）。",
+  "fitSize": [1000, 800],
+  "calibration": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": { "name": "calibration-points" },
+        "geometry": {
+          "type": "MultiPoint",
+          "coordinates": [
+            [73.0, 18.0], [135.0, 18.0], [135.0, 54.0], [73.0, 54.0], [104.0, 36.0]
+          ]
+        }
+      }
+    ]
+  },
+  "probes": [
+    [73.0, 18.0],
+    [135.0, 54.0],
+    [104.0, 35.0],
+    [110.0, 20.0],
+    [120.0, 50.0],
+    [90.0, 30.0],
+    [135.0, 18.0],
+    [73.0, 54.0],
+    [114.35, 34.52],
+    [120.15507, 30.27408],
+    [91.13221, 29.66036]
+  ]
+}

@@ -59,7 +59,7 @@ HistoryMap 是基于 three.js 的中国历史地图交互式可视化，首期�
 1. **后端**：只管数据存储与查询，不关心渲染。
 2. **前端数据层**：`client/src/api.js` 是前端访问后端的**唯一入口**
    （`getMap/getOverlay/getEvents/getMeta/getDynasties/getPlaces`），
-   业务代码不直接写 URL；换端（mock、bridge）只改这一个文件。
+   业务代码不直接写 URL；换 mock 或数据源只改这一个文件。
 3. **前端业务层**：`main.js` 只做装配，核心装配函数 `loadDynasty(dynastyId)`
    统一处理初始加载与朝代切换（重建 overlay/泡泡/时间轴范围）。
 4. **Android 数据层**：`MapRepository.kt`（Room + OverlayLoader）等价 Web 版 `api.js` 职责；

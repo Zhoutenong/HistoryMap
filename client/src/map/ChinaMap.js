@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { geoMercator, geoPath } from 'd3-geo';
 import { getTheme } from '../theme.js';
+import { PROJECTION } from '../contract-tokens.js';
 
 // 统一投影：所有经纬度 -> three.js XY 平面坐标的唯一入口。
 // 事件层、地图层都通过它转换，保证位置一致。
@@ -35,7 +36,8 @@ export function project(lngLat) {
  */
 export function fitProjection(geojson) {
   if (_fitDone) return;
-  projection.fitSize([1000, 800], geojson);
+  // 标定尺寸来自契约 contract/tokens.json projection（与 Android MercatorProjection 一致）
+  projection.fitSize([PROJECTION.fitWidth, PROJECTION.fitHeight], geojson);
   // 取投影后包围盒中心作为居中基准（与地图实际范围一致）
   const bounds = geoPath(projection).bounds(geojson);
   _center = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2];

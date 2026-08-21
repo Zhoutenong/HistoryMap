@@ -2,9 +2,14 @@
 -- 字段顺序与 schema.sql 一致；坐标为事件核心地点的经纬度。
 -- category 取值：era 时代格局 / figure 名人轨迹 / military 军事·领土 / economy 经济变革 / invention 重要发明
 
-INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('yuan', '元朝', 1271, 1368);
+INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('yuan', '元朝', 1271, 1368)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  start_year = excluded.start_year,
+  end_year = excluded.end_year
+;
 
-INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('yuan', 1271, 1271, 116.4, 39.9, '定国号大元', '忽必烈定国号大元', '忽必烈采纳刘秉忠等人建议，取《易经》「大哉乾元」之义定国号为大元，蒙古帝国进入以中原正统自居的新阶段。', '元朝从游牧帝国正式转向中华王朝，为统一全国、建立行省制度提供意识形态基础。', '大都（今北京）', 'era'),
   ('yuan', 1272, 1272, 116.4, 39.9, '改中都为大都', '忽必烈改中都为大都', '忽必烈将金中都改名大都，定为国都，并营建宫城、皇城与外郭，大都成为当时世界级的大都会。', '大都成为元朝政治中心与南北大运河的终点，城市规划对后世北京城影响深远。', '大都', 'era'),
   ('yuan', 1273, 1273, 112.13, 32.0, '元军陷襄阳', '襄阳之战 · 元军破城', '元军围困襄阳六年，以回回炮轰破城垣，南宋守将吕文焕投降，长江中游防线崩溃。', '襄阳失守打开元军沿江而下的通道，南宋政权进入灭亡倒计时。', '襄阳（今湖北襄阳）', 'military'),
@@ -24,4 +29,14 @@ INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title
   ('yuan', 1355, 1355, 115.78, 33.85, '小明王称帝', '韩林儿称帝 · 宋政权建立', '刘福通拥立韩林儿为帝，号小明王，国号宋，都亳州，红巾军成为元末反元势力的旗帜。', '宋政权为各路义军提供共主，朱元璋等亦遥奉其号令，反元力量一度声势浩大。', '亳州（今安徽亳州）', 'era'),
   ('yuan', 1356, 1356, 118.78, 32.06, '朱元璋克集庆', '朱元璋攻占集庆', '朱元璋率军攻占集庆，改名应天府，以此为根据地广纳贤才、屯田积粮，逐渐坐大。', '应天府成为朱元璋逐鹿天下的基业，最终取代小明王政权完成统一。', '集庆（今江苏南京）', 'military'),
   ('yuan', 1363, 1363, 116.3, 29.15, '鄱阳湖大战', '鄱阳湖大战 · 朱陈决战', '朱元璋与陈友谅在鄱阳湖展开水军大会战，朱元璋以火攻大破陈军，陈友谅中箭身亡。', '此战奠定朱元璋南方霸主的地位，长江中游再无对手，北伐元朝的时机成熟。', '鄱阳湖（今江西鄱阳湖水域）', 'military'),
-  ('yuan', 1368, 1368, 116.4, 39.9, '徐达克大都', '明军克大都 · 元朝灭亡', '朱元璋在应天称帝建明后，派徐达、常遇春北伐，明军攻克大都，元顺帝北走上都，元朝在中原的统治结束。', '元朝灭亡，元廷退据漠北史称北元；明朝完成重新统一，中国历史进入明清时期。', '大都（今北京）', 'military');
+  ('yuan', 1368, 1368, 116.4, 39.9, '徐达克大都', '明军克大都 · 元朝灭亡', '朱元璋在应天称帝建明后，派徐达、常遇春北伐，明军攻克大都，元顺帝北走上都，元朝在中原的统治结束。', '元朝灭亡，元廷退据漠北史称北元；明朝完成重新统一，中国历史进入明清时期。', '大都（今北京）', 'military')
+ON CONFLICT(dynasty_id, year, short) DO UPDATE SET
+  year_end = excluded.year_end,
+  lng = excluded.lng,
+  lat = excluded.lat,
+  title = excluded.title,
+  detail = excluded.detail,
+  impact = excluded.impact,
+  place = excluded.place,
+  category = excluded.category
+;

@@ -28,7 +28,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -200,13 +199,8 @@ fun TimelineBar(
                 modifier = Modifier.fillMaxWidth().padding(top = designDp(4f)),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                listOf(
-                    "era" to "政治",
-                    "figure" to "人物",
-                    "military" to "军事",
-                    "economy" to "经济",
-                    "invention" to "文化",
-                ).forEach { (id, label) ->
+                // 分类图例短标签来自契约 ContractTokens.CATEGORY_SHORT_LABELS（含顺序）
+                ContractTokens.CATEGORIES.map { it.id to it.labelShort }.forEach { (id, label) ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         // 分类色点：CSS px 语义（8dp 实心圆；EVENT_DOT_PX 是刻度点专用，
                         // 勿再用 designToDp 换算物理画布值——那会缩成 2.7dp）

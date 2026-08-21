@@ -1,8 +1,13 @@
 -- 金朝历史事件 seed（1115—1234）
 -- 字段顺序与 schema.sql 一致；坐标为事件核心地点的经纬度。
-INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('jin', '金朝', 1115, 1234);
+INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('jin', '金朝', 1115, 1234)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  start_year = excluded.start_year,
+  end_year = excluded.end_year
+;
 
-INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('jin', 1114, 1115, 131.25, 45.55, '宁江州之战', '宁江州之战 · 女真抗辽首捷', '完颜阿骨打率女真军在宁江州击败辽军，随后乘胜攻取宾州，辽东诸部相继响应。', '女真军由部落联盟转为能够持续作战的政治军事力量，为金朝建国及随后灭辽奠定基础。', '宁江州（今吉林扶余一带）', 'military'),
   ('jin', 1115, 1115, 126.57, 45.55, '金朝建立', '完颜阿骨打称帝 · 金朝建立', '完颜阿骨打于会宁府称帝，国号金，改元收国，建立女真族政权。', '东北亚政治格局从辽宋对峙转为辽金宋三方竞争，会宁府成为金朝早期政治中心。', '会宁府（今哈尔滨阿城）', 'era'),
   ('jin', 1116, 1117, 126.57, 45.55, '金取辽东', '金军攻取辽东诸州', '金军连续攻取辽阳府及辽东诸州，辽在东北的行政与军事控制迅速瓦解。', '金朝获得稳定的农业、人口与交通资源，国家形态和财政基础明显增强。', '辽阳府', 'military'),
@@ -26,4 +31,14 @@ INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title
   ('jin', 1211, 1215, 116.4, 39.9, '蒙古南侵', '蒙古攻金与中都陷落', '成吉思汗率蒙古军攻金，金宣宗迁都南京开封，中都在蒙古围攻后陷落。', '金朝北方防线崩溃并失去燕云核心，政权被迫南迁，蒙古成为决定金朝命运的新强权。', '中都（今北京）', 'military'),
   ('jin', 1217, 1224, 114.35, 34.78, '金迁汴守局', '金朝迁都南京开封', '金宣宗为避蒙古压力迁都南京开封，集中兵力经营黄河以南，并与南宋长期交战。', '迁都暂时保全金朝中原腹地，却加剧河南、陕西的军费与徭役负担，南北双方民生俱受影响。', '南京开封府', 'era'),
   ('jin', 1232, 1233, 114.35, 34.78, '三峰山之战', '三峰山之战 · 金军主力覆灭', '蒙古军在三峰山击溃金军主力，金朝再无力在河南组织大规模野战，开封陷入孤城困境。', '金朝军事体系遭到决定性打击，蒙古与南宋夹攻金朝的最后阶段由此展开。', '三峰山（今禹州西南）', 'military'),
-  ('jin', 1234, 1234, 114.9, 33.0, '蔡州城破', '蔡州之战 · 金朝灭亡', '宋蒙联军攻破蔡州，金哀宗自缢，末帝完颜承麟战死，金朝灭亡。', '金亡后南宋与蒙古直接接壤，原有缓冲消失；宋蒙战争随即爆发，东亚格局进入蒙古帝国主导的新阶段。', '蔡州（今河南汝南）', 'military');
+  ('jin', 1234, 1234, 114.9, 33.0, '蔡州城破', '蔡州之战 · 金朝灭亡', '宋蒙联军攻破蔡州，金哀宗自缢，末帝完颜承麟战死，金朝灭亡。', '金亡后南宋与蒙古直接接壤，原有缓冲消失；宋蒙战争随即爆发，东亚格局进入蒙古帝国主导的新阶段。', '蔡州（今河南汝南）', 'military')
+ON CONFLICT(dynasty_id, year, short) DO UPDATE SET
+  year_end = excluded.year_end,
+  lng = excluded.lng,
+  lat = excluded.lat,
+  title = excluded.title,
+  detail = excluded.detail,
+  impact = excluded.impact,
+  place = excluded.place,
+  category = excluded.category
+;

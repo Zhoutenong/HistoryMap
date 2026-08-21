@@ -19,12 +19,14 @@ class DesignMetricsTest {
     }
 
     @Test
-    fun `设计 px 转 sp 在 P20 等比并应用全局字体放大`() {
-        // 42px 设计年份 → 14sp（density 3 下渲染回 42px）× FONT_SCALE 1.25 = 17.5sp（渲染 52.5px）
-        assertEquals(14f * DesignMetrics.FONT_SCALE, DesignMetrics.designToSp(42f, 1f), 0.001f)
-        assertEquals(17.5f, DesignMetrics.designToSp(42f, 1f), 0.001f)
-        // FONT_SCALE = 1 时回到设计 1:1（回归保护）
-        assertEquals(14f, DesignMetrics.designToSp(42f, 1f) / DesignMetrics.FONT_SCALE, 0.001f)
+    fun `设计 px 转 sp 在 P20 同值等比`() {
+        // Typography token 与 Web CSS px 同值（逻辑单位）：42px 设计字号 → 42sp（×宽度比例、不÷density）。
+        // 曾误除 3 导致全部 UI/地图标签字号缩小 ~60%，2026-08 修正后 FONT_SCALE 归一 1.0（见 AGENTS.md）
+        assertEquals(1.0f, DesignMetrics.FONT_SCALE, 0.001f)
+        assertEquals(42f, DesignMetrics.designToSp(42f, 1f), 0.001f)
+        // 窄屏（scale 0.667）按比例缩放；若未来重新引入字体整体缩放，FONT_SCALE 应一致作用（回归保护）
+        assertEquals(28.0f, DesignMetrics.designToSp(42f, 0.667f), 0.1f)
+        assertEquals(42f * DesignMetrics.FONT_SCALE, DesignMetrics.designToSp(42f, 1f), 0.001f)
     }
 
     @Test

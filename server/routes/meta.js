@@ -1,16 +1,8 @@
 import { Router } from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { all } from '../db.js';
+import { getPeriodsIndex } from '../data/geo/historical/periods.js';
 
 const router = Router();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 历史边界数据目录（与 overlay 路由共用）
-const HISTORICAL_DIR = path.join(__dirname, '..', 'data', 'geo', 'historical');
 
 /**
  * GET /api/meta?dynasty=song
@@ -30,11 +22,11 @@ router.get('/', async (req, res) => {
     }
     const row = rows[0];
 
-    // 时期边界：读 periods.json，id 去掉朝代前缀后返回给前端
+    // 时期边界：读 periods.json（共享单例，与 overlay 路由同源），
+    // id 去掉朝代前缀后返回给前端
     let periods = [];
-    try {
-      const indexPath = path.join(HISTORICAL_DIR, 'periods.json');
-      const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    const index = getPeriodsIndex();
+    if (index) {
       periods = (index.periods || [])
         .filter((p) => p.id.startsWith(`${dynasty}-`))
         .filter((p) => p.start !== undefined && p.end !== undefined)
@@ -44,8 +36,6 @@ router.get('/', async (req, res) => {
           start: p.start,
           end: p.end
         }));
-    } catch {
-      // periods.json 缺失/损坏时返回空列表，前端回退到默认时期
     }
 
     res.json({

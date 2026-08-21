@@ -24,9 +24,18 @@ class MapRepository(private val context: Context) {
         db.dao().getDynasties()
     }
 
-    /** 朝代全部事件（按年份升序） */
+    /** 朝代全部事件（按年份升序；含 relatedPersons，等价 /api/events 契约） */
     suspend fun getEvents(dynasty: String): List<EventEntity> = withContext(Dispatchers.IO) {
-        db.dao().getEvents(dynasty)
+        val events = db.dao().getEvents(dynasty)
+        val byEvent = db.dao().getEventPersons(dynasty)
+            .groupBy({ it.eventId }, { RelatedPerson(it.personId, it.name, it.title, it.role) })
+        if (byEvent.isEmpty()) events
+        else events.map { it.also { e -> e.relatedPersons = byEvent[e.id] ?: emptyList() } }
+    }
+
+    /** 朝代人物列表（人物视角，按关联事件数降序；等价 /api/persons 契约） */
+    suspend fun getPersons(dynasty: String): List<PersonWithCount> = withContext(Dispatchers.IO) {
+        db.dao().getPersonsWithCount(dynasty)
     }
 
     /** 朝代时期边界（来自 periods.json，等价 /api/meta 的 periods 字段） */
@@ -57,6 +66,14 @@ class MapRepository(private val context: Context) {
     /** 疆域叠加层（等价 GET /api/map/overlay?dynasty=..&period=..） */
     fun getOverlay(dynasty: String, period: String): JSONObject =
         JSONObject(overlayLoader.getOverlay(dynasty, period))
+
+    /** 全时期模式叠加层（P2，等价 GET /api/map/overlay/all?year=..） */
+    fun getAllOverlay(year: Int): JSONObject =
+        JSONObject(overlayLoader.getAllOverlay(year))
+
+    /** 全时期叠加层 JSON 原文（水彩 CPU 缓存 key；与 getAllOverlay 同源） */
+    fun getAllOverlayJson(year: Int): String =
+        overlayLoader.getAllOverlay(year)
 
     /** 叠加层 JSON 原文（水彩 CPU 缓存 key；与 getOverlay 同源，避免重复解析） */
     fun getOverlayJson(dynasty: String, period: String): String =

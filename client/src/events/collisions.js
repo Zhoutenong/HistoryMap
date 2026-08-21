@@ -1,3 +1,5 @@
+import { COLLISION } from '../contract-tokens.js';
+
 /**
  * 屏幕空间碰撞推挤（纯函数，供 EventBubbles.resolve 与单测复用）。
  *
@@ -8,11 +10,11 @@
  *
  * @param {Array<{year:number, rect:{x:number,y:number,w:number,h:number}, fixed?:boolean}>} nodes
  * @param {object} [opts]
- * @param {number} [opts.gap=6]     泡泡间留白（px）
- * @param {number} [opts.maxPush=64] 单方向最大推挤量（px）
+ * @param {number} [opts.gap=6]     泡泡间留白（px，来自契约 contract/tokens.json collision.gap）
+ * @param {number} [opts.maxPush=64] 单方向最大推挤量（px，来自契约 collision.maxPush）
  * @returns {Array<{dx:number, dy:number}>} 每个节点的推挤量（与入参顺序一致）
  */
-export function resolveCollisions(nodes, { gap = 6, maxPush = 64 } = {}) {
+export function resolveCollisions(nodes, { gap = COLLISION.gap, maxPush = COLLISION.maxPush } = {}) {
   const result = nodes.map(() => ({ dx: 0, dy: 0 }));
   // 年份升序；固定障碍（year = -Infinity）自然排最前
   const order = nodes

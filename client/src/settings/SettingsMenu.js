@@ -10,15 +10,34 @@ export class SettingsMenu {
   /**
    * @param {object} opts
    * @param {(settings:object)=>void} [opts.onChange] 设置变更回调，参数为合并后的完整设置
+   * @param {(personId:number|null)=>void} [opts.onPersonFilter] 人物视角切换回调（非持久化设置）
    */
-  constructor({ onChange = () => {} } = {}) {
+  constructor({ onChange = () => {}, onPersonFilter = () => {} } = {}) {
     this.settings = loadSettings();
     this.onChange = onChange;
+    this.onPersonFilter = onPersonFilter;
+    /** 当前朝代人物列表（loadDynasty 注入，人物视角下拉数据源） */
+    this.persons = [];
+    this.personId = null;
     this.btn = document.getElementById('settings-btn');
     this.panel = document.getElementById('settings-panel');
     this._returnFocus = null;
     this._render();
     this._bind();
+  }
+
+  /** 注入当前朝代人物列表（朝代切换时调用，重置选择）。 */
+  setPersons(persons = []) {
+    this.persons = persons;
+    this.personId = null;
+    this._render();
+  }
+
+  /** 外部选中人物（如详情面板人物徽章）：更新下拉并触发过滤回调。 */
+  selectPerson(personId) {
+    this.personId = personId;
+    this._render();
+    this.onPersonFilter(this.personId);
   }
 
   _render() {
@@ -46,6 +65,22 @@ export class SettingsMenu {
           <span class="settings-label all">全部</span>
         </label>
         ${catRows}
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">人物视角</div>
+        <label class="settings-row person-row" for="settings-person">
+          <span class="settings-label">按人物过滤事件</span>
+        </label>
+        <select id="settings-person" class="settings-person-select" aria-label="按人物过滤事件轨迹">
+          <option value="">未选择（显示全部）</option>
+          ${this.persons.map((p) => `
+            <option value="${p.id}" ${this.personId === p.id ? 'selected' : ''}>
+              ${p.name}${p.title ? ` · ${p.title}` : ''}（${p.eventCount} 事件）
+            </option>`).join('')}
+        </select>
+        ${this.personId != null && (this.persons.find((p) => p.id === this.personId)?.note || '')
+          ? `<p class="settings-person-note">${this.persons.find((p) => p.id === this.personId)?.note}</p>` : ''}
       </div>
 
       <div class="settings-section">
@@ -179,6 +214,13 @@ export class SettingsMenu {
       const allBox = this.panel.querySelector('input[data-cat-all]');
       if (allBox) allBox.checked = CATEGORIES.every((c) => next.includes(c.id));
       this._patch({ categories: next });
+      return;
+    }
+
+    // 人物视角（P1）：非持久化，切换即回调；保留 select 焦点便于连续切换
+    if (t.id === 'settings-person') {
+      this.personId = t.value === '' ? null : Number(t.value);
+      this.onPersonFilter(this.personId);
       return;
     }
 

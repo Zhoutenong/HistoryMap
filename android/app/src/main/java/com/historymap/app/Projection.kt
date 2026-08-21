@@ -38,9 +38,10 @@ class MercatorProjection private constructor(
     fun project(p: LngLat): FloatArray = project(p.lng, p.lat)
 
     companion object {
-        /** fitSize 的标定范围（与 Web 版 ChinaMap.js 的 fitProjection 一致） */
-        const val FIT_WIDTH = 1000.0
-        const val FIT_HEIGHT = 800.0
+        /** fitSize 的标定范围（与 Web 版 ChinaMap.js 的 fitProjection 一致；数值来自契约
+         *  ContractTokens，勿本地另写一份——联动的 golden 测试 ProjectionGoldenTest 锚定） */
+        const val FIT_WIDTH: Double = ContractTokens.PROJECTION_FIT_WIDTH
+        const val FIT_HEIGHT: Double = ContractTokens.PROJECTION_FIT_HEIGHT
         private const val CENTER_X = FIT_WIDTH / 2
         private const val CENTER_Y = FIT_HEIGHT / 2
 

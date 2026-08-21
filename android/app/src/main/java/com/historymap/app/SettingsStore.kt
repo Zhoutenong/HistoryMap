@@ -11,14 +11,9 @@ object SettingsStore {
 
     private const val PREFS = "historymap.settings.v1"
 
-    /** 事件分类定义（与 Web 版 store.js CATEGORIES 一致） */
-    val CATEGORY_DEFS = listOf(
-        "era" to "时代格局",
-        "figure" to "名人轨迹",
-        "military" to "军事·领土",
-        "economy" to "经济变革",
-        "invention" to "重要发明",
-    )
+    /** 事件分类定义（id→全称；数值来自契约 ContractTokens，与 Web 版 store.js 同源） */
+    val CATEGORY_DEFS: List<Pair<String, String>> =
+        ContractTokens.CATEGORIES.map { it.id to it.label }
 
     data class Settings(
         val categories: List<String>,
@@ -46,7 +41,7 @@ object SettingsStore {
         val speed = prefs.getString("speed", "normal")
         return Settings(
             categories = cats?.takeIf { it.isNotEmpty() } ?: defaults().categories,
-            speed = if (speed in listOf("slow", "normal", "fast")) speed!! else "normal",
+            speed = if (speed in ContractTokens.SPEED_IDS) speed!! else "normal",
             showTerritory = prefs.getBoolean("showTerritory", true),
             showRivers = prefs.getBoolean("showRivers", true),
             showPrefectures = prefs.getBoolean("showPrefectures", true),

@@ -28,10 +28,10 @@ export function getDb() {
 }
 
 /** 初始化 schema 并执行所有尚未记录的数据迁移。供升级测试使用。 */
-export function initializeDatabase(db) {
+export function initializeDatabase(db, { seedDir } = {}) {
   db.pragma('journal_mode = WAL');
   initSchema(db);
-  migrateData(db);
+  migrateData(db, seedDir);
   return db;
 }
 
@@ -39,50 +39,83 @@ export function initializeDatabase(db) {
 function initSchema(db) {
   const sql = readFileSync(join(DATA_DIR, 'schema.sql'), 'utf8');
   db.exec(sql);
-  migrateEventsColumn(db, 'category', "TEXT NOT NULL DEFAULT 'era'");
-  migrateEventsColumn(db, 'impact', "TEXT NOT NULL DEFAULT ''");
-  migrateEventsColumn(db, 'place', "TEXT NOT NULL DEFAULT ''");
 }
 
 const MIGRATIONS = [
   {
-    version: 1,
+    // 老库 events 缺 category/impact/place 三列（schema.sql 已含，此处仅补老表）。
+    // 放在最前：后续所有 seed 重放都引用这三列，列必须先就位。
+    version: 0,
     apply(db) {
-      seedFiles(db, ['01-song-events.sql']);
+      migrateEventsColumn(db, 'category', "TEXT NOT NULL DEFAULT 'era'");
+      migrateEventsColumn(db, 'impact', "TEXT NOT NULL DEFAULT ''");
+      migrateEventsColumn(db, 'place', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
+  {
+    version: 1,
+    apply(db, seedDir) {
+      seedFiles(db, ['01-song-events.sql'], seedDir);
     },
   },
   {
     version: 2,
-    apply(db) {
-      seedFiles(db, ['02-jin-events.sql']);
+    apply(db, seedDir) {
+      seedFiles(db, ['02-jin-events.sql'], seedDir);
     },
   },
   {
     version: 3,
-    apply(db) {
-      seedFiles(db, ['03-liao-events.sql']);
+    apply(db, seedDir) {
+      seedFiles(db, ['03-liao-events.sql'], seedDir);
     },
   },
   {
     version: 4,
-    apply(db) {
-      seedFiles(db, ['04-yuan-events.sql']);
+    apply(db, seedDir) {
+      seedFiles(db, ['04-yuan-events.sql'], seedDir);
     },
   },
   {
     version: 5,
-    apply(db) {
-      seedFiles(db, ['05-tang-events.sql']);
+    apply(db, seedDir) {
+      seedFiles(db, ['05-tang-events.sql'], seedDir);
+    },
+  },
+  {
+    // P1 内容加深：宋朝事件扩至百条级（北宋第二批 40 条 + 南宋 40 条）
+    version: 6,
+    apply(db, seedDir) {
+      seedFiles(db, ['06-song-northern-events.sql', '07-song-southern-events.sql'], seedDir);
+    },
+  },
+  {
+    // P1 人物视角：persons + event_person（人物轨迹过滤数据源）
+    version: 7,
+    apply(db, seedDir) {
+      seedFiles(db, ['08-song-persons.sql'], seedDir);
+    },
+  },
+  {
+    // P4 考据感显性化：events 补 source/confidence/license 三列（老库 ALTER）+ 赋值
+    version: 8,
+    apply(db, seedDir) {
+      migrateEventsColumn(db, 'source', "TEXT NOT NULL DEFAULT ''");
+      migrateEventsColumn(db, 'confidence', "TEXT NOT NULL DEFAULT 'medium'");
+      migrateEventsColumn(db, 'license', "TEXT NOT NULL DEFAULT '公版古籍'");
+      seedFiles(db, ['09-song-provenance.sql'], seedDir);
     },
   },
 ];
 
-function migrateData(db) {
+function migrateData(db, seedDir) {
   const applied = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all();
   const appliedVersions = new Set(applied.map((row) => row.version));
 
   // The marker only records that a migration was attempted. Reconcile every seed on
   // startup so a database left partially seeded by an older release is repaired.
+  // Seed 语句为按 (dynasty_id, year, short) 身份的 upsert：重放既补「缺」也修「偏」——
+  // 修订既有事件行（改 detail/impact 等）后重启即对既有库生效，seed 文件即事实来源。
   const applyMigrations = db.transaction(() => {
     // Older databases did not enforce a seed identity. Remove only exact
     // identity duplicates before adding the constraint, so recovery is safe.
@@ -95,7 +128,7 @@ function migrateData(db) {
       ON events(dynasty_id, year, short);
     `);
     for (const migration of MIGRATIONS) {
-      migration.apply(db);
+      migration.apply(db, seedDir);
       if (!appliedVersions.has(migration.version)) {
         db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version);
       }
@@ -107,10 +140,10 @@ function migrateData(db) {
   if (newlyApplied.length > 0) console.log(`[db] 已应用 ${newlyApplied.length} 个数据迁移`);
 }
 
-function seedFiles(db, names) {
-  const seedDir = join(DATA_DIR, 'seed');
+function seedFiles(db, names, seedDir) {
+  const dir = seedDir ?? join(DATA_DIR, 'seed');
   for (const name of names) {
-    const filePath = join(seedDir, name);
+    const filePath = join(dir, name);
     if (!existsSync(filePath)) {
       throw new Error(`缺少 seed 文件: ${filePath}`);
     }

@@ -35,40 +35,45 @@ enum class LodTier(val level: Int) {
     }
 }
 
-/** s 判据 → 无滞回档位 */
-fun LodTier.ofScale(s: Float): LodTier = when {
-    s >= 0.40f -> LodTier.L0
-    s >= 0.24f -> LodTier.L1
-    s >= 0.13f -> LodTier.L2
-    else -> LodTier.L3
-}
-
-/**
- * 滞回换挡：缩放临界抖动时保持当前档位（±0.02 死区）。
- * 升档（放大，s 减小）需越过「新档下限 - 滞回」；降档需越过「原档下限 + 滞回」。
- */
-fun nextLod(prev: LodTier, s: Float): LodTier {
-    val HYST = 0.02f
-    return when (prev) {
-        LodTier.L0 -> if (s < 0.40f - HYST) LodTier.L1 else LodTier.L0
-        LodTier.L1 -> when {
-            s < 0.24f - HYST -> LodTier.L2
-            s >= 0.40f + HYST -> LodTier.L0
-            else -> LodTier.L1
-        }
-        LodTier.L2 -> when {
-            s < 0.13f - HYST -> LodTier.L3
-            s >= 0.24f + HYST -> LodTier.L1
-            else -> LodTier.L2
-        }
-        LodTier.L3 -> if (s >= 0.13f + HYST) LodTier.L2 else LodTier.L3
+/** s 判据 → 无滞回档位（阈值来自契约 ContractTokens.LOD_THRESHOLDS） */
+fun LodTier.ofScale(s: Float): LodTier {
+    val t = ContractTokens.LOD_THRESHOLDS // [L0下界, L1下界, L2下界]
+    return when {
+        s >= t[0] -> LodTier.L0
+        s >= t[1] -> LodTier.L1
+        s >= t[2] -> LodTier.L2
+        else -> LodTier.L3
     }
 }
 
-/** s = 可见世界宽 / 世界包围盒宽（可见世界高 = 800×zoom，宽 = 高×宽高比） */
+/**
+ * 滞回换挡：缩放临界抖动时保持当前档位（±hysteresis 死区）。
+ * 升档（放大，s 减小）需越过「新档下限 - 滞回」；降档需越过「原档下限 + 滞回」。
+ * 阈值与滞回来自契约 ContractTokens（与 Web main.js nextLodTier 同源，勿本地另写一份）。
+ */
+fun nextLod(prev: LodTier, s: Float): LodTier {
+    val HYST = ContractTokens.LOD_HYSTERESIS
+    val t = ContractTokens.LOD_THRESHOLDS // [L0下界, L1下界, L2下界]
+    return when (prev) {
+        LodTier.L0 -> if (s < t[0] - HYST) LodTier.L1 else LodTier.L0
+        LodTier.L1 -> when {
+            s < t[1] - HYST -> LodTier.L2
+            s >= t[0] + HYST -> LodTier.L0
+            else -> LodTier.L1
+        }
+        LodTier.L2 -> when {
+            s < t[2] - HYST -> LodTier.L3
+            s >= t[1] + HYST -> LodTier.L1
+            else -> LodTier.L2
+        }
+        LodTier.L3 -> if (s >= t[2] + HYST) LodTier.L2 else LodTier.L3
+    }
+}
+
+/** s = 可见世界宽 / 世界包围盒宽（可见世界高 = 投影高×zoom，宽 = 高×宽高比） */
 fun mapScale(zoom: Float, aspect: Float, worldWidth: Float): Float {
     if (worldWidth <= 0f) return 1f
-    return (800f * zoom * aspect) / worldWidth
+    return (ContractTokens.PROJECTION_FIT_HEIGHT.toFloat() * zoom * aspect) / worldWidth
 }
 
 /**

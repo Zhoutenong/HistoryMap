@@ -84,8 +84,10 @@ node server/scripts/fetch_historical_basemaps.js
 `properties.rivers/mountains/cities/places` 旧格式数组（periods.json 顶层数组作缺失时的兜底）。
 
 地点要素 kind 取值：`capital`（都城）/ `battlefield`（战场）/ `academy`（书院学府）。
-新 kind 需同时加入 `server/routes/overlay.js` 的 `PLACE_KINDS` 白名单与
-`client/src/map/TerritoryOverlay.js` 的 `PLACE_KINDS`，白名单外的未知 kind 会被安全忽略（不报 500）。
+新 kind 需加入 `contract/tokens.json` 的 `placeKinds` 白名单（A2 第二步双端共享契约）并重跑
+`npm run contract:tokens:write`——`server/data/geo/historical/overlay-merge.js`、`client/src/map/TerritoryOverlay.js`
+（经 `client/src/contract-tokens.js`）与 `android/.../ContractTokens.kt` 三端同源消费，
+白名单外的未知 kind 会被安全忽略（不报 500）。
 
 ## 州府级数据（元丰九域志基准，二期扩展）
 

@@ -5,17 +5,19 @@ import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
- * Room 数据层：schema 对齐 server/data/schema.sql（dynasties / events 两表）。
- * 事件/朝代数据单一来源 = assets/seed/ 目录下的 .sql 文件（与后端 server/data/seed 同一份文件，
- * 由 scripts/prepare-android.js 同步），首次建库时重放（INSERT OR IGNORE 幂等）。
+ * Room 数据层：schema 对齐 server/data/schema.sql（dynasties / events / persons / event_person）。
+ * 事件/朝代/人物数据单一来源 = assets/seed/ 目录下的 .sql 文件（与后端 server/data/seed 同一份文件，
+ * 由 scripts/prepare-android.mjs 同步），首次建库时重放（upsert 幂等；老 SQLite 见 SeedImporter 兼容层）。
  */
 
 /** 朝代元信息（对齐 dynasties 表） */
@@ -33,6 +35,9 @@ data class DynastyEntity(
     indices = [
         Index("dynasty_id", "year"),
         Index("dynasty_id", "category"),
+        // seed 文件按 (dynasty_id, year, short) 身份 upsert（对齐 server db.js 的
+        // idx_events_seed_identity）；ON CONFLICT 必须命中唯一约束，否则 SQLite 报错。
+        Index(name = "idx_events_seed_identity", value = ["dynasty_id", "year", "short"], unique = true),
     ],
 )
 data class EventEntity(
@@ -48,6 +53,71 @@ data class EventEntity(
     val impact: String = "",
     val place: String = "",
     val category: String = "era",
+    /** 史料来源（P4 考据感，等价 /api/events 的 source/confidence/license） */
+    val source: String = "",
+    val confidence: String = "medium",
+    val license: String = "公版古籍",
+) {
+    /** 事件关联人物（查询期由 event_person/persons JOIN 组装；@Ignore 不入库。
+     *  放类体而非构造参数（构造参数 @Ignore 会让 Room 找不到可用构造器）；
+     *  注意 data class copy() 不携带本字段——装配只在 MapRepository.getEvents 一处完成。 */
+    @Ignore
+    var relatedPersons: List<RelatedPerson> = emptyList()
+}
+
+/** 事件关联人物（对齐 /api/events 的 relatedPersons 字段：[{id,name,title,role}]） */
+data class RelatedPerson(
+    val id: Long,
+    val name: String,
+    val title: String,
+    val role: String,   // lead 主导 / involved 牵连
+)
+
+/** 人物（对齐 persons 表：P1 人物视角） */
+@Entity(
+    tableName = "persons",
+    indices = [Index(value = ["dynasty_id", "name"], unique = true)],
+)
+data class PersonEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "dynasty_id") val dynastyId: String,
+    val name: String,
+    val title: String = "",
+    @ColumnInfo(name = "birth_year") val birthYear: Int? = null,
+    @ColumnInfo(name = "death_year") val deathYear: Int? = null,
+    val note: String = "",
+)
+
+/** 事件 ↔ 人物关联（对齐 event_person 表） */
+@Entity(
+    tableName = "event_person",
+    primaryKeys = ["event_id", "person_id"],
+    indices = [Index("person_id")],
+)
+data class EventPersonEntity(
+    @ColumnInfo(name = "event_id") val eventId: Long,
+    @ColumnInfo(name = "person_id") val personId: Long,
+    val role: String = "involved",
+)
+
+/** 人物视角列表行（persons + 关联事件数，等价 /api/persons 响应） */
+data class PersonWithCount(
+    val id: Long,
+    val name: String,
+    val title: String,
+    @ColumnInfo(name = "birth_year") val birthYear: Int?,
+    @ColumnInfo(name = "death_year") val deathYear: Int?,
+    val note: String,
+    @ColumnInfo(name = "event_count") val eventCount: Int,
+)
+
+/** event_person ↔ persons JOIN 行（组装 relatedPersons 用） */
+data class EventPersonJoin(
+    @ColumnInfo(name = "event_id") val eventId: Long,
+    @ColumnInfo(name = "person_id") val personId: Long,
+    val role: String,
+    val name: String,
+    val title: String,
 )
 
 @Dao
@@ -58,11 +128,29 @@ interface HistoryDao {
 
     @Query("SELECT * FROM events WHERE dynasty_id = :dynasty ORDER BY year ASC")
     fun getEvents(dynasty: String): List<EventEntity>
+
+    @Query(
+        "SELECT p.id AS id, p.name AS name, p.title AS title, p.birth_year AS birth_year, " +
+            "p.death_year AS death_year, p.note AS note, COUNT(ep.event_id) AS event_count " +
+            "FROM persons p LEFT JOIN event_person ep ON ep.person_id = p.id " +
+            "WHERE p.dynasty_id = :dynasty " +
+            "GROUP BY p.id ORDER BY event_count DESC, p.id ASC"
+    )
+    fun getPersonsWithCount(dynasty: String): List<PersonWithCount>
+
+    @Query(
+        "SELECT ep.event_id AS event_id, ep.person_id AS person_id, ep.role AS role, " +
+            "p.name AS name, p.title AS title " +
+            "FROM event_person ep JOIN persons p ON p.id = ep.person_id " +
+            "JOIN events e ON e.id = ep.event_id " +
+            "WHERE e.dynasty_id = :dynasty"
+    )
+    fun getEventPersons(dynasty: String): List<EventPersonJoin>
 }
 
 @Database(
-    entities = [DynastyEntity::class, EventEntity::class],
-    version = 1,
+    entities = [DynastyEntity::class, EventEntity::class, PersonEntity::class, EventPersonEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class HistoryDb : RoomDatabase() {
@@ -73,11 +161,56 @@ abstract class HistoryDb : RoomDatabase() {
         @Volatile
         private var instance: HistoryDb? = null
 
+        /**
+         * v1 → v2（P1 人物视角）：建 persons/event_person 两表。
+         * v2 → v3（P4 考据感）：events 补 source/confidence/license 三列，
+         *   并重放 seed（upsert 语义）让既有安装同步获得事件/人物/考据数据
+         *   （重放放 2→3 而非 1→2：09 号考据 seed 的 UPDATE 引用新列，列须先就位）。
+         * v3 → v4（A4 修复）：events 补 (dynasty_id, year, short) 唯一索引——
+         *   seed 的 ON CONFLICT 必须命中唯一约束，否则新设备 upsert 重放会直接报错。
+         */
+        private fun migration1To2(context: Context): Migration = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `persons` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`dynasty_id` TEXT NOT NULL, `name` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`birth_year` INTEGER, `death_year` INTEGER, `note` TEXT NOT NULL)"
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_persons_dynasty_id_name` ON `persons` (`dynasty_id`, `name`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `event_person` (`event_id` INTEGER NOT NULL, " +
+                        "`person_id` INTEGER NOT NULL, `role` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`event_id`, `person_id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_event_person_person_id` ON `event_person` (`person_id`)")
+            }
+        }
+
+        private fun migration2To3(context: Context): Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `events` ADD COLUMN `source` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `events` ADD COLUMN `confidence` TEXT NOT NULL DEFAULT 'medium'")
+                db.execSQL("ALTER TABLE `events` ADD COLUMN `license` TEXT NOT NULL DEFAULT '公版古籍'")
+                // 先补唯一索引再重放 seed：seed 的 ON CONFLICT(dynasty_id, year, short)
+                // 依赖该约束，否则 SQLite 直接报错（对齐 v3 全新建库的 schema）。
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `idx_events_seed_identity` ON `events` (`dynasty_id`, `year`, `short`)")
+                SeedImporter.import(context, db)
+            }
+        }
+
+        private fun migration3To4(): Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 已建 v3 库补齐唯一索引（未随 v2→v3 创建；不重放 seed——数据已在库内）。
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `idx_events_seed_identity` ON `events` (`dynasty_id`, `year`, `short`)")
+            }
+        }
+
         fun get(context: Context): HistoryDb {
             val appContext = context.applicationContext
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(appContext, HistoryDb::class.java, "historymap.db")
                     .addCallback(SeedCallback(appContext))
+                    .addMigrations(migration1To2(appContext), migration2To3(appContext), migration3To4())
                     .build()
                     .also { instance = it }
             }
@@ -85,9 +218,8 @@ abstract class HistoryDb : RoomDatabase() {
     }
 
     /**
-     * 首次建库时重放 assets/seed/ 目录的 .sql 文件（INSERT OR IGNORE 幂等）。
-     * 注意：Room 的 onCreate 仅在数据库首次创建时执行；日后若 seed 数据变更，
-     * 需 bump version + 提供 Migration（或卸载重装）。
+     * 首次建库时重放 assets/seed/ 目录的 .sql 文件（upsert 幂等；老 SQLite 自动降级见 SeedImporter）。
+     * 注意：Room 的 onCreate 仅在数据库首次创建时执行；结构性变更走 Migration。
      */
     private class SeedCallback(private val context: Context) : Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
@@ -101,14 +233,40 @@ abstract class HistoryDb : RoomDatabase() {
 object SeedImporter {
 
     fun import(context: Context, db: SupportSQLiteDatabase) {
+        // seed 文件用 ON CONFLICT ... DO UPDATE（SQLite ≥3.24）实现「修偏」自愈；
+        // 老设备框架 SQLite（API 28 以下为 3.9–3.22）不支持，降级为 INSERT OR IGNORE
+        //（保留「补缺」能力，放弃「修偏」——老设备首次建库时表为空，语义无损）。
+        val upsertSupported = probeUpsert(db)
         val names = context.assets.list("seed") ?: return
         names.filter { it.endsWith(".sql") }.sorted().forEach { file ->
             val sql = context.assets.open("seed/$file")
                 .bufferedReader(Charsets.UTF_8).use { it.readText() }
             splitStatements(sql).forEach { stmt ->
-                if (stmt.isNotBlank()) db.execSQL(stmt)
+                if (stmt.isNotBlank()) db.execSQL(if (upsertSupported) stmt else downgradeUpsert(stmt))
             }
         }
+    }
+
+    /** 用临时表探测当前 SQLite 是否支持 upsert（探测失败静默视为不支持）。 */
+    private fun probeUpsert(db: SupportSQLiteDatabase): Boolean = try {
+        db.execSQL("CREATE TEMP TABLE IF NOT EXISTS _upsert_probe(x INTEGER PRIMARY KEY, y TEXT)")
+        db.execSQL("DELETE FROM _upsert_probe")
+        db.execSQL("INSERT INTO _upsert_probe(x, y) VALUES(1, 'a') ON CONFLICT(x) DO UPDATE SET y = 'b'")
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /**
+     * 把 `INSERT INTO t … ON CONFLICT(…) DO UPDATE SET …` 降级为 `INSERT OR IGNORE INTO t …`。
+     * 仅处理本仓库 seed 文件的固定形态（每条语句最多一个 ON CONFLICT 子句、置于语句尾部）。
+     */
+    fun downgradeUpsert(stmt: String): String {
+        val idx = stmt.indexOf(" ON CONFLICT")
+        if (idx < 0) return stmt
+        return stmt.substring(0, idx)
+            .replaceFirst("INSERT INTO", "INSERT OR IGNORE INTO")
+            .trimEnd()
     }
 
     /**

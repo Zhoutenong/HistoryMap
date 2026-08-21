@@ -1,6 +1,8 @@
 // 设置持久化层（项目首个 localStorage 使用点）。
 // 单一存取入口：业务层只调 loadSettings() / saveSettings(patch)，
-// 不直接碰 localStorage，方便未来换端（Android WebView bridge）时替换实现。
+// 不直接碰 localStorage，方便未来替换存储实现。
+
+import { CATEGORIES as CONTRACT_CATEGORIES, SPEEDS } from '../contract-tokens.js';
 
 const KEY = 'historymap.settings.v1';
 
@@ -18,17 +20,27 @@ function getStorage() {
  * 事件分类定义（顺序即设置面板里的展示顺序，color 给泡泡 dot 用）。
  * id 与后端 events.category 取值一一对应。
  * 颜色为古典色系（与 styles.css 的 .cat-xxx 对应）。
+ * id/label（及 Android 用到的 labelShort）来自契约 contract/tokens.json；
+ * color 属视觉层（与 design-tokens.json / Android MapVisualTokens 同色系），
+ * 在此本地维护，避免与既有视觉 token 管线双源冲突。
  */
-export const CATEGORIES = [
-  { id: 'era', label: '时代格局', color: '#b03a2e' },      // 朱砂
-  { id: 'figure', label: '名人轨迹', color: '#6e5a7e' },   // 紫檀
-  { id: 'military', label: '军事·领土', color: '#a0622d' },// 赭石
-  { id: 'economy', label: '经济变革', color: '#5f7d4f' },  // 竹绿
-  { id: 'invention', label: '重要发明', color: '#46647f' } // 黛蓝
-];
+const CATEGORY_COLORS = {
+  era: '#b03a2e',        // 朱砂
+  figure: '#6e5a7e',     // 紫檀
+  military: '#a0622d',   // 赭石
+  economy: '#5f7d4f',    // 竹绿
+  invention: '#46647f',  // 黛蓝
+};
+// 契约新增分类但本地未配色时的兜底色（墨灰），避免 color 为 undefined 导致气泡无色
+const CATEGORY_COLOR_FALLBACK = '#6b6b6b';
+export const CATEGORIES = CONTRACT_CATEGORIES.map(({ id, label }) => ({
+  id,
+  label,
+  color: CATEGORY_COLORS[id] ?? CATEGORY_COLOR_FALLBACK,
+}));
 
-/** 播放速度档位 → tickMs 映射。 */
-export const SPEED_MAP = { slow: 220, normal: 110, fast: 50 };
+/** 播放速度档位 → tickMs 映射（数值来自契约 contract/tokens.json speeds）。 */
+export const SPEED_MAP = { ...SPEEDS };
 
 export const defaultSettings = {
   // 默认开「时代格局 + 军事·领土」：南宋后期（1206-1279）事件全是 military

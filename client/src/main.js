@@ -8,13 +8,15 @@ import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
 import { buildTerritoryOverlay, fadeIn, getOverlayCacheStats } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
-import { getMap, getEvents, getMeta, getOverlay, getDynasties, getPlace } from './api.js';
+import { getMap, getEvents, getMeta, getOverlay, getDynasties, getPlace, getPersons, getAllOverlay } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
 import { loadSettings, saveSettings, SPEED_MAP, CATEGORIES } from './settings/store.js';
 import { clearChildren } from './dom.js';
 import { settingsFromParam } from './settings/transfer.js';
 import { parseViewParams, viewToQuery, buildShareUrl, copyText } from './share.js';
+import { buildEventCardSVG, eventSummary, captureMapImage, svgToPngBlob, copyPngToClipboard, downloadBlob } from './events/EventCard.js';
 import { SettingsMenu } from './settings/SettingsMenu.js';
+import { LOD } from './contract-tokens.js';
 import './styles.css';
 
 // 默认朝代。未来切换朝代只改这个常量 + 后端数据，地图/泡泡层无需改（AGENTS.md 扩展点）。
@@ -58,24 +60,26 @@ dirLight.position.set(200, -400, 600);
 scene.add(dirLight);
 
 // —— LOD 档位（docs/requirements/zoom-lod-requirements.md §4.2，与 Android LodLevel.kt:nextLod 状态机同源）——
+// 阈值与滞回数值来自 contract/tokens.json（双端唯一事实来源，本地不再手写一份）。
 // s = 可见世界宽 / 世界包围盒宽；0=L0 全国 / 1=L1 区域 / 2=L2 省域 / 3=L3 州府级。
-// 滞回 ±0.02：以「prev↔next 分界线」为判据（放大越过新档下限-滞回、缩小越过原档下限+滞回），
-// 缩放临界抖动不反复换档。animate 循环每帧计算，变化时驱动 overlay.setLod。
-const LOD_HYST = 0.02;
+// 滞回（contract lod.hysteresis）：以「prev↔next 分界线」为判据（放大越过新档下限-滞回、
+// 缩小越过原档下限+滞回），缩放临界抖动不反复换档。animate 循环每帧计算，变化时驱动 overlay.setLod。
+const LOD_HYST = LOD.hysteresis;
+const [L0_LOWER, L1_LOWER, L2_LOWER] = LOD.thresholds; // L0/L1/L2 档下界（降序）
 const lodState = { overlay: null, tier: 0 };
 // 状态机式换挡（与 Android nextLod 逐分支一致）：输入「当前档位 + 实时 s」，输出下一档位。
 function nextLodTier(prev, s) {
   switch (prev) {
-    case 0: return s < 0.40 - LOD_HYST ? 1 : 0;
+    case 0: return s < L0_LOWER - LOD_HYST ? 1 : 0;
     case 1:
-      if (s < 0.24 - LOD_HYST) return 2;
-      if (s >= 0.40 + LOD_HYST) return 0;
+      if (s < L1_LOWER - LOD_HYST) return 2;
+      if (s >= L0_LOWER + LOD_HYST) return 0;
       return 1;
     case 2:
-      if (s < 0.13 - LOD_HYST) return 3;
-      if (s >= 0.24 + LOD_HYST) return 1;
+      if (s < L2_LOWER - LOD_HYST) return 3;
+      if (s >= L1_LOWER + LOD_HYST) return 1;
       return 2;
-    default: return s >= 0.13 + LOD_HYST ? 2 : 3;
+    default: return s >= L2_LOWER + LOD_HYST ? 2 : 3;
   }
 }
 function updateLod() {
@@ -229,6 +233,11 @@ animate();
     let periodMeta = null;    // /api/meta 返回（含 periods）
     let currentEvents = [];   // 当前朝代事件
     let timeline = null;
+
+    // e2e 测试钩子（Playwright 经 window.setYearForTest/pauseForTest 驱动时间轴；
+    // 生产环境无人调用，无副作用）
+    window.setYearForTest = (y) => { if (timeline) timeline.setYear(y); };
+    window.pauseForTest = () => { if (timeline) timeline.pause(); };
     let bubbles = null;
     let legend = null;
     let eventLog = null;
@@ -340,10 +349,57 @@ animate();
           shareBtn.classList.remove('detail-share-ok');
         }, 1600);
       });
+      // 分享卡片（P3）：地图截图 + 年份水印 + 事件简述 → PNG 下载（并尝试复制到剪贴板）
+      const cardBtn = addText('button', 'detail-share', '卡片', head);
+      cardBtn.type = 'button';
+      cardBtn.title = '生成并下载分享卡片图';
+      cardBtn.setAttribute('aria-label', '生成并下载分享卡片图');
+      cardBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        cardBtn.textContent = '生成中';
+        try {
+          const mapImage = captureMapImage(renderer, scene, camera);
+          const svgText = buildEventCardSVG({
+            year: ev.year,
+            title: ev.title || ev.short || '未命名事件',
+            place: ev.place || '',
+            summary: eventSummary(ev.detail || ''),
+            dynastyName: periodMeta?.name || '',
+            mapDataUrl: mapImage || '',
+            footnote: `中国历史地图 · ${location.host}${viewToQuery({ dynasty: currentDynasty, year: ev.year, event: ev.id })}`,
+          });
+          const blob = await svgToPngBlob(svgText);
+          downloadBlob(blob, `historymap-${currentDynasty}-${ev.year}.png`);
+          const copied = await copyPngToClipboard(blob);
+          cardBtn.textContent = copied ? '已下载·复制' : '已下载';
+        } catch (err) {
+          console.error('[card] 卡片生成失败:', err);
+          cardBtn.textContent = '失败';
+        }
+        setTimeout(() => { cardBtn.textContent = '卡片'; }, 1800);
+      });
       detailPanel.appendChild(head);
       const detailTitle = addText('h2', '', ev.title || '未命名事件');
       detailTitle.id = 'detail-title';
       if (ev.place) addText('div', 'detail-meta', ev.place);
+      // 相关人物（P1 人物视角）：点击徽章直接进入该人物的事件轨迹过滤
+      if (Array.isArray(ev.relatedPersons) && ev.relatedPersons.length > 0) {
+        const chips = document.createElement('div');
+        chips.className = 'detail-person-chips';
+        ev.relatedPersons.forEach((p) => {
+          const chip = addText('button', 'detail-person-chip', p.name, chips);
+          chip.type = 'button';
+          const roleText = p.role === 'lead' ? '主导' : '牵连';
+          chip.title = p.title ? `${p.title}（${roleText}）` : roleText;
+          if (p.role === 'lead') chip.classList.add('lead');
+          chip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsMenu?.selectPerson(p.id);
+            closeDetail();
+          });
+        });
+        detailPanel.appendChild(chips);
+      }
       addText('div', 'detail-divider', '');
       addText('p', 'detail-text', ev.detail || '暂无详情');
       if (ev.impact) {
@@ -352,6 +408,15 @@ animate();
         addText('div', 'detail-impact-title', '影 响', impact);
         addText('p', '', ev.impact, impact);
         detailPanel.appendChild(impact);
+      }
+      // 资料来源（P4 考据感）：古籍出处 + 置信度 + 许可（不依赖时空库，随事件数据走）
+      if (ev.source) {
+        const source = document.createElement('div');
+        source.className = 'detail-impact';
+        const confText = ev.confidence === 'high' ? '史有明文' : '综合整理';
+        addText('div', 'detail-impact-title', '资料来源', source);
+        addText('p', '', `${ev.source} · 置信度：${confText} · ${ev.license}`, source);
+        detailPanel.appendChild(source);
       }
       if (related.length) {
         const relatedPanel = document.createElement('div');
@@ -495,6 +560,14 @@ animate();
         box.className = 'detail-impact';
         addText('div', 'detail-impact-title', '沿 革 · 舆地广记', box);
         addText('p', '', `${props.evolution}…`, box);
+        detailPanel.appendChild(box);
+      }
+      // 校订说明（P4）：sourceFix 为数据管线按舆地广记对四库本误刻的校正记录
+      if (props.sourceFix) {
+        const box = document.createElement('div');
+        box.className = 'detail-impact';
+        addText('div', 'detail-impact-title', '校 订', box);
+        addText('p', '', props.sourceFix, box);
         detailPanel.appendChild(box);
       }
       if (props.countyCount !== null && props.countyCount !== undefined) {
@@ -726,8 +799,80 @@ animate();
       } catch { /* 回落 loadDynasty 兜底标定 */ }
     }
 
+    // —— 全时期模式（P2）：给定年份展示当时全部政权（宋/辽/西夏/金等同屏）——
+    // 状态：模式开关 + 命中集合稳定区间（properties._range，服务端计算）。
+    // 年份仍在区间内时命中集合不变，跳过重取（自动播放每 tick 一年，节流必需）。
+    let allPeriodMode = false;
+    let allOverlayRange = null;
+
+    async function reloadAllOverlay(year) {
+      const requestSeq = ++overlayRequestSeq;
+      overlayController?.abort();
+      const controller = new AbortController();
+      overlayController = controller;
+      try {
+        const freshOverlay = await getAllOverlay(year, { signal: controller.signal });
+        if (requestSeq !== overlayRequestSeq || !allPeriodMode) return;
+        clearOverlayGroup(territoryOverlay.group);
+        currentOverlayData = freshOverlay;
+        const newOverlay = buildTerritoryOverlay(freshOverlay, {
+          period: 'all',
+          layerConfig: 'default',
+          onPickPrefecture: (pref) => showPlaceDetail(pref),
+        });
+        while (newOverlay.group.children.length > 0) {
+          territoryOverlay.group.add(newOverlay.group.children[0]);
+        }
+        if (lodState.overlay && newOverlay.worldBox) {
+          lodState.overlay.worldBox = newOverlay.worldBox;
+        }
+        fadeIn(territoryOverlay.group);
+        legend.update(freshOverlay);
+        allOverlayRange = freshOverlay.properties?._range || null;
+        overlayEmpty = !Array.isArray(freshOverlay?.features) || freshOverlay.features.length === 0;
+        loadingEl.textContent = overlayEmpty ? '当前年份暂无疆域数据' : '';
+        loadingEl.classList.toggle('hidden', !overlayEmpty);
+      } catch (err) {
+        if (!isAbortError(err)) console.error('[all-period] 全时期叠加层加载失败:', err);
+      }
+    }
+
+    const allPeriodBtn = document.getElementById('allperiod-toggle');
+    if (allPeriodBtn) {
+      allPeriodBtn.addEventListener('click', async () => {
+        allPeriodMode = !allPeriodMode;
+        allPeriodBtn.classList.toggle('active', allPeriodMode);
+        allPeriodBtn.setAttribute('aria-pressed', String(allPeriodMode));
+        dynastySelect.disabled = allPeriodMode;
+        if (allPeriodMode) {
+          // 时间轴范围 → 全部朝代并集；疆域切到全时期叠加层
+          try {
+            const ds = await getDynasties();
+            const start = Math.min(...ds.map((d) => d.startYear));
+            const end = Math.max(...ds.map((d) => d.endYear));
+            timeline.setRange(start, end, { resetYear: false });
+          } catch (err) {
+            console.warn('[all-period] 朝代列表加载失败，保持原时间轴范围:', err);
+          }
+          await reloadAllOverlay(timeline.year);
+        } else {
+          // 回到朝代模式：恢复当前朝代的 overlay/时间轴范围/时期状态
+          allOverlayRange = null;
+          await loadDynasty(currentDynasty);
+        }
+      });
+    }
+
     async function loadDynasty(dynastyId) {
       await ensureProjection();
+      // 深链接/popstate 切朝代时若在全时期模式，先退出（朝代模式为准）
+      if (allPeriodMode && allPeriodBtn) {
+        allPeriodMode = false;
+        allOverlayRange = null;
+        allPeriodBtn.classList.remove('active');
+        allPeriodBtn.setAttribute('aria-pressed', 'false');
+        dynastySelect.disabled = false;
+      }
       const requestSeq = ++dynastyRequestSeq;
       dynastyController?.abort();
       overlayController?.abort();
@@ -740,15 +885,19 @@ animate();
       const initialPeriod = meta.periods?.find((p) => meta.startYear >= p.start && meta.startYear <= p.end)?.id
         || meta.periods?.[0]?.id
         || '1111';
-      const [geojson, overlayGeojson, events] = await Promise.all([
+      const [geojson, overlayGeojson, events, persons] = await Promise.all([
         getMap({ signal: controller.signal }),
         getOverlay(dynastyId, initialPeriod, { signal: controller.signal }),
         getEvents(dynastyId, { signal: controller.signal }),
+        // 人物列表（人物视角）：老后端无该路由时静默降级为空列表
+        getPersons(dynastyId, { signal: controller.signal }).catch(() => []),
       ]);
       if (requestSeq !== dynastyRequestSeq) return false;
 
       currentDynasty = dynastyId;
       periodMeta = meta;
+      // 人物视角：注入当前朝代人物列表并重置选择（泡泡层随朝代重建，过滤天然归零）
+      settingsMenu?.setPersons(Array.isArray(persons) ? persons : []);
       // 朝代数据只有在全部请求成功后才提交；此时同步页面标题和印章，
       // 避免切换期间仍显示上一个朝代的品牌信息。
       const brandSeal = document.querySelector('.brand-seal');
@@ -849,6 +998,15 @@ animate();
             watermark.textContent = y;
             bubbles.update(y, prevYear);
             territoryOverlay.update(y);
+            // 全时期模式（P2）：年份离开命中集合稳定区间（_range）时重取全部政权
+            if (allPeriodMode) {
+              const [rangeStart, rangeEnd] = allOverlayRange || [];
+              if (rangeStart === undefined || y < rangeStart || y > rangeEnd) {
+                await reloadAllOverlay(y);
+              }
+              prevYear = y;
+              return;
+            }
             // 跨过时期边界时，重载疆域叠加层
             const newPeriod = getPeriodForYear(y);
             if (newPeriod && newPeriod !== currentPeriod) {
@@ -925,7 +1083,7 @@ animate();
       tlRange.textContent = `${meta.startYear} — ${meta.endYear}`;
     }
 
-    // 设置菜单：分类/速度/自动播放/底图显隐
+    // 设置菜单：分类/速度/自动播放/底图显隐 + 人物视角过滤
     const settingsMenu = new SettingsMenu({
       onChange: (s) => {
         bubbles.setCategories(s.categories);
@@ -936,7 +1094,11 @@ animate();
         if (territoryOverlay.setAuxiliaryVisibility) {
           territoryOverlay.setAuxiliaryVisibility(s);
         }
-      }
+      },
+      onPersonFilter: (personId) => {
+        // 人物视角：只保留该人物关联的事件泡泡（relatedPersons 由 /api/events 附带）
+        bubbles?.setPersonFilter(personId);
+      },
     });
 
     // 初始加载

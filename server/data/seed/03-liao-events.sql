@@ -2,9 +2,14 @@
 -- 字段顺序与 schema.sql 一致；坐标为事件核心地点的经纬度。
 -- category 取值：era 时代格局 / figure 名人轨迹 / military 军事·领土 / economy 经济变革 / invention 重要发明
 
-INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('liao', '辽朝', 916, 1125);
+INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('liao', '辽朝', 916, 1125)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  start_year = excluded.start_year,
+  end_year = excluded.end_year
+;
 
-INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('liao', 916, 916, 120.65, 42.85, '阿保机称帝', '耶律阿保机称帝 · 契丹建国', '耶律阿保机统一契丹八部后于龙化州称帝，建立契丹国，改元神册，创建以契丹贵族为核心、融合汉制的政权体制。', '契丹由部落联盟转为君主制国家，成为此后三百年东亚北方的常驻强权，与中原诸朝长期并立。', '龙化州（今内蒙古奈曼旗一带）', 'era'),
   ('liao', 918, 918, 119.38, 43.98, '建上京临潢府', '契丹营建上京临潢府', '阿保机在潢水之北营建皇都，后称上京临潢府，分南北两城，南城住汉人、渤海人，北城为契丹人聚落。', '上京成为契丹国家的政治与宗教中心，城市格局体现「因俗而治」的二元治理思想。', '上京临潢府（今内蒙古巴林左旗）', 'era'),
   ('liao', 920, 920, 119.38, 43.98, '创制契丹文字', '契丹大字创制', '阿保机命耶律突吕不等人参照汉字创制契丹大字，颁行全国，后又创契丹小字。', '契丹成为东亚少数拥有本族文字体系的政权，文字应用于诏令、碑铭与账簿，强化了族群认同。', '上京临潢府', 'invention'),
@@ -25,4 +30,14 @@ INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title
   ('liao', 1120, 1120, 119.38, 43.98, '金陷上京', '金军攻克上京临潢府', '金军与宋结海上之盟后西进，攻破辽上京临潢府，辽朝统治中心沦陷。', '辽失去政治象征与后方基地，宋金夹攻之势形成，辽的灭亡只是时间问题。', '上京临潢府', 'military'),
   ('liao', 1122, 1122, 116.4, 39.9, '北辽建立', '耶律淳称帝 · 北辽建立', '金军逼近燕京，辽南京留守耶律淳在燕京被拥立为帝，史称北辽，仅数月即死，余众转投天祚帝或降金。', '北辽短暂存在反映了辽政权瓦解过程中的分裂，燕京最终落入金军之手。', '燕京（今北京）', 'era'),
   ('liao', 1124, 1124, 111.45, 41.09, '耶律大石西走', '耶律大石西走 · 西辽前奏', '辽宗室耶律大石自夹山出走，率契丹余部西迁，后在叶密立称帝，建立西辽，延续契丹国祚。', '契丹文明在草原西端延续近百年，西辽成为沟通东西的枢纽政权。', '夹山（今内蒙古武川一带）', 'figure'),
-  ('liao', 1125, 1125, 113.19, 39.56, '天祚帝被俘', '天祚帝被俘 · 辽朝灭亡', '金军追击辽天祚帝于应州，天祚帝被俘，辽朝正式灭亡，其残余势力继续在西北与西域活动。', '辽亡改变宋辽金三方均势，金随即南下攻宋，靖康之变与南宋偏安由此展开。', '应州（今山西应县）', 'military');
+  ('liao', 1125, 1125, 113.19, 39.56, '天祚帝被俘', '天祚帝被俘 · 辽朝灭亡', '金军追击辽天祚帝于应州，天祚帝被俘，辽朝正式灭亡，其残余势力继续在西北与西域活动。', '辽亡改变宋辽金三方均势，金随即南下攻宋，靖康之变与南宋偏安由此展开。', '应州（今山西应县）', 'military')
+ON CONFLICT(dynasty_id, year, short) DO UPDATE SET
+  year_end = excluded.year_end,
+  lng = excluded.lng,
+  lat = excluded.lat,
+  title = excluded.title,
+  detail = excluded.detail,
+  impact = excluded.impact,
+  place = excluded.place,
+  category = excluded.category
+;

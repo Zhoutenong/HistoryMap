@@ -1,71 +1,36 @@
 package com.historymap.app
 
-import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.opengl.GLSurfaceView
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.util.Log
 import org.json.JSONObject
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.alpha
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
@@ -79,7 +44,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -87,31 +51,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-
-/**
- * 朝代加载结果（loadDynasty 一次性获取的数据）。
- */
-private data class DynastyLoadResult(
-    val model: OverlayModel,
-    val events: List<EventEntity>,
-    val periods: List<PeriodInfo>,
-    val initialPeriod: String,
-    val json: String,
-)
-
-/**
- * 泡泡点击命中参数快照（组合期由 MapScreen 持续写入，GL touch listener 读取）。
- * 地图手势统一收口在 GLSurfaceView 后，泡泡 tap 检测也走 Android 手势链路。
- */
-private data class BubbleHitArgs(
-    val events: List<EventEntity>,
-    val labels: List<PlacedMapLabel>,
-    val selectedId: Long?,
-    val safeTop: Float,
-    val safeBottom: Float,
-    val density: Float,
-    val onTap: (EventEntity) -> Unit,
-)
 
 /**
  * 地图主界面：顶栏（朝代下拉） + 地图（GLSurfaceView） + 标注层 +
@@ -163,6 +102,11 @@ fun MapScreen() {
     var seenEvents by remember { mutableStateOf(emptyList<EventEntity>()) }
     var logOpen by remember { mutableStateOf(false) }
     var prevYear by remember { mutableStateOf<Int?>(null) }
+    // 人物视角（P1）：当前朝代人物列表 + 选中过滤（会话级，不持久化；朝代切换重置）
+    var persons by remember { mutableStateOf(emptyList<PersonWithCount>()) }
+    var personFilterId by remember { mutableStateOf<Long?>(null) }
+    // 州府考据卡片（P4）：治所标签点击打开，数据随 GeoJSON 要素属性走（不依赖时空库）
+    var selectedPrefecture by remember { mutableStateOf<PrefecturePolygon?>(null) }
     // 设置（M5b：分类/速度/图层显隐；SharedPreferences 持久化，重启保持）
     var settingsOpen by remember { mutableStateOf(false) }
     var activeCategories by remember { mutableStateOf(SettingsStore.defaults().categories) }
@@ -215,6 +159,7 @@ fun MapScreen() {
                 DynastyLoadResult(
                     model = OverlayParser.parse(JSONObject(json)),
                     events = repo.getEvents(id),
+                    persons = repo.getPersons(id),
                     periods = repo.getPeriods(id),
                     initialPeriod = period,
                     json = json,
@@ -228,11 +173,14 @@ fun MapScreen() {
             restoredDynasty = id // 持久化当前朝代 id（进程恢复/Activity 重建后回到本朝代）
             dynastyName = dynasty.name
             events = data.events
+            persons = data.persons
+            personFilterId = null
             dynastyStart = dynasty.startYear
             dynastyEnd = dynasty.endYear
             periods = data.periods
             currentPeriodId = data.initialPeriod
             periodLoading = null
+            periodBanner = null // 朝代切换：清掉旧朝代时期横幅，由新流程按需重建
             regimeColors = renderer.regimeColors
             layoutRevision++
             seenEvents = emptyList()
@@ -313,9 +261,63 @@ fun MapScreen() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // —— 全时期模式（P2）：给定年份展示当时全部政权（宋/辽/西夏/金等同屏）——
+    // _range 为服务端计算的「命中集合稳定区间」，年份未出区间则跳过重取
+    //（自动播放逐年推进，节流必需；与 Web 版 reloadAllOverlay 同语义）。
+    var allPeriodMode by remember { mutableStateOf(false) }
+    var allOverlayRange by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+
+    fun doEnsureAllPeriod(y: Int) {
+        val range = allOverlayRange
+        if (range != null && y in range.first..range.second) return
+        val gen = dynastyGen
+        val loadingKey = "all-$y"
+        if (periodLoading == loadingKey) return
+        periodLoading = loadingKey
+        scope.launch {
+            // overlay 读盘 + 解析 + _range 提取放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
+            val data = withContext(Dispatchers.IO) {
+                val json = repo.getAllOverlayJson(y)
+                val rangeArr = JSONObject(json).optJSONObject("properties")?.optJSONArray("_range")
+                val range = if (rangeArr != null && rangeArr.length() == 2) {
+                    rangeArr.optInt(0) to rangeArr.optInt(1)
+                } else null
+                PeriodSwitchResult(
+                    model = OverlayParser.parse(JSONObject(json)),
+                    json = json,
+                    range = range,
+                )
+            }
+            // 模式已退出或朝代已切换：本次结果作废（清空自己的 loading 标记，
+            // 避免退出全时期模式后残留 "all-y" 挂起，挡住后续时期切换）
+            if (!allPeriodMode || gen != dynastyGen) {
+                if (periodLoading == loadingKey) periodLoading = null
+                return@launch
+            }
+            renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
+            currentPeriodId = "all"
+            periodLoading = null
+            regimeColors = renderer.regimeColors
+            layoutRevision++
+            val density = context.resources.displayMetrics.density
+            val (wc, terr) = withContext(Dispatchers.IO) {
+                renderer.buildTextures(data.model, data.json, density)
+            }
+            if (!allPeriodMode || gen != dynastyGen) return@launch
+            renderer.setTextures(wc, terr)
+            if (data.range != null) allOverlayRange = data.range
+            Log.d("HistoryMap", "all-period overlay year=$y regimes=${data.model.regimes.size}")
+        }
+    }
+
     // 时期切换：异步加载 overlay 期间用 periodLoading 去重（年份逐年推进会
     // 反复触发 onYearChange），加载完成后若年份已跨入下一时期则重新评估收敛。
+    // 全时期模式（P2）：改走 doEnsureAllPeriod（按年取全部政权，_range 区间内节流）。
     fun doEnsurePeriod(y: Int) {
+        if (allPeriodMode) {
+            doEnsureAllPeriod(y)
+            return
+        }
         val newPeriod = periods.firstOrNull { y in it.start..it.end } ?: return
         if (newPeriod.id == currentPeriodId || newPeriod.id == periodLoading) return
         val prevId = currentPeriodId
@@ -323,13 +325,19 @@ fun MapScreen() {
         periodLoading = newPeriod.id
         scope.launch {
             val t0 = System.nanoTime()
-            val json = repo.getOverlayJson(currentDynasty, newPeriod.id)
-            val model = withContext(Dispatchers.IO) {
-                OverlayParser.parse(JSONObject(json))
+            // overlay 读盘 + 解析放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
+            val data = withContext(Dispatchers.IO) {
+                val json = repo.getOverlayJson(currentDynasty, newPeriod.id)
+                PeriodSwitchResult(model = OverlayParser.parse(JSONObject(json)), json = json)
             }
             // 加载期间朝代已切换：本次结果作废（防止旧朝代时期覆盖新朝代状态）
             if (gen != dynastyGen) return@launch
-            renderer.setOverlay(model, calibrate = false, cacheKey = json)
+            // 加载期间全时期模式已开启：本次单朝代结果作废（防止旧朝代 overlay 覆盖全时期状态）
+            if (allPeriodMode) {
+                if (periodLoading == newPeriod.id) periodLoading = null
+                return@launch
+            }
+            renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
             currentPeriodId = newPeriod.id
             periodLoading = null
             regimeColors = renderer.regimeColors
@@ -337,17 +345,20 @@ fun MapScreen() {
             // P3：纹理 CPU 生成放 IO 线程
             val density = context.resources.displayMetrics.density
             val (wc, terr) = withContext(Dispatchers.IO) {
-                renderer.buildTextures(model, json, density)
+                renderer.buildTextures(data.model, data.json, density)
             }
-            // 朝代已切换：旧时期纹理不再挂接，避免覆盖新朝代图层
-            if (gen != dynastyGen) return@launch
+            // 朝代已切换或全时期模式已开启：旧时期纹理不再挂接，避免覆盖新状态
+            if (gen != dynastyGen || allPeriodMode) return@launch
             renderer.setTextures(wc, terr)
             val ms = (System.nanoTime() - t0) / 1_000_000
             Log.d("HistoryMap", "period switch: $prevId -> ${newPeriod.id} (${newPeriod.label}), 耗时=${ms}ms")
             // 时期转场横幅（约 2.6s）
             periodBanner = newPeriod.label
             kotlinx.coroutines.delay(2600)
-            periodBanner = null
+            // 显示期间朝代已切换：不清 banner（由新朝代装配流程接管）
+            if (gen != dynastyGen) return@launch
+            // 显示期间 banner 已被更新的时期覆盖（快速跨时期）：不再清除
+            if (periodBanner == newPeriod.label) periodBanner = null
             // 加载期间年份可能已推进到下一时期：重新评估，保证最终收敛到当前年份
             val nowY = timeline?.year ?: return@launch
             ensurePeriod(nowY)
@@ -355,6 +366,23 @@ fun MapScreen() {
     }
 
     ensurePeriod = { doEnsurePeriod(it) }
+
+    fun toggleAllPeriodMode() {
+        allPeriodMode = !allPeriodMode
+        if (allPeriodMode) {
+            allOverlayRange = null
+            // 时间轴范围 → 全部朝代并集
+            val start = dynasties.minOfOrNull { it.startYear } ?: dynastyStart
+            val end = dynasties.maxOfOrNull { it.endYear } ?: dynastyEnd
+            timeline?.setRange(start, end)
+            doEnsureAllPeriod(timeline?.year ?: start)
+        } else {
+            allOverlayRange = null
+            // 回到朝代模式：恢复当前朝代范围与疆域（同朝代不触发 timeline 重建，手动复位）
+            timeline?.setRange(dynastyStart, dynastyEnd)
+            doEnsurePeriod(timeline?.year ?: dynastyStart)
+        }
+    }
 
     // —— 已出现事件追踪：年份推进时，首次进入时间窗口的事件加入列表 ——
     LaunchedEffect(timeline?.year) {
@@ -395,7 +423,7 @@ fun MapScreen() {
     val scrollDetector = remember {
         android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: android.view.MotionEvent): Boolean = true
-            // 确认单击（排除双击第二击）后做泡泡命中测试；未命中则不消费（无地图侧作用）
+            // 确认单击（排除双击第二击）后做泡泡命中测试；未命中再测治所标签（P4 考据卡片）
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
                 val args = bubbleHitArgs ?: return false
                 val ev = hitTestBubble(
@@ -404,6 +432,14 @@ fun MapScreen() {
                 )
                 if (ev != null) {
                     args.onTap(ev)
+                    return true
+                }
+                val pref = args.labels.lastOrNull { pl ->
+                    pl.visible && pl.label.kind == "prefecture" &&
+                        pl.rect.contains(androidx.compose.ui.geometry.Offset(e.x, e.y))
+                }
+                if (pref != null) {
+                    args.onPrefectureTap(pref.label.text)
                     return true
                 }
                 return false
@@ -579,9 +615,12 @@ fun MapScreen() {
             )
         }
 
-        // 事件泡泡层（点击命中；按设置分类过滤；地图手势由 GLSurfaceView 自己消费）
+        // 事件泡泡层（点击命中；按设置分类 + 人物视角过滤；地图手势由 GLSurfaceView 自己消费）
         timeline?.let { tl ->
-            val visibleEvents = tl.visibleEvents().filter { activeCategories.contains(it.category) }
+            val visibleEvents = tl.visibleEvents().filter { ev ->
+                activeCategories.contains(ev.category) &&
+                    (personFilterId == null || ev.relatedPersons.any { it.id == personFilterId })
+            }
             // 泡泡纵向安全区：实测顶栏底 / 时间轴顶（见上方 topBarBottomPx/timelineTopPx）
             // 泡泡点击命中数据（最新值快照；GL touch listener 单例闭包经此读取，
             // 避免 stale capture——见 scrollDetector.onSingleTapConfirmed。
@@ -598,6 +637,10 @@ fun MapScreen() {
                         tl.pause()
                         selectedEvent = ev
                     },
+                    onPrefectureTap = { name ->
+                        tl.pause()
+                        selectedPrefecture = renderer.currentModel?.prefectures?.firstOrNull { it.name == name }
+                    },
                 )
             }
             Box(modifier = Modifier.fillMaxSize()) {
@@ -613,92 +656,20 @@ fun MapScreen() {
             }
         }
 
-        // 顶栏（设计比例：高度 154px；P1-字体：标题 20px/700、朝代 16px、事件 15px、
-        // 设置 20px 图标；按钮触摸区 ≥44dp，保持内嵌菜单避免系统栏闪烁）
-        Surface(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding()
-                .onGloballyPositioned { coords ->
-                    // 实测顶栏底边（含状态栏 inset + 154px 行 + 分隔线），供标签/泡泡安全区
-                    topBarBottomPx = coords.positionInRoot().y + coords.size.height
-                },
-            color = MapTokens.PAPER_BAR,
-        ) {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(designDp(MapTokens.Dimensions.TOP_BAR_HEIGHT.toFloat()))
-                        .padding(horizontal = designDp(54f), vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "历史地图",
-                        fontFamily = MapFonts.Family,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = designSp(MapTokens.Typography.TOP_TITLE.size.toFloat()),
-                        letterSpacing = designSp(MapTokens.Typography.TOP_TITLE.letterSpacing.toFloat()),
-                        color = MapTokens.INK,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // 朝代按钮：朱砂印章式（米白底 + 朱砂描边 + 朱砂字，圆角小方章）
-                    Surface(
-                        onClick = { menuOpen = true; timeline?.pause() },
-                        modifier = Modifier
-                            .onGloballyPositioned {
-                                dynastyBtnPos = IntOffset(
-                                    it.positionInRoot().x.roundToInt(),
-                                    it.positionInRoot().y.roundToInt(),
-                                )
-                                dynastyBtnHeight = it.size.height
-                            }
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(designDp(6f)),
-                        color = MapTokens.PAPER_CARD.copy(alpha = 0.6f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MapTokens.VERMILION),
-                    ) {
-                        Text(
-                            text = if (dynastyName.isEmpty()) "加载中…" else "$dynastyName ▾",
-                            fontFamily = MapFonts.Family,
-                            fontSize = designSp(MapTokens.Typography.DYNASTY.size.toFloat()),
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = designSp(2f),
-                            color = MapTokens.VERMILION,
-                            modifier = Modifier.padding(horizontal = designDp(14f), vertical = 6.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(designDp(10f)))
-                    // 事件流抽屉开关（矢量菜单图标 + 「事件」文字）
-                    TextButton(onClick = { logOpen = true; timeline?.pause() }) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_menu),
-                                contentDescription = null,
-                                tint = MapTokens.INK_SECONDARY,
-                                modifier = Modifier.size(designDp(18f)),
-                            )
-                            Spacer(Modifier.width(designDp(6f)))
-                            Text(
-                                "事件",
-                                fontFamily = MapFonts.Family,
-                                fontSize = designSp(MapTokens.Typography.MENU.size.toFloat()),
-                                letterSpacing = designSp(2f),
-                                color = MapTokens.INK_SECONDARY,
-                            )
-                        }
-                    }
-                    // 设置开关（矢量齿轮图标，替代 Unicode ⚙ 的字形不一致问题）
-                    TextButton(onClick = { settingsOpen = true; timeline?.pause() }) {
-                        Icon(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_settings),
-                            contentDescription = null,
-                            tint = MapTokens.INK_SECONDARY,
-                            modifier = Modifier.size(designDp(20f)),
-                        )
-                    }
-                }
-                InkDivider(alpha = 0.35f)
-            }
-        }
+        // TopBar extracted to MapTopBar.kt (A5)
+        MapTopBar(
+            dynastyName = dynastyName,
+            allPeriodMode = allPeriodMode,
+            onToggleAllPeriod = { toggleAllPeriodMode() },
+            onDynastyClick = { menuOpen = true; timeline?.pause() },
+            onDynastyButtonPositioned = { pos, h ->
+                dynastyBtnPos = pos
+                dynastyBtnHeight = h
+            },
+            onLogClick = { logOpen = true; timeline?.pause() },
+            onSettingsClick = { settingsOpen = true; timeline?.pause() },
+            onBottomEdgeChanged = { y -> topBarBottomPx = y },
+        )
 
         // 图例（左上角政权色块，手机端默认折叠为朱砂小笺）
         if (showTerritory) {
@@ -737,72 +708,20 @@ fun MapScreen() {
             )
         }
 
-        // 播放完毕提示（自动播放到达 endYear；P1：上移至时间轴卡片上方
-        // （底部 168dp ≈ 卡片顶 1775px + 12dp 间距），朱砂边框加强、字号略大）
-        if (timeline?.completed == true) {
-            Surface(
-                onClick = { timeline.play() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 168.dp),
-                shape = RoundedCornerShape(999.dp),
-                color = MapTokens.PAPER_PANEL.copy(alpha = 0.92f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp, MapTokens.VERMILION.copy(alpha = 0.85f),
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "本朝历史播放完毕",
-                        fontFamily = MapFonts.Family,
-                        fontSize = designSp(13f),
-                        color = MapTokens.VERMILION,
-                    )
-                    Text(
-                        "  点 ▶ 可重新播放",
-                        fontFamily = MapFonts.Family,
-                        fontSize = designSp(11f),
-                        color = MapTokens.INK_SOFT,
-                    )
-                }
-            }
-        }
+        // 播放完毕提示（A5 拆分至 MapUiBlocks.kt）
+        CompletedReplayChip(timeline = timeline, modifier = Modifier)
 
-        // 时期转场横幅（跨时期边界时短暂显示；金边线 + 朱砂竖线装饰 + 真实淡入淡出）
-        Box(modifier = Modifier.align(Alignment.Center).padding(top = 100.dp)) {
-            AnimatedVisibility(
-                visible = periodBanner != null,
-                enter = fadeIn(tween(300)),
-                exit = fadeOut(tween(500)),
+        // 时期转场横幅（A5 拆分至 MapUiBlocks.kt）
+        PeriodBannerOverlay(periodBanner)
+
+        // 州府考据卡片（P4）：治所标签点击打开；数据来自 overlay GeoJSON 要素属性
+        //（元丰九域志/舆地广记，source/license/confidence/sourceFix），不依赖时空库
+        selectedPrefecture?.let { pref ->
+            AppBottomSheet(
+                onDismiss = { selectedPrefecture = null },
+                onClose = { selectedPrefecture = null },
             ) {
-                Surface(
-                    color = MapTokens.PANEL.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MapTokens.GOLD),
-                    shadowElevation = 4.dp,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                    ) {
-                        Box(
-                            Modifier
-                                .width(4.dp)
-                                .height(24.dp)
-                                .background(MapTokens.VERMILION, RoundedCornerShape(2.dp)),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            periodBanner ?: "",
-                            fontFamily = MapFonts.Family,
-                            fontSize = designSp(22f),
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = designSp(6f),
-                            color = MapTokens.GOLD_DEEP,
-                        )
-                    }
-                }
+                PrefectureProvenanceContent(pref)
             }
         }
 
@@ -820,27 +739,28 @@ fun MapScreen() {
                         tl.setYear(related.year)
                     }
                     selectedEvent = related
+                }, onPickPerson = { p ->
+                    // 人物徽章点击：进入该人物的事件轨迹过滤（人物视角）
+                    personFilterId = p.id
+                    selectedEvent = null
                 }, onClose = { selectedEvent = null })
             }
         }
 
-        // 事件流抽屉
-        if (logOpen) {
-            timeline?.let { tl ->
-                EventLogSheet(
-                    seenEvents = seenEvents,
-                    allEvents = events,
-                    currentYear = tl.year,
-                    onPick = { ev ->
-                        logOpen = false
-                        tl.pause()
-                        tl.setYear(ev.year)
-                        selectedEvent = ev
-                    },
-                    onDismiss = { logOpen = false },
-                )
-            }
-        }
+        // 事件流抽屉（A5 拆分至 MapUiBlocks.kt）
+        EventLogSheetBlock(
+            logOpen = logOpen,
+            timeline = timeline,
+            seenEvents = seenEvents,
+            allEvents = events,
+            onOpenChange = { logOpen = it },
+            onPick = { ev ->
+                logOpen = false
+                timeline?.pause()
+                timeline?.setYear(ev.year)
+                selectedEvent = ev
+            },
+        )
 
         // 设置面板
         if (settingsOpen) {
@@ -851,17 +771,18 @@ fun MapScreen() {
                 showRivers = showRivers,
                 showPrefectures = showPrefectures,
                 showSeats = showSeats,
+                persons = persons,
+                personFilterId = personFilterId,
                 onCategoriesChange = {
                     activeCategories = it
                     persistSettings()
                 },
+                onPersonChange = { pid ->
+                    personFilterId = pid
+                },
                 onSpeedChange = {
                     playSpeed = it
-                    timeline?.setTickMs(when (it) {
-                        "slow" -> 220L
-                        "fast" -> 50L
-                        else -> 110L
-                    })
+                    timeline?.setTickMs(ContractTokens.SPEED_TICK_MS[it] ?: ContractTokens.SPEED_TICK_NORMAL)
                     persistSettings()
                 },
                 onTerritoryChange = {
@@ -888,43 +809,17 @@ fun MapScreen() {
             )
         }
 
-        // 朝代下拉菜单（应用内嵌实现：DropdownMenu 基于 Popup 窗口，会触发
-        // 华为系统栏闪现；此处用全屏点击层 + 绝对定位面板，不创建新 window）
-        if (menuOpen) {
-            // 全屏点击关闭层（在菜单下层）
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { menuOpen = false } }
-            )
-            // 菜单面板（定位在朝代按钮下方）
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset { IntOffset(dynastyBtnPos.x, dynastyBtnPos.y + dynastyBtnHeight) },
-                color = MapTokens.PAPER_PANEL,
-                shape = RoundedCornerShape(10.dp),
-                shadowElevation = 8.dp,
-            ) {
-                Column {
-                    dynasties.forEach { d ->
-                        Text(
-                            d.name,
-                            fontFamily = MapFonts.Family,
-                            fontSize = designSp(14f),
-                            color = MapTokens.INK,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    menuOpen = false
-                                    if (d.id != currentDynasty) loadDynasty(d.id)
-                                }
-                                .padding(horizontal = 18.dp, vertical = 12.dp),
-                        )
-                    }
-                }
-            }
-        }
+        // 朝代下拉菜单（A5 拆分至 MapUiBlocks.kt）
+        DynastyDropdownMenu(
+            visible = menuOpen,
+            dynasties = dynasties,
+            currentDynasty = currentDynasty,
+            anchor = dynastyBtnPos,
+            anchorHeight = dynastyBtnHeight,
+            onDismiss = { menuOpen = false },
+            onPick = { id -> menuOpen = false; if (id != currentDynasty) loadDynasty(id) },
+        )
+
 
         // 统一返回键控制（P2）：详情 → 设置 → 事件流 → 菜单 → 退出。
         // 不依赖各 sheet 的局部 BackHandler 组合顺序；全部 sheet 关闭后交由系统退出。
@@ -934,411 +829,6 @@ fun MapScreen() {
                 settingsOpen -> settingsOpen = false
                 logOpen -> logOpen = false
                 menuOpen -> menuOpen = false
-            }
-        }
-    }
-}
-
-/** 图例：朱砂「政权」标题小笺 + 纸面卡片（手机端默认折叠，展开后限高滚动） */
-@Composable
-private fun LegendPanel(
-    regimes: List<Pair<String, FloatArray>>,
-    collapsed: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (regimes.isEmpty()) return
-    Column(modifier = modifier) {
-        // 朱砂标题小笺（点击切换折叠；可点击 Surface 自带 ≥44dp 触摸区）
-        Surface(
-            onClick = onToggle,
-            shape = RoundedCornerShape(designDp(6f)),
-            color = MapTokens.VERMILION,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = designDp(18f), vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "政权",
-                    fontFamily = MapFonts.Family,
-                    fontSize = designSp(14f),
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = designSp(2f),
-                    color = MapTokens.PAPER_CARD,
-                )
-                if (collapsed) {
-                    Spacer(Modifier.width(6.dp))
-                    Text("▾", fontSize = designSp(12f), color = MapTokens.PAPER_CARD)
-                }
-            }
-        }
-        if (!collapsed) {
-            Spacer(Modifier.height(10.dp))
-            // 纸面卡片：细描边 + 单层淡墨阴影；政权行 38px 行高、水彩短色条。
-            // 主要政权优先（fillOpacity 高者在前，如宋 .38 排首位）。
-            Surface(
-                modifier = Modifier.width(designDp(MapTokens.Dimensions.LEGEND_WIDTH.toFloat())),
-                color = MapTokens.PAPER_CARD.copy(alpha = MapTokens.Alpha.LEGEND_BACKGROUND / 255f),
-                shape = RoundedCornerShape(designDp(10f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x143A3428)),
-                shadowElevation = 2.dp,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = designDp(MapTokens.Dimensions.LEGEND_HEIGHT.toFloat()))
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = designDp(16f), vertical = designDp(12f)),
-                ) {
-                    regimes.sortedByDescending { it.second[3] }.forEach { (name, color) ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(designDp(42f)),
-                        ) {
-                            // P2-水彩色块：竖向渐变 + 圆角短色条（模拟水彩自然渗色，
-                            // 而非纯色矩形；宽度 18dp、上下 alpha 变化）
-                            Box(
-                                Modifier
-                                    .size(width = designDp(18f), height = designDp(12f))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                Color(color[0], color[1], color[2]).copy(alpha = 0.9f),
-                                                Color(color[0], color[1], color[2]).copy(alpha = 0.4f),
-                                            ),
-                                        ),
-                                        RoundedCornerShape(designDp(3f)),
-                                    ),
-                            )
-                            Spacer(Modifier.width(designDp(12f)))
-                            Text(
-                                name,
-                                fontFamily = MapFonts.Family,
-                                fontSize = designSp(MapTokens.Typography.LEGEND_ITEM.size.toFloat()),
-                                letterSpacing = designSp(1f),
-                                fontWeight = if (color[3] > 0.35f) FontWeight.Bold else FontWeight.Normal,
-                                color = MapTokens.INK,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 详情面板内容：元信息 chip（可换行）+ 标题（≤2 行）+ 地点 + 详情 + 影响卡片 + 相关事件 + 水墨插画 */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun EventDetailContent(
-    ev: EventEntity,
-    allEvents: List<EventEntity>,
-    onPickRelated: (EventEntity) -> Unit,
-    onClose: () -> Unit,
-) {
-    val catLabel = when (ev.category) {
-        "era" -> "时代格局"
-        "figure" -> "名人轨迹"
-        "military" -> "军事·领土"
-        "economy" -> "经济变革"
-        "invention" -> "重要发明"
-        else -> ev.category
-    }
-    val context = LocalContext.current
-    // 相关事件：同分类、按年份远近取 3 条（增强历史浏览连续性）
-    val related = allEvents
-        .filter { it.id != ev.id && it.category == ev.category }
-        .sortedBy { kotlin.math.abs(it.year - ev.year) }
-        .take(3)
-    // 打开/切换详情时自动滚回顶部（相关事件点击会替换 ev → 重置滚动位置）
-    val scrollState = rememberScrollState()
-    LaunchedEffect(ev.id) { scrollState.scrollTo(0) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(scrollState)
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp),
-    ) {
-        Spacer(Modifier.height(4.dp))
-        // 元信息 chip 行（FlowRow 自动换行，布局扩展位：未来可加朝代/地点 chip）
-        androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            YearBadge("${ev.year} 年")
-            CategoryBadge(catLabel)
-        }
-        // 分享按钮（右对齐；系统分享面板 ACTION_SEND，分享标题+年份+地点+详情）
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { shareEvent(context, ev) }) {
-                Text(
-                    "分享",
-                    fontFamily = MapFonts.Family,
-                    fontSize = scaledSp(12f),
-                    color = MapTokens.VERMILION,
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            ev.title.ifEmpty { "未命名事件" },
-            fontFamily = MapFonts.Family,
-            fontSize = designSp(22f),
-            fontWeight = FontWeight.Bold,
-            color = MapTokens.VERMILION,
-            lineHeight = designSp(30f),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (ev.place.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "◆ 地点  ${ev.place}",
-                fontFamily = MapFonts.Family,
-                fontSize = designSp(12f),
-                color = MapTokens.INK_SOFT,
-                letterSpacing = designSp(1f),
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        NoteDivider()
-        Spacer(Modifier.height(12.dp))
-        Text(
-            ev.detail.ifEmpty { "暂无详情" },
-            fontFamily = MapFonts.Family,
-            fontSize = designSp(14f),
-            lineHeight = designSp(24f),
-            color = MapTokens.INK.copy(alpha = 0.92f),
-        )
-        if (ev.impact.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
-            PaperCard(color = Color(0x13B03A2E), cornerRadius = 8.dp, shadow = 0.dp) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        "影 响",
-                        fontFamily = MapFonts.Family,
-                        fontSize = designSp(13f),
-                        fontWeight = FontWeight.Bold,
-                        color = MapTokens.VERMILION,
-                        letterSpacing = designSp(4f),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        ev.impact,
-                        fontFamily = MapFonts.Family,
-                        fontSize = designSp(13f),
-                        lineHeight = designSp(22f),
-                        color = MapTokens.INK.copy(alpha = 0.9f),
-                    )
-                }
-            }
-        }
-        // 相关事件（同分类，按年份远近）
-        if (related.isNotEmpty()) {
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "相关事件",
-                fontFamily = MapFonts.Family,
-                fontSize = designSp(13f),
-                fontWeight = FontWeight.Bold,
-                color = MapTokens.VERMILION,
-                letterSpacing = designSp(3f),
-            )
-            Spacer(Modifier.height(8.dp))
-            related.forEach { rel ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
-                        .background(Color(0x0B3A3428), RoundedCornerShape(8.dp))
-                        .clickable { onPickRelated(rel) }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier
-                            .width(4.dp)
-                            .height(16.dp)
-                            .background(MapTokens.categoryColor(rel.category), RoundedCornerShape(2.dp)),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "${rel.year} 年",
-                        fontFamily = MapFonts.Family,
-                        fontSize = scaledSp(12f),
-                        fontWeight = FontWeight.Bold,
-                        color = MapTokens.VERMILION,
-                        modifier = Modifier.width(58.dp),
-                    )
-                    Text(
-                        rel.short.ifEmpty { "未命名事件" },
-                        fontFamily = MapFonts.Family,
-                        fontSize = scaledSp(13f),
-                        color = MapTokens.INK,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        // 底部水墨山水插画（assets/web/ink-landscape.png，参考图详情页底部）
-        val appContext = LocalContext.current
-        val inkLandscape = remember { loadInkLandscape(appContext) }
-        if (inkLandscape != null) {
-            Spacer(Modifier.height(12.dp))
-            Image(
-                bitmap = inkLandscape.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .alpha(0.55f),
-                contentScale = ContentScale.Fit,
-            )
-        }
-    }
-}
-
-/** 加载详情页底部水墨插画（失败返回 null，面板不受影响） */
-private fun loadInkLandscape(context: android.content.Context): Bitmap? {
-    return try {
-        val bytes = context.assets.open("web/ink-landscape.png").use { it.readBytes() }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * 分享事件：弹出系统分享面板（ACTION_SEND 纯文本）。文本包含标题、年份、地点、详情，
- * 让用户分享到微信/QQ/备忘录等。无可用分享应用时静默忽略（不崩）。
- */
-private fun shareEvent(context: Context, ev: EventEntity) {
-    val title = ev.title.ifEmpty { ev.short }
-    val text = buildString {
-        append(title)
-        append("\n").append(ev.year).append(" 年")
-        if (ev.place.isNotEmpty()) append(" · ").append(ev.place)
-        if (ev.detail.isNotEmpty()) append("\n\n").append(ev.detail)
-    }
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, title)
-        putExtra(Intent.EXTRA_TEXT, text)
-    }
-    try {
-        context.startActivity(Intent.createChooser(send, "分享事件"))
-    } catch (e: android.content.ActivityNotFoundException) {
-        Log.w("HistoryMap", "无可用分享应用", e)
-    }
-}
-
-/**
- * 标签文字样式（与布局计算共用，保证测量与绘制一致；字体走 MapFonts 统一入口）。
- *
- * P0-2 修复 density 二次放大：Canvas 绘制/测量在屏幕像素空间，字号直接用
- * DesignMetrics.designToPx(设计px, scale)，不再乘 density（旧的 `size * density`
- * 会把 13px 设计字号在 480dpi 上放大成 39px，标签明显偏大、碰撞区膨胀）。
- *
- * P1-标签：评审要求地图地名可读——政权 16px/94%、核心城市 14px/83%、
- * 普通城市与河流/山脉/地点 13px/68%（旧值 13/12/11px + 55% 透明度几乎不可读）。
- */
-private fun labelTextPaints(scale: Float, density: Float): Map<String, Paint> {
-    fun make(designPx: Float, bold: Boolean, color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        // 字体 token 为 CSS px 逻辑单位（同 Web）：×density 换成屏幕物理 px
-        textSize = DesignMetrics.designToTextPx(designPx, density, scale)
-        typeface = MapFonts.of(bold)
-        this.color = color
-    }
-    return mapOf(
-        "regime" to make(16f, true, 0xF03A3428.toInt()),
-        "cities" to make(14f, false, 0xE03A3428.toInt()),
-        "prefecture" to make(13.5f, false, 0xBF3A3428.toInt()), // 州府治所（元丰九域志基准）
-        "mountains" to make(13f, false, 0xB83A3428.toInt()),
-        "rivers" to make(13f, false, 0xB83A3428.toInt()),
-        "places" to make(13f, false, 0xB83A3428.toInt()),
-    )
-}
-
-/**
- * 地图标注层：绘制 layoutMapLabels 的放置结果（文字/指向线/城市点，垂直居中）。
- *
- * R6-标签（对齐效果图）：政权/城市名撤掉米白卡片+朱砂描边（UI 感强、遮挡色块），
- * 改为深墨文字直书 + 极细纸色 halo 描边保证在水彩色块上的可读性；
- * 城市标签在锚点画「墨点 + 纸色细环」的靶心标记。
- */
-@Composable
-fun LabelLayer(
-    placedLabels: List<PlacedMapLabel>,
-    modifier: Modifier = Modifier,
-) {
-    val designScale = rememberDesignScale()
-    val density = LocalDensity.current.density
-    // 统一左上光向的文字投影（右下偏移软影）：与政权贴图接触阴影（GL 侧）、
-    // 泡泡阴影同一光向——HoMM3「焙烧阴影」的手机端移植，让元素有「贴在纸上」的厚度
-    val paints = remember(designScale, density) {
-        labelTextPaints(designScale, density).mapValues { (_, p) ->
-            p.setShadowLayer(2.4f * density, 1.2f * density, 1.8f * density, 0x2E3A3428)
-            p
-        }
-    }
-    // 纸色 halo：与文字同字号描边（先描边后填充的双 pass 画法）
-    val haloPaints = remember(designScale, density) {
-        labelTextPaints(designScale, density).mapValues { (_, p) ->
-            Paint(p).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 1.2f * density
-                strokeJoin = android.graphics.Paint.Join.ROUND
-                color = 0xCCF8F4E9.toInt()
-            }
-        }
-    }
-    val leaderInk = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 1.2f
-            color = 0x663A3428.toInt()
-            pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f, 5f), 0f)
-        }
-    }
-    // 城市靶心点：墨点 + 纸色细环（效果图的城市标记语言）
-    val cityDot = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC3A3428.toInt() } }
-    val cityDotRing = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 1f
-            color = 0xCCF8F4E9.toInt()
-        }
-    }
-
-    Canvas(modifier = modifier) {
-        drawIntoCanvas { canvas ->
-            val native = canvas.nativeCanvas
-            for (pl in placedLabels) {
-                if (!pl.visible) continue
-                val l = pl.label
-                val paint = paints[l.kind] ?: continue
-                val halo = haloPaints[l.kind] ?: continue
-                val cx = pl.rect.center.x
-                val cy = pl.rect.center.y
-                // 指向线：锚点 → 文字（仅被移开时）
-                if (pl.needLeader) {
-                    native.drawLine(pl.anchor.x, pl.anchor.y, cx, cy, leaderInk)
-                }
-                // 城市靶心点（锚点即城市位置）
-                if (l.kind == "cities") {
-                    val r = 3.8f * density
-                    native.drawCircle(pl.anchor.x, pl.anchor.y, r + 1.6f * density, cityDotRing)
-                    native.drawCircle(pl.anchor.x, pl.anchor.y, r, cityDot)
-                }
-                // 文字垂直居中：基线 = 中心 - (ascent+descent)/2（与泡泡一致）
-                val fm = paint.fontMetrics
-                val baseline = cy - (fm.ascent + fm.descent) / 2f
-                native.drawText(l.text, pl.rect.left + 10f * density, baseline, halo)
-                native.drawText(l.text, pl.rect.left + 10f * density, baseline, paint)
             }
         }
     }

@@ -1,0 +1,215 @@
+{
+  "description": "双端 overlay 合并 golden 输入（手写，勿放生成产物）：server/routes/overlay.js（经 overlay-merge.js 纯函数）与 android OverlayMerge 必须对同一 files 输入产出 contract/golden/overlay-merge.expected.json 的响应。expected 由 scripts/gen-overlay-golden.mjs 以服务端参考实现生成。标准辅助文件（rivers/mountains/…/southern-song-routes）的每个 feature 必须带齐 id/name/kind/rank/style/source/license/confidence/note 九个必填属性（validateGeoJSON 要求），政权文件无此要求。覆盖分支：entities 配色 + 灰色兜底、labelCoord 时期覆写 > 全局、labelMajor 注入、periods 数组过滤、无 periods 全量、legacy 转换（river path / mountain LineString path+coord / Point coord）、prefecture 保留完整 feature、prefecture-seat legacy、places kind 白名单、未知 kind 忽略、标准文件缺失条目回退 periods.json 内嵌数组（含 kind 注入）。",
+  "dynasty": "test",
+  "period": "100",
+  "files": {
+    "periods.json": {
+      "periods": [
+        {
+          "id": "test-100",
+          "label": "测试时期",
+          "year": 1000,
+          "files": ["regimes-fixture.json"]
+        },
+        {
+          "id": "test-200",
+          "label": "另一时期",
+          "year": 1200,
+          "files": [],
+          "start": 1100,
+          "end": 1300
+        }
+      ],
+      "entities": [
+        { "name": "宋", "color": "#8E2F24" },
+        { "name": "辽", "color": "#5D7F8C" }
+      ],
+      "labels": { "吐蕃": [95, 32] },
+      "labelsByPeriod": { "test-100": { "宋": [114, 33] } },
+      "labelMajor": ["宋"],
+      "mountains": [{ "name": "兜底山", "coord": [101, 32] }]
+    },
+    "regimes-fixture.json": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": { "entity": "宋" },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[110, 35], [112, 35], [112, 37], [110, 37], [110, 35]]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "entity": "辽",
+            "color": "#123456",
+            "fillOpacity": 0.5,
+            "labelCoord": [116, 42],
+            "labelMajor": false
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[115, 40], [118, 40], [118, 44], [115, 44], [115, 40]]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": { "entity": "吐蕃" },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[88, 30], [95, 30], [95, 34], [88, 34], [88, 30]]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[120, 22], [122, 22], [122, 24], [120, 24], [120, 22]]]
+          }
+        }
+      ]
+    },
+    "rivers.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "river-1", "name": "测试河", "kind": "river", "rank": 1, "style": "ribbon",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "占位",
+            "periods": ["test-100"]
+          },
+          "geometry": { "type": "LineString", "coordinates": [[100, 30], [102, 31], [104, 30]] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "river-2", "name": "异期河", "kind": "river", "rank": 2, "style": "ribbon",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "占位",
+            "periods": ["test-200"]
+          },
+          "geometry": { "type": "LineString", "coordinates": [[110, 30], [112, 31]] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "river-3", "name": "全期河", "kind": "river", "rank": 1, "style": "ribbon",
+            "source": "fixture", "license": "cc0", "confidence": "medium", "note": "无 periods 数组应全量保留"
+          },
+          "geometry": { "type": "LineString", "coordinates": [[105, 28], [106, 29]] }
+        }
+      ]
+    },
+    "mountains.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "mt-1", "name": "异期山", "kind": "mountain", "rank": 1, "style": "line",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "本时期无山脉要素应回退内嵌数组",
+            "periods": ["test-200"]
+          },
+          "geometry": { "type": "LineString", "coordinates": [[107, 33], [109, 34]] }
+        }
+      ]
+    },
+    "cities.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "city-1", "name": "测试城", "kind": "city", "rank": 1, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "占位",
+            "periods": ["test-100"]
+          },
+          "geometry": { "type": "Point", "coordinates": [114.3, 34.8] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "weird-1", "name": "未知类型", "kind": "weird", "rank": 9, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "low", "note": "未知 kind 应被安全忽略",
+            "periods": ["test-100"]
+          },
+          "geometry": { "type": "Point", "coordinates": [113, 33] }
+        }
+      ]
+    },
+    "places.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "place-1", "name": "测试都", "kind": "capital", "rank": 1, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "占位",
+            "periods": ["test-100"]
+          },
+          "geometry": { "type": "Point", "coordinates": [114.35, 34.52] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "place-2", "name": "测试战场", "kind": "battlefield", "rank": 2, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "无 periods 应保留"
+          },
+          "geometry": { "type": "Point", "coordinates": [112, 36] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "place-3", "name": "异期书院", "kind": "academy", "rank": 2, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "占位",
+            "periods": ["test-200"]
+          },
+          "geometry": { "type": "Point", "coordinates": [118, 30] }
+        }
+      ]
+    },
+    "prefectures.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "pref-1", "name": "测试府", "kind": "prefecture", "rank": 2, "style": "stroke-only",
+            "source": "fixture", "license": "cc0", "confidence": "medium", "note": "面要素须保留完整 geometry",
+            "periods": ["test-100"], "route": "京畿路"
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[113, 34], [115, 34], [115, 36], [113, 36], [113, 34]]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "seat-1", "name": "测试治所", "kind": "prefecture-seat", "rank": 2, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "medium", "note": "占位",
+            "periods": ["test-100"], "route": "京畿路"
+          },
+          "geometry": { "type": "Point", "coordinates": [114.1, 35.2] }
+        }
+      ]
+    },
+    "southern-song-routes.geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": "ssr-1", "name": "南路治所", "kind": "prefecture-seat", "rank": 1, "style": "dot",
+            "source": "fixture", "license": "cc0", "confidence": "high", "note": "Android 端文件清单曾漏本文件（A2 golden 抓漂移）",
+            "periods": ["test-100"], "route": "浙西路"
+          },
+          "geometry": { "type": "Point", "coordinates": [119.5, 30.3] }
+        }
+      ]
+    }
+  }
+}

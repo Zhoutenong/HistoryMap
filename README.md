@@ -67,9 +67,12 @@ npm run dev:server     # 仅后端
 npm run dev:client     # 仅前端
 npm run build          # 构建前端到 client/dist/
 npm run lint           # ESLint 静态检查（client/src + server + scripts）
-npm run test           # vitest 单元测试（client 内 44 用例）
+npm run test           # vitest 单元测试（client 内 61 用例）
 npm run check:build    # 检查 client/dist/index.html 与打包 assets
-npm run contract       # 校验历史 GeoJSON 与可选 API overlay 契约
+npm run contract       # 校验历史 GeoJSON / API overlay 契约 + 双端契约产物 diff
+npm run contract:golden     # 双端数值 golden（投影 + overlay 合并）
+npm run contract:tokens     # 双端共享数值契约校验（contract/tokens.json ↔ 双端生成产物）
+npm run contract:tokens:write  # 改契约后重新生成 client/src/contract-tokens.js + ContractTokens.kt
 npm run contract:db-migration  # 校验数据库版本化 seed 迁移契约
 npm run smoke          # 检查运行中的生产服务页面与关键 API
 npm run e2e            # Playwright 桌面/移动 smoke（需先 npm run build 并启动后端 :3001）
@@ -143,8 +146,8 @@ HistoryMap/
 │   └── data/             # schema.sql + seed/*.sql + geo/（含 historical 疆域）
 └── client/               # three.js Web 前端（桌面端；Android 原生版与 Web 共用同源数据契约）
     └── src/
-        ├── api.js        # 数据层（fetch 访问后端 API；早期也兼容 Android bridge 自动切换）
-        ├── dom.js        # DOM 兼容工具（clearChildren，兼顾旧 WebView 时代）
+        ├── api.js        # 数据层（fetch 访问后端 API；Android 侧等价实现为 MapRepository.kt）
+        ├── dom.js        # DOM 兼容工具（clearChildren，兼容 Chrome 86 以下旧浏览器）
         ├── map/          # 地图层（ChinaMap / TerritoryOverlay / Legend）
         ├── timeline/     # 时间轴 + calc.js（纯函数）+ __tests__
         ├── events/       # 事件泡泡 / 事件流 / collisions.js（纯函数）+ __tests__
@@ -153,6 +156,16 @@ HistoryMap/
 
 详细架构、约定、已知坑见 [AGENTS.md](./AGENTS.md)。
 当前未完成工作、优先级、验收标准与进度标记见 [docs/requirements/roadmap.md](./docs/requirements/roadmap.md)。
+
+## 新增能力速览（2026-08-21 改进批次）
+
+- **人物视角（P1）**：宋朝事件扩至 109 条、60 位历史人物（含主导/牵连关系）；设置面板按人物过滤事件轨迹，详情面板显示相关人物徽章与「资料来源·置信度」。
+- **全时期模式（P2）**：顶栏「全时期」开关——按年份同屏展示当时全部政权（如 1111 年宋/辽/西夏/吐蕃/大理）。
+- **分享卡片（P3）**：详情面板「卡片」按钮生成地图截图 + 年份水印 + 事件简述的 PNG 卡片（可下载/复制）。
+- **双端契约 golden（A2 第一步）**：投影与 overlay 合并语义由 `contract/golden/` 锚定，`npm run contract:golden` 校验，双端测试守护防漂移。
+- **双端共享数值契约（A2 第二步）**：投影 fitSize / LOD 档位 / 碰撞参数 / kind 白名单 / 设置项 schema 收进 `contract/tokens.json` 唯一事实来源，由脚本生成 Web `contract-tokens.js` 与 Android `ContractTokens.kt`（三端含 server 同源），`npm run contract:tokens` 校验产物与契约 diff。
+- **性能（A3）**：`/api/map` 内存缓存 + ETag 304；overlay 按 period/year 结果级缓存。
+- Android 端已同步以上能力（原生实现），`MapScreen.kt` 拆分至 <40KB。
 
 ## 已接入朝代
 

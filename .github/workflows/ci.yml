@@ -67,6 +67,9 @@ jobs:
       - name: Data and API contract tests
         run: npm run contract
 
+      - name: Dual-end numeric golden contract tests (A2)
+        run: npm run contract:golden
+
       - name: Database migration contract tests
         run: npm run contract:db-migration
 

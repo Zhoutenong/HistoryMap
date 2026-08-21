@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.historymap.app"
-        // minSdk 24（Android 7.0）覆盖 WebView 可用性下限；P20 为 API 28
+        // minSdk 24（Android 7.0，GLES2/Compose 下限）；实测真机 P20 为 API 28
         minSdk = 24
         targetSdk = 34
         versionCode = 2

@@ -24,11 +24,15 @@ data class CollisionNode(
 
 /**
  * @param nodes 参与推挤的节点
- * @param gap 节点间留白（px）
- * @param maxPush 单方向最大推挤量（px）
+ * @param gap 节点间留白（px，契约 ContractTokens.COLLISION_GAP）
+ * @param maxPush 单方向最大推挤量（px，契约 ContractTokens.COLLISION_MAX_PUSH）
  * @return 与入参顺序一致的推挤量列表
  */
-fun resolveCollisions(nodes: List<CollisionNode>, gap: Float = 6f, maxPush: Float = 64f): List<Shift> {
+fun resolveCollisions(
+    nodes: List<CollisionNode>,
+    gap: Float = ContractTokens.COLLISION_GAP,
+    maxPush: Float = ContractTokens.COLLISION_MAX_PUSH,
+): List<Shift> {
     val result = MutableList(nodes.size) { Shift(0f, 0f) }
     // 年份升序；固定障碍（year = Int.MIN_VALUE）自然排最前
     val order = nodes.mapIndexed { i, nd -> nd to i }
@@ -70,7 +74,7 @@ fun clampToViewport(
     dy: Float,
     viewportW: Float,
     viewportH: Float,
-    pad: Float = 6f,
+    pad: Float = ContractTokens.COLLISION_VIEWPORT_PAD,
     minY: Float = pad,
     maxY: Float = viewportH - pad,
 ): Shift {

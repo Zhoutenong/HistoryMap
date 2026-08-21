@@ -2,9 +2,14 @@
 -- 字段顺序与 schema.sql 一致；坐标为事件核心地点的经纬度。
 -- category 取值：era 时代格局 / figure 名人轨迹 / military 军事·领土 / economy 经济变革 / invention 重要发明
 
-INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('tang', '唐朝', 618, 907);
+INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('tang', '唐朝', 618, 907)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  start_year = excluded.start_year,
+  end_year = excluded.end_year
+;
 
-INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('tang', 618, 618, 108.95, 34.27, '李渊建唐', '李渊称帝 · 唐朝建立', '隋末群雄并起，太原留守李渊于晋阳起兵，攻占长安后废隋恭帝，即皇帝位，国号唐，都长安。', '唐朝开国，继承隋制并加以完善，开启此后近三百年的中国封建社会鼎盛时代。', '长安（今陕西西安）', 'era'),
   ('tang', 621, 621, 113.1, 34.85, '虎牢关之战', '虎牢关之战 · 一战擒两王', '李世民率精骑据虎牢关迎击窦建德十万大军，窦建德兵败被擒，王世充随之出降，中原底定。', '李世民一战擒两王，奠定唐定鼎天下的基础，河北、河南尽归唐朝。', '虎牢关（今河南荥阳西北）', 'military'),
   ('tang', 626, 626, 108.95, 34.27, '玄武门之变', '玄武门之变 · 太宗即位', '李世民在长安玄武门伏杀太子李建成、齐王李元吉，旋被立为太子，不久受禅即皇帝位。', '玄武门之变开启贞观之治，李世民以「以史为鉴」之姿整顿朝纲。', '长安·玄武门', 'era'),
@@ -29,4 +34,14 @@ INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title
   ('tang', 875, 884, 115.5, 35.2, '黄巢起义', '黄巢起义 · 王仙芝首义', '王仙芝、黄巢相继起兵于长垣、冤句，黄巢率义军转战大半个中国，自称「冲天大将军」。', '起义沉重打击唐朝统治基础，揭开唐末大动乱的序幕。', '冤句（今山东菏泽一带）', 'era'),
   ('tang', 880, 880, 108.95, 34.27, '黄巢克长安', '黄巢入长安称帝', '黄巢义军攻破潼关、入长安，即帝位建国号大齐，唐僖宗出逃成都。', '黄巢虽据长安，但缺乏稳固后方，唐朝中央统治已名存实亡。', '长安', 'military'),
   ('tang', 884, 884, 117.6, 36.2, '黄巢败亡', '黄巢败死狼虎谷', '义军粮尽，黄巢败退山东，在狼虎谷为外甥林言所杀，起义历时十年而终。', '黄巢起义后，朱温等藩镇势力坐大，唐朝中央政权形同虚设。', '狼虎谷（今山东莱芜一带）', 'military'),
-  ('tang', 907, 907, 114.35, 34.78, '朱温篡唐', '朱温灭唐 · 后梁建立', '朱温废唐哀帝，自立为帝，国号梁，史称后梁，唐朝灭亡。', '朱温灭唐终结了延续二百八十九年的大唐帝国，中国进入五代十国分裂时期。', '汴州（今河南开封）', 'era');
+  ('tang', 907, 907, 114.35, 34.78, '朱温篡唐', '朱温灭唐 · 后梁建立', '朱温废唐哀帝，自立为帝，国号梁，史称后梁，唐朝灭亡。', '朱温灭唐终结了延续二百八十九年的大唐帝国，中国进入五代十国分裂时期。', '汴州（今河南开封）', 'era')
+ON CONFLICT(dynasty_id, year, short) DO UPDATE SET
+  year_end = excluded.year_end,
+  lng = excluded.lng,
+  lat = excluded.lat,
+  title = excluded.title,
+  detail = excluded.detail,
+  impact = excluded.impact,
+  place = excluded.place,
+  category = excluded.category
+;

@@ -4,9 +4,14 @@
 -- impact 为事件影响（详情面板「影响」栏），可为空。
 -- place 为事件地点（详情面板「地点」徽章），可为空。
 
-INSERT OR IGNORE INTO dynasties (id, name, start_year, end_year) VALUES ('song', '宋朝', 960, 1279);
+INSERT INTO dynasties (id, name, start_year, end_year) VALUES ('song', '宋朝', 960, 1279)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  start_year = excluded.start_year,
+  end_year = excluded.end_year
+;
 
-INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
+INSERT INTO events (dynasty_id, year, year_end, lng, lat, short, title, detail, impact, place, category) VALUES
   ('song', 960, 975, 114.35, 34.52, '陈桥兵变', '陈桥兵变 · 北宋建立', '后周大将赵匡胤在陈桥驿被部下黄袍加身，回师汴梁，逼后周恭帝禅位，建立宋朝，定都东京开封府（汴梁），是为宋太祖。', '结束五代十国兵戈相夺的乱局，中原重归一统；开创「重文轻武」的文官政治，为两宋经济文化的空前繁荣奠定根基。', '陈桥驿·开封', 'era'),
   ('song', 963, 978, 114.35, 34.52, '杯酒释兵权', '杯酒释兵权', '宋太祖赵匡胤通过宴请禁军将领，以厚赏换取兵权，解除石守信等高级将领军权，确立「重文轻武」国策，根除唐末以来藩镇割据之弊。', '以近乎和平的方式解决兵权问题，两宋三百年再无武将跋扈、黄袍加身之祸；「强干弱枝」之策稳固了中央集权，也埋下边防孱弱的隐忧。', '汴梁宫苑', 'era'),
   ('song', 979, 994, 112.55, 37.87, '北汉灭亡', '太宗灭北汉 · 结束分裂', '宋太宗赵光义亲征，攻灭北汉，结束五代十国分裂局面，基本统一中原。同年乘胜伐辽，于高梁河之战大败。', '五代十国分裂局面正式终结；宋辽由间接对抗转为正面冲突，高梁河之败使燕云十六州再无收复之望，宋辽攻守之势就此逆转。', '太原', 'era'),
@@ -38,4 +43,14 @@ INSERT OR IGNORE INTO events (dynasty_id, year, year_end, lng, lat, short, title
   -- figure 名人轨迹
   ('song', 1079, 1085, 114.35, 34.78, '乌台诗案', '苏轼乌台诗案', '御史台（乌台）以诗文「谤讪朝廷」弹劾苏轼，苏轼下狱百余日，几遭杀身之祸，后贬黄州团练副使。', '乌台诗案成为文人因言获罪的标志性事件；苏轼谪居黄州期间写下《赤壁赋》《念奴娇·赤壁怀古》等千古名篇，文学境界臻于化境。', '汴梁·黄州', 'figure'),
   ('song', 1175, 1200, 116.02, 29.55, '朱熹讲学', '朱熹白鹿洞书院讲学', '朱熹于江西白鹿洞书院重修书院、亲自讲学，订立《白鹿洞书院揭示》，集理学之大成，创立朱子学。', '朱子学成为此后元明清三代官方正统思想；白鹿洞书院与岳麓、嵩阳、应天并称四大书院，中国书院制度臻于成熟。', '庐山白鹿洞书院', 'figure'),
-  ('song', 1275, 1279, 114.35, 34.78, '文天祥勤王', '文天祥起兵勤王', '元军大举南下，文天祥散尽家财招募义军勤王，后任右丞相兼枢密使，出使元营被扣，逃归后继续抗元，转战闽粤。', '「人生自古谁无死，留取丹心照汗青」——文天祥的忠义成为南宋遗民精神图腾，其《正气歌》激励后世无数仁人志士。', '临安·赣州', 'figure');
+  ('song', 1275, 1279, 114.35, 34.78, '文天祥勤王', '文天祥起兵勤王', '元军大举南下，文天祥散尽家财招募义军勤王，后任右丞相兼枢密使，出使元营被扣，逃归后继续抗元，转战闽粤。', '「人生自古谁无死，留取丹心照汗青」——文天祥的忠义成为南宋遗民精神图腾，其《正气歌》激励后世无数仁人志士。', '临安·赣州', 'figure')
+ON CONFLICT(dynasty_id, year, short) DO UPDATE SET
+  year_end = excluded.year_end,
+  lng = excluded.lng,
+  lat = excluded.lat,
+  title = excluded.title,
+  detail = excluded.detail,
+  impact = excluded.impact,
+  place = excluded.place,
+  category = excluded.category
+;
