@@ -1358,6 +1358,14 @@ body::before {
 
 /* —— 移动端适配（B1）—— */
 @media (max-width: 640px) {
+  /* 大年份水印：缩小并下移避开顶栏（桌面 top:42% + 28vw 在窄屏会压到朝代下拉） */
+  #year-watermark {
+    top: calc(52px + 6vh);
+    transform: none;
+    font-size: clamp(96px, 20vw, 220px);
+    letter-spacing: 4px;
+  }
+
   /* 图例：改为底部横向滚动卡片，避免窄屏遮挡地图与时间轴 */
   #legend {
     top: auto;

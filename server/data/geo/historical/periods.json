@@ -352,52 +352,52 @@
     {
       "id": "liao",
       "name": "辽",
-      "color": "#4a6a8a"
+      "color": "#33688f"
     },
     {
       "id": "hainan",
       "name": "海南",
-      "color": "#a04a3a"
+      "color": "#8f7a5e"
     },
     {
       "id": "jin",
       "name": "金",
-      "color": "#a8873a"
+      "color": "#a87a2c"
     },
     {
       "id": "xia",
       "name": "西夏",
-      "color": "#b08d4f"
+      "color": "#6f7a3d"
     },
     {
       "id": "tibet",
       "name": "吐蕃",
-      "color": "#8a6a4a"
+      "color": "#7d5266"
     },
     {
       "id": "dali",
       "name": "大理",
-      "color": "#6a8a5f"
+      "color": "#4e7d64"
     },
     {
       "id": "mongol",
       "name": "蒙古",
-      "color": "#6a4a3a"
+      "color": "#8a6a44"
     },
     {
       "id": "yuan",
       "name": "元",
-      "color": "#6a4a3a"
+      "color": "#8a6a44"
     },
     {
       "id": "korea",
       "name": "高丽",
-      "color": "#5a7a9a"
+      "color": "#5f87ab"
     },
     {
       "id": "vietnam",
       "name": "大越",
-      "color": "#8a9a5a"
+      "color": "#708a8a"
     },
     {
       "id": "khmer",
@@ -412,7 +412,7 @@
     {
       "id": "pagan",
       "name": "蒲甘",
-      "color": "#6a8a5f"
+      "color": "#7a8a55"
     },
     {
       "id": "qarakhan",
@@ -427,12 +427,12 @@
     {
       "id": "ouighurs",
       "name": "回鹘",
-      "color": "#6a8a5f"
+      "color": "#9a8a6a"
     },
     {
       "id": "parhae",
       "name": "渤海",
-      "color": "#4a6a8a"
+      "color": "#5d83a6"
     },
     {
       "id": "nanchao",
@@ -442,17 +442,17 @@
     {
       "id": "silia",
       "name": "新罗",
-      "color": "#5a7a9a"
+      "color": "#86a0b8"
     },
     {
       "id": "japan",
       "name": "日本",
-      "color": "#7a6a8a"
+      "color": "#7a8a9a"
     },
     {
       "id": "chenla",
       "name": "真腊",
-      "color": "#8a9a5a"
+      "color": "#9a8a4e"
     }
   ],
   "labels": {

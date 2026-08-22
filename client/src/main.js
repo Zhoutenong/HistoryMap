@@ -4,9 +4,10 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 import { buildChinaMap, fitProjection, project } from './map/ChinaMap.js';
 import { Timeline } from './timeline/Timeline.js';
+import { monthIndex } from './timeline/calc.js';
 import { EventBubbles } from './events/EventBubbles.js';
 import { EventLog } from './events/EventLog.js';
-import { buildTerritoryOverlay, fadeIn, getOverlayCacheStats } from './map/TerritoryOverlay.js';
+import { buildTerritoryOverlay, getOverlayCacheStats } from './map/TerritoryOverlay.js';
 import { Legend } from './map/Legend.js';
 import { getMap, getEvents, getMeta, getOverlay, getDynasties, getPlace, getPersons, getAllOverlay } from './api.js';
 import { applyTheme, getTheme } from './theme.js';
@@ -153,24 +154,56 @@ function focusOn(coord, zoom = 0.62) {
   };
 }
 
+// —— 取景构图（可见带适配）——
+// 旧版只按包围球适配（纵向 FOV），竖屏必然「下半屏才见地图、上半空宣纸」。
+// 新版以「顶栏与时间轴卡之间的带状区域」为画框做宽高双向适配；竖屏再放大
+// （东西缘允许出屏）并以主政权 bbox 水平锚定——与 Android MapRenderer.resetCamera
+// 的 CAMERA_FIT_BOOST + anchorBounds 思路对齐（数值同源）。
+const VIEW_INSETS = { top: 60, bottom: 106 }; // 顶栏 52px+8 / 时间轴卡 ~90px+16
+const PORTRAIT_FIT_BOOST = 1.4;              // 竖屏放大倍率（Android CAMERA_FIT_BOOST 同值）
+
 /**
- * 取景构图：以疆域包围球为准重设相机距离与视野中心。
+ * 取景构图：以 frameBase 的世界包围盒重设相机距离与视野中心。
  * - scale：距离倍率（越大地图越小、留白越多）。默认 0.98 是全图构图；
  *   详情面板打开时用 1.28（地图缩小给右侧面板让位）。
  * - shiftX：水平偏移比例（占视口宽度），正数右移、负数左移；详情打开时 -0.16。
  * 相机相对视角方向不变（正俯 + 前倾），保证地图永远是「北朝上」平面视图。
  */
-let frameBase = null; // { center, dist } 首次标定后固定，供缩放/平移后回归
+let frameBase = null; // { center, worldW, worldH, anchorBox } 首次标定后固定，供缩放/平移后回归
 function frameMap({ scale = 0.98, shiftX = 0 } = {}) {
   if (!frameBase) return;
-  const { center, dist } = frameBase;
-  const d = dist * scale;
-  // 水平偏移换算：屏幕比例 → 世界单位（按当前取景距离的可见半宽）
-  const halfW = d * Math.tan((camera.fov * Math.PI) / 180 / 2) * camera.aspect;
-  const shift = shiftX * 2 * halfW;
+  const { center, worldW, worldH, anchorBox } = frameBase;
+  const h = Math.max(1, container.clientHeight);
+  const bandH = Math.max(1, h - VIEW_INSETS.top - VIEW_INSETS.bottom);
+  const tanHalf = Math.tan((camera.fov * Math.PI) / 180 / 2);
+  // 宽向 fit（全图入画）与高向 fit（填满可见带）取严者
+  let d = Math.max(
+    worldW / (2 * tanHalf * camera.aspect),
+    (worldH * h) / (2 * bandH * tanHalf),
+  );
+  if (camera.aspect < 1) {
+    // 竖屏放大：让地图主体占满画面（东西缘允许出屏），Android CAMERA_FIT_BOOST 同值
+    d /= PORTRAIT_FIT_BOOST;
+  }
+  d *= scale;
+  const halfH = d * tanHalf;
+  const halfW = halfH * camera.aspect;
+  let shift = shiftX * 2 * halfW;
+  if (camera.aspect < 1 && anchorBox) {
+    // 水平钳制：主政权 bbox 不出画（主政权比画幅还宽时退化为居中锚定）
+    const shiftMin = anchorBox.xmax - halfW - center.x; // 保住主政权右缘的最小偏移
+    const shiftMax = anchorBox.xmin + halfW - center.x; // 保住主政权左缘的最大偏移
+    shift = shiftMin > shiftMax
+      ? (anchorBox.xmin + anchorBox.xmax) / 2 - center.x
+      : Math.min(shiftMax, Math.max(shiftMin, shift));
+  }
+  // 垂直居中于可见带：带中心高于屏幕中心 (bottom-top)/2 像素，目标点相应下移同等世界量，
+  // 使地图中心恰好落在「顶栏 ↔ 时间轴卡」的带中心（旧版写死 -0.3d 视角导致地图沉底）
+  const bandCenterShiftY = ((VIEW_INSETS.bottom - VIEW_INSETS.top) / h) * halfH;
+  const ty = center.y - bandCenterShiftY;
   const tweenTo = {
-    px: center.x + shift, py: center.y - d * 0.3, pz: center.z + d * 0.95,
-    tx: center.x + shift, ty: center.y, tz: center.z,
+    px: center.x + shift, py: ty - d * 0.3, pz: center.z + d * 0.95,
+    tx: center.x + shift, ty, tz: center.z,
   };
   camTween = {
     t: 0,
@@ -180,6 +213,31 @@ function frameMap({ scale = 0.98, shiftX = 0 } = {}) {
     },
     to: tweenTo,
   };
+}
+
+/**
+ * 主政权（当前朝代本体，如「宋」）的世界包围盒：竖屏放大取景时的水平锚定，
+ * 防止放大后兴趣区域（本朝疆域）出屏。等价 Android anchorBoundsOf。
+ */
+function computeMainRegimeBox(geojson, mainEntity) {
+  if (!mainEntity) return null;
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  let hit = false;
+  const acc = (ring) => ring.forEach(([lng, lat]) => {
+    const [x, y] = project([lng, lat]);
+    if (x < xmin) xmin = x;
+    if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+    hit = true;
+  });
+  (geojson?.features || []).forEach((f) => {
+    if (!(f?.properties?.entity || '').includes(mainEntity)) return;
+    const g = f.geometry;
+    if (g?.type === 'Polygon') g.coordinates.forEach(acc);
+    else if (g?.type === 'MultiPolygon') g.coordinates.forEach((poly) => poly.forEach(acc));
+  });
+  return hit && xmax > xmin && ymax > ymin ? { xmin, xmax, ymin, ymax } : null;
 }
 
 // 自适应大小
@@ -244,6 +302,7 @@ animate();
     let mapGroup = null;
     let territoryOverlay = null;
     let prevYear = 0;
+    let prevMonth = 1;
     let currentPeriod = '';
     let overlayLoadingPeriod = '';
     let overlayEmpty = false;
@@ -279,7 +338,7 @@ animate();
       while (group.children.length > 0) {
         const child = group.children[0];
         child.traverse((node) => {
-          // CSS2DRenderer 缓存不会自动清理已从 scene 移除的对象的 DOM 元素，
+          // CSS2DRenderer 缓存不会自动清理已从 scene 移除对象的 DOM 元素，
           // 需手动摘除，否则旧时期政权名标签会残留在页面上
           if (node.isCSS2DObject && node.element && node.element.parentNode) {
             node.element.parentNode.removeChild(node.element);
@@ -291,6 +350,86 @@ animate();
         });
         group.remove(child);
       }
+    }
+
+    // —— overlay 交叉淡入（时期/全时期切换共用）——
+    // 旧实现「清旧建新 + fadeIn」会先把画面打回宣纸底再淡入，疆域跳变生硬；
+    // 新实现保留旧 overlay 作底衬，新 overlay 在其上 400ms 淡入、旧 overlay 同步
+    // 淡出后整组释放。CSS2D 标签（政权名/城市/治所）不随材质透明度走，
+    // 单独用 element.style.opacity 补间（transform 归 CSS2DRenderer，互不冲突）。
+    let activeOverlayFade = null;
+
+    function collectFadeTargets(group) {
+      const mats = [];
+      const els = [];
+      group.traverse((n) => {
+        if (n.isCSS2DObject && n.element) els.push(n.element);
+        if (!n.material) return;
+        if (Array.isArray(n.material)) n.material.forEach((m) => { if (m.transparent) mats.push(m); });
+        else if (n.material.transparent) mats.push(n.material);
+      });
+      return { mats, els };
+    }
+
+    function crossfadeOverlay(oldOv, newOv, duration = 400) {
+      const oldT = collectFadeTargets(oldOv.group);
+      const newT = collectFadeTargets(newOv.group);
+      const oldBases = oldT.mats.map((m) => m.opacity);
+      const newBases = newT.mats.map((m) => m.opacity);
+      // 新 group 置顶：各平面材质均 depthWrite:false，按 renderOrder 后绘制即可覆盖，避免同 z 面闪面
+      newOv.group.traverse((n) => { if (n.isMesh) n.renderOrder = 10; });
+      newT.mats.forEach((m) => { m.opacity = 0; });
+      newT.els.forEach((el) => { el.style.transition = `opacity ${duration}ms ease`; el.style.opacity = '0'; });
+      oldT.els.forEach((el) => { el.style.transition = `opacity ${duration}ms ease`; el.style.opacity = '0'; });
+      requestAnimationFrame(() => newT.els.forEach((el) => { el.style.opacity = '1'; }));
+      const t0 = performance.now();
+      const fade = { raf: 0, oldOverlay: oldOv };
+      activeOverlayFade = fade;
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / duration);
+        const e = 1 - Math.pow(1 - k, 3);
+        newT.mats.forEach((m, i) => { m.opacity = newBases[i] * e; });
+        oldT.mats.forEach((m, i) => { m.opacity = oldBases[i] * (1 - e); });
+        if (k < 1) { fade.raf = requestAnimationFrame(step); return; }
+        newOv.group.traverse((n) => { if (n.isMesh) n.renderOrder = 0; });
+        newT.mats.forEach((m, i) => { m.opacity = newBases[i]; });
+        newT.els.forEach((el) => { el.style.transition = ''; });
+        if (activeOverlayFade === fade) activeOverlayFade = null;
+        clearOverlayGroup(oldOv.group);
+      };
+      step();
+    }
+
+    /**
+     * 安装新 overlay 并与旧 overlay 交叉淡入（替换旧「清旧建新」路径）。
+     * 直接用新对象替换 territoryOverlay（所有引用点均动态读取该变量），
+     * LOD 驱动随之切到新对象（worldBox 即时生效，不再 patch 旧闭包）。
+     */
+    function installOverlayWithCrossfade(freshOverlay, { period, layerConfig = 'default' } = {}) {
+      const oldOverlay = territoryOverlay;
+      // 上一轮淡入未完成就再次切换：立即终止补间并释放上一组底衬
+      if (activeOverlayFade) {
+        cancelAnimationFrame(activeOverlayFade.raf);
+        clearOverlayGroup(activeOverlayFade.oldOverlay.group);
+        activeOverlayFade = null;
+      }
+      const newOverlay = buildTerritoryOverlay(freshOverlay, {
+        period, layerConfig,
+        onPickPrefecture: (pref) => showPlaceDetail(pref),
+      });
+      newOverlay.group.visible = settings.showOverlay;
+      newOverlay.setAuxiliaryVisibility?.(settings);
+      scene.add(newOverlay.group);
+      territoryOverlay = newOverlay;
+      lodState.overlay = newOverlay;
+      currentOverlayData = freshOverlay;
+      if (oldOverlay) crossfadeOverlay(oldOverlay, newOverlay);
+      legend.update(freshOverlay);
+      overlayEmpty = !Array.isArray(freshOverlay?.features) || freshOverlay.features.length === 0;
+      loadingEl.textContent = overlayEmpty ? '当前时期暂无疆域数据，仍可查看事件与时间轴' : '';
+      loadingEl.classList.toggle('hidden', !overlayEmpty);
+      // 新 overlay 的政权标签已插入 DOM，重排泡泡避开标签（避免盖住政权名）
+      setTimeout(() => bubbles?.resolve(), 100);
     }
 
     // 详情面板逻辑：打开详情时暂停播放（避免读详情时年份继续跑、聚焦的泡泡过期），
@@ -309,8 +448,10 @@ animate();
       const catLabel = (CATEGORIES.find((c) => c.id === ev.category) || {}).label || '';
       // 时期名（如「北宋极盛」）：由 meta.periods 数据驱动，补充事件的时代背景
       const periodName = periodLabel(getPeriodForYear(ev.year));
-      // 相关事件：按年份排序后取当前事件前后各一条（排除自身）
-      const sorted = currentEvents.slice().sort((a, b) => a.year - b.year);
+      // 相关事件：按时间排序后取当前事件前后各一条（排除自身）
+      const sorted = currentEvents.slice().sort(
+        (a, b) => monthIndex(a.year, a.month || 1) - monthIndex(b.year, b.month || 1)
+      );
       const idx = sorted.findIndex((e) => e.id === ev.id);
       const related = [];
       if (idx > 0) related.push(sorted[idx - 1]);
@@ -330,7 +471,7 @@ animate();
       closeButton.setAttribute('aria-label', '关闭详情');
       const head = document.createElement('div');
       head.className = 'detail-head';
-      addText('span', 'detail-year', `${ev.year} 年`, head);
+      addText('span', 'detail-year', `${ev.year}年${ev.month || 1}月`, head);
       if (catLabel) addText('span', 'detail-cat', catLabel, head);
       if (periodName) addText('span', 'detail-cat', periodName, head);
       // 分享：把当前视图（朝代/年份/事件）写入 URL 并复制，收件人可直接打开该事件
@@ -425,7 +566,7 @@ animate();
         const relatedList = document.createElement('div');
         relatedList.className = 'detail-related-list';
         related.forEach((r) => {
-          const button = addText('button', 'detail-related-item', `${r.year} · ${r.short || '未命名事件'}`, relatedList);
+          const button = addText('button', 'detail-related-item', `${r.year}年${r.month || 1}月 · ${r.short || '未命名事件'}`, relatedList);
           button.type = 'button';
           button.dataset.id = String(r.id);
         });
@@ -488,9 +629,9 @@ animate();
       detailReturnFocus = null;
     }
 
-    // 点击事件流/刻度点：先跳到事件年份，再打开详情
+    // 点击事件流/刻度点：先跳到事件所在年月，再打开详情
     const jumpToEvent = (ev) => {
-      timeline.setYear(ev.year);
+      timeline.setTime(ev.year, ev.month || 1);
       showDetail(ev);
     };
 
@@ -586,7 +727,7 @@ animate();
         const relatedList = document.createElement('div');
         relatedList.className = 'detail-related-list';
         related.forEach((r) => {
-          const button = addText('button', 'detail-related-item', `${r.year} · ${r.short || '未命名事件'}`, relatedList);
+          const button = addText('button', 'detail-related-item', `${r.year}年${r.month || 1}月 · ${r.short || '未命名事件'}`, relatedList);
           button.type = 'button';
           button.dataset.id = String(r.id);
         });
@@ -778,7 +919,7 @@ animate();
       }
       const ev = view?.event !== undefined ? currentEvents.find((e) => e.id === view.event) : undefined;
       if (ev) {
-        timeline.setYear(ev.year);
+        timeline.setTime(ev.year, ev.month || 1);
         showDetail(ev);
       } else {
         closeDetail();
@@ -813,25 +954,8 @@ animate();
       try {
         const freshOverlay = await getAllOverlay(year, { signal: controller.signal });
         if (requestSeq !== overlayRequestSeq || !allPeriodMode) return;
-        clearOverlayGroup(territoryOverlay.group);
-        currentOverlayData = freshOverlay;
-        const newOverlay = buildTerritoryOverlay(freshOverlay, {
-          period: 'all',
-          layerConfig: 'default',
-          onPickPrefecture: (pref) => showPlaceDetail(pref),
-        });
-        while (newOverlay.group.children.length > 0) {
-          territoryOverlay.group.add(newOverlay.group.children[0]);
-        }
-        if (lodState.overlay && newOverlay.worldBox) {
-          lodState.overlay.worldBox = newOverlay.worldBox;
-        }
-        fadeIn(territoryOverlay.group);
-        legend.update(freshOverlay);
+        installOverlayWithCrossfade(freshOverlay, { period: 'all' });
         allOverlayRange = freshOverlay.properties?._range || null;
-        overlayEmpty = !Array.isArray(freshOverlay?.features) || freshOverlay.features.length === 0;
-        loadingEl.textContent = overlayEmpty ? '当前年份暂无疆域数据' : '';
-        loadingEl.classList.toggle('hidden', !overlayEmpty);
       } catch (err) {
         if (!isAbortError(err)) console.error('[all-period] 全时期叠加层加载失败:', err);
       }
@@ -949,20 +1073,31 @@ animate();
       if (!legend) legend = new Legend();
       legend.update(overlayGeojson);
 
-      // 相机取景：优先用疆域叠加层（始终在视野里），底图隐藏时也能正确取景。
-      // frameMap 以包围球为基准做构图（scale 越大留白越多），后续详情面板开关也复用它。
-      const focusGroup = territoryOverlay.group.children.length ? territoryOverlay.group : mapGroup;
-      const box = new THREE.Box3().setFromObject(focusGroup);
-      const sphere = box.getBoundingSphere(new THREE.Sphere());
-      const radius = Number.isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 500;
-      const center = [sphere.center.x, sphere.center.y, sphere.center.z].every(Number.isFinite)
-        ? sphere.center
-        : new THREE.Vector3(0, 0, 0);
+      // 相机取景：优先用 overlay 的 LOD worldBox（政权+河流+山脉 + 6% 边距，始终在视野里），
+      // 底图隐藏时也能正确取景；竖屏放大后以主政权（本朝疆域）bbox 水平锚定。
+      const lodBox = territoryOverlay.worldBox;
+      let frameCenter; let frameW; let frameH;
+      if (lodBox && lodBox.xmax > lodBox.xmin && lodBox.ymax > lodBox.ymin) {
+        frameW = lodBox.xmax - lodBox.xmin;
+        frameH = lodBox.ymax - lodBox.ymin;
+        frameCenter = new THREE.Vector3((lodBox.xmin + lodBox.xmax) / 2, (lodBox.ymin + lodBox.ymax) / 2, 0);
+      } else {
+        const focusGroup = territoryOverlay.group.children.length ? territoryOverlay.group : mapGroup;
+        const sphere = new THREE.Box3().setFromObject(focusGroup).getBoundingSphere(new THREE.Sphere());
+        const radius = Number.isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 500;
+        frameCenter = [sphere.center.x, sphere.center.y, sphere.center.z].every(Number.isFinite)
+          ? sphere.center
+          : new THREE.Vector3(0, 0, 0);
+        frameW = frameH = radius * 2;
+      }
+      const mainEntity = (meta.name || dynastyId).replace(/朝$/, '');
       frameBase = {
-        center,
-        dist: radius / Math.sin((camera.fov * Math.PI) / 180 / 2),
+        center: frameCenter,
+        worldW: frameW,
+        worldH: frameH,
+        anchorBox: computeMainRegimeBox(overlayGeojson, mainEntity),
       };
-      // 构图：scale 0.98 让地图主体占画面约六成（参考图比例），微右移平衡左侧图例
+      // 构图：scale 0.98 留少量余量，微右移平衡左侧图例（竖屏下锚定逻辑另行钳制）
       frameMap({ scale: 0.98, shiftX: 0.02 });
       controls.update();
 
@@ -994,24 +1129,25 @@ animate();
           end: meta.endYear,
           tickMs: SPEED_MAP[settings.speed] || SPEED_MAP.normal,
           autoplay: settings.autoplay,
-          onChange: async (y) => {
-            watermark.textContent = y;
-            bubbles.update(y, prevYear);
-            territoryOverlay.update(y);
+          onChange: async (year, month) => {
+            watermark.textContent = `${year}年${month}月`;
+            bubbles.update(year, month, prevYear, prevMonth);
+            territoryOverlay.update(year);
             // 全时期模式（P2）：年份离开命中集合稳定区间（_range）时重取全部政权
             if (allPeriodMode) {
               const [rangeStart, rangeEnd] = allOverlayRange || [];
-              if (rangeStart === undefined || y < rangeStart || y > rangeEnd) {
-                await reloadAllOverlay(y);
+              if (rangeStart === undefined || year < rangeStart || year > rangeEnd) {
+                await reloadAllOverlay(year);
               }
-              prevYear = y;
+              prevYear = year;
+              prevMonth = month;
               return;
             }
             // 跨过时期边界时，重载疆域叠加层
-            const newPeriod = getPeriodForYear(y);
+            const newPeriod = getPeriodForYear(year);
             if (newPeriod && newPeriod !== currentPeriod) {
               // 政权更替转场横幅（如 1127 靖康：北宋 → 南宋）
-              showEraBanner(y, periodLabel(currentPeriod), periodLabel(newPeriod));
+              showEraBanner(year, periodLabel(currentPeriod), periodLabel(newPeriod));
               currentPeriod = newPeriod;
               overlayLoadingPeriod = newPeriod;
               const requestSeq = ++overlayRequestSeq;
@@ -1023,33 +1159,9 @@ animate();
                 const freshOverlay = await getOverlay(currentDynasty, newPeriod, { signal: controller.signal });
                 if (requestSeq !== overlayRequestSeq || dynastySeq !== dynastyRequestSeq
                   || overlayLoadingPeriod !== newPeriod) return;
-                clearOverlayGroup(territoryOverlay.group);
-                currentOverlayData = freshOverlay;
-                // 重建新 overlay
-                const newOverlay = buildTerritoryOverlay(freshOverlay, {
-                  period: newPeriod,
-                  layerConfig: 'default',
-                  onPickPrefecture: (pref) => showPlaceDetail(pref),
-                });
-                // 把新 group 的资源迁移到旧 group
-                while (newOverlay.group.children.length > 0) {
-                  territoryOverlay.group.add(newOverlay.group.children[0]);
-                }
-                // LOD 判据的 worldBox 随时期数据刷新（旧对象闭包里的包围盒已陈旧）
-                if (lodState.overlay && newOverlay.worldBox) {
-                  lodState.overlay.worldBox = newOverlay.worldBox;
-                }
-                // 新疆域淡入（材质从 0 → 各自原始 opacity）
-                fadeIn(territoryOverlay.group);
-                console.log(`[overlay] 切换到 ${newPeriod} 时期`);
-                legend.update(freshOverlay);
-                overlayEmpty = !Array.isArray(freshOverlay?.features) || freshOverlay.features.length === 0;
-                loadingEl.textContent = overlayEmpty
-                  ? '当前时期暂无疆域数据，仍可查看事件与时间轴'
-                  : '';
-                loadingEl.classList.toggle('hidden', !overlayEmpty);
-                // 新 overlay 的政权标签已插入 DOM，重排泡泡避开标签（避免盖住政权名）
-                setTimeout(() => bubbles.resolve(), 100);
+                // 交叉淡入：旧时期 overlay 作底衬淡出，新疆域淡入（不再「打回宣纸再淡入」）
+                installOverlayWithCrossfade(freshOverlay, { period: newPeriod });
+                console.log(`[overlay] 切换到 ${newPeriod} 时期（交叉淡入）`);
               } catch (err) {
                 if (!isAbortError(err) && requestSeq === overlayRequestSeq && dynastySeq === dynastyRequestSeq
                   && overlayLoadingPeriod === newPeriod) {
@@ -1059,7 +1171,8 @@ animate();
                 }
               }
             }
-            prevYear = y;
+            prevYear = year;
+            prevMonth = month;
           }
         });
       } else {
@@ -1067,13 +1180,14 @@ animate();
         timeline.setTickMs(SPEED_MAP[settings.speed] || SPEED_MAP.normal);
       }
 
-      // 初始刷新：prevYear 设为 start-1，让开局就在窗口内的事件也能触发「首次出现」
+      // 初始刷新：prevTime 设为 start 年首月前一刻，让开局就在窗口内的事件也能触发「首次出现」
       prevYear = meta.startYear;
+      prevMonth = 1;
       currentPeriod = getPeriodForYear(meta.startYear) || '1111';
       overlayLoadingPeriod = currentPeriod;
-      bubbles.update(meta.startYear, meta.startYear - 1);
+      bubbles.update(meta.startYear, 1, meta.startYear - 1, 12);
       territoryOverlay.update(meta.startYear);
-      watermark.textContent = meta.startYear;  // 水印初始值（autoplay 关闭时 onChange 不会立即触发）
+      watermark.textContent = `${meta.startYear}年1月`;  // 水印初始值（autoplay 关闭时 onChange 不会立即触发）
 
       // 时间轴事件刻度点：点击跳到该年并打开详情；初始按设置过滤分类
       timeline.setEvents(currentEvents, (ev) => jumpToEvent(ev));
@@ -1116,7 +1230,7 @@ animate();
     }
     const viewEvent = view?.event !== undefined ? currentEvents.find((e) => e.id === view.event) : undefined;
     if (viewEvent) {
-      timeline.setYear(viewEvent.year);
+      timeline.setTime(viewEvent.year, viewEvent.month || 1);
       showDetail(viewEvent);
     } else if (view?.year !== undefined) {
       timeline.setYear(view.year);  // 只带年份：跳到该年（setYear 内部 clamp 到朝代范围）

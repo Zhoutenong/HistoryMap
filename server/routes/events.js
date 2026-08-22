@@ -13,11 +13,30 @@ const router = Router();
  * [{ id, name, title, role }]，role = lead 主导 / involved 牵连。
  * 无关联人物的事件返回空数组（json_group_array 空集为 null，此处归一为 []）。
  */
+/**
+ * related_persons 是 SQLite json_group_array 的 JSON 文本（TEXT 列），
+ * 透传会是字符串导致前端 Array.isArray 判空失败（P1 人物徽章不渲染）——此处统一解析成数组。
+ * @param {string|Array|null} raw
+ * @returns {Array<{id:number,name:string,title:string,role:string}>}
+ */
+function parseRelatedPersons(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.length > 0) {
+    try {
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 router.get('/', async (req, res) => {
   const dynasty = req.query.dynasty || 'song';
   const categoryParam = req.query.category;
   try {
-    let sql = `SELECT e.id, e.dynasty_id, e.year, e.year_end, e.lng, e.lat, e.short, e.title, e.detail, e.impact, e.place, e.category, e.source, e.confidence, e.license,
+    let sql = `SELECT e.id, e.dynasty_id, e.year, e.month, e.year_end, e.month_end, e.lng, e.lat, e.short, e.title, e.detail, e.impact, e.place, e.category, e.source, e.confidence, e.license,
                   (SELECT json_group_array(json_object('id', p.id, 'name', p.name, 'title', p.title, 'role', ep.role))
                    FROM event_person ep JOIN persons p ON p.id = ep.person_id
                    WHERE ep.event_id = e.id) AS related_persons
@@ -30,13 +49,15 @@ router.get('/', async (req, res) => {
         params.push(...cats);
       }
     }
-    sql += ' ORDER BY e.year ASC';
+    sql += ' ORDER BY e.year ASC, e.month ASC';
     const rows = await all(sql, params);
     res.json(rows.map((r) => ({
       id: r.id,
       dynasty: r.dynasty_id,
       year: r.year,
+      month: r.month,
       yearEnd: r.year_end,
+      monthEnd: r.month_end,
       coord: [r.lng, r.lat],
       short: r.short,
       title: r.title,
@@ -44,7 +65,7 @@ router.get('/', async (req, res) => {
       impact: r.impact || '',
       place: r.place || '',
       category: r.category,
-      relatedPersons: r.related_persons || [],
+      relatedPersons: parseRelatedPersons(r.related_persons),
       source: r.source || '',
       confidence: r.confidence || 'medium',
       license: r.license || '公版古籍'

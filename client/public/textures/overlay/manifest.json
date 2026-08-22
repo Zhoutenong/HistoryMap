@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bakedAt": "2026-08-17",
+  "bakedAt": "2026-08-22",
   "status": "penpot",
   "width": 2048,
   "fitBoxLngLat": [
@@ -44,9 +44,13 @@
         "ymax": 122.98308944973952
       },
       "featureCount": 10,
-      "sizeKb": 886,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 784,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "regimes-1100.png",
+        "4096": "hires/regimes-1100.png"
+      }
     },
     "regimes-1200.png": {
       "status": "penpot-v1",
@@ -68,9 +72,13 @@
         "ymax": 175.75371757495734
       },
       "featureCount": 12,
-      "sizeKb": 987,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 901,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "regimes-1200.png",
+        "4096": "hires/regimes-1200.png"
+      }
     },
     "regimes-1279.png": {
       "status": "penpot-v1",
@@ -94,9 +102,13 @@
         "ymax": 165.6836167505705
       },
       "featureCount": 7,
-      "sizeKb": 991,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 910,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "regimes-1279.png",
+        "4096": "hires/regimes-1279.png"
+      }
     },
     "regimes-1300.png": {
       "status": "penpot-v1",
@@ -118,9 +130,13 @@
         "ymax": 165.6836167505705
       },
       "featureCount": 7,
-      "sizeKb": 991,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 910,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "regimes-1300.png",
+        "4096": "hires/regimes-1300.png"
+      }
     },
     "jin-1120.png": {
       "status": "penpot-v1",
@@ -142,9 +158,13 @@
         "ymax": 131.22473128621206
       },
       "featureCount": 15,
-      "sizeKb": 1182,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 1027,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "jin-1120.png",
+        "4096": "hires/jin-1120.png"
+      }
     },
     "jin-1142.png": {
       "status": "penpot-v1",
@@ -166,9 +186,13 @@
         "ymax": 131.22473128621206
       },
       "featureCount": 15,
-      "sizeKb": 1182,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 1027,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "jin-1142.png",
+        "4096": "hires/jin-1142.png"
+      }
     },
     "jin-1200.png": {
       "status": "penpot-v1",
@@ -190,9 +214,13 @@
         "ymax": 131.22473128621206
       },
       "featureCount": 15,
-      "sizeKb": 1182,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 1027,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "jin-1200.png",
+        "4096": "hires/jin-1200.png"
+      }
     },
     "regimes-800.png": {
       "status": "penpot-v1",
@@ -214,9 +242,13 @@
         "ymax": 140.21130955286776
       },
       "featureCount": 10,
-      "sizeKb": 988,
-      "rendered": "2026-08-18",
-      "styleSource": "styles.json"
+      "sizeKb": 892,
+      "rendered": "2026-08-22",
+      "styleSource": "styles.json",
+      "variants": {
+        "2048": "regimes-800.png",
+        "4096": "hires/regimes-800.png"
+      }
     }
   }
 }

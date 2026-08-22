@@ -138,7 +138,8 @@ fun layoutBubbles(
         val h = t(if (selected) b.HEIGHT_SELECTED else b.HEIGHT)
         Pair(
             ClusterContent(label = titleShown, year = "", body = "", aggregated = false),
-            CollisionNode(ev.year, RectF2(pos.first - w / 2, pos.second - h / 2, w, h)),
+            // 碰撞优先级用月粒度序号：同一年不同月的事件也能按时间先后正确排序
+            CollisionNode(TimeIndex.of(ev.year, ev.month), RectF2(pos.first - w / 2, pos.second - h / 2, w, h)),
         )
     }
     val nodes = content.map { it.second }

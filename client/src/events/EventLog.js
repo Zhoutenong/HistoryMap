@@ -148,10 +148,10 @@ export class EventLog {
     entry.className = `log-entry cat-${ev.category || 'era'}`;
     entry.setAttribute('role', 'listitem');
     entry.tabIndex = 0;
-    entry.setAttribute('aria-label', `${ev.year} 年，${ev.short || '未命名事件'}`);
+    entry.setAttribute('aria-label', `${ev.year}年${ev.month || 1}月，${ev.short || '未命名事件'}`);
     const year = document.createElement('span');
     year.className = 'log-year';
-    year.textContent = `${ev.year} 年`;
+    year.textContent = `${ev.year}年${ev.month || 1}月`;
     const short = document.createElement('span');
     short.className = 'log-short';
     short.textContent = ev.short || '未命名事件';
@@ -232,10 +232,10 @@ export class EventLog {
         const result = document.createElement('button');
         result.type = 'button';
         result.className = 'log-entry log-search-result';
-        result.setAttribute('aria-label', `${ev.year} 年，${ev.short || ev.title || '未命名事件'}`);
+        result.setAttribute('aria-label', `${ev.year}年${ev.month || 1}月，${ev.short || ev.title || '未命名事件'}`);
         const year = document.createElement('span');
         year.className = 'log-year';
-        appendHighlight(year, `${ev.year} 年`, query);
+        appendHighlight(year, `${ev.year}年${ev.month || 1}月`, query);
         const short = document.createElement('span');
         short.className = 'log-short';
         appendHighlight(short, ev.short || ev.title || '未命名事件', query);

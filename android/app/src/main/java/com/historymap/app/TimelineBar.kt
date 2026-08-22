@@ -35,12 +35,22 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/** 轨道百分比 → (year, month)：clamp 到 [起始年1月, 结束年12月]。
+ *  取整用四舍五入（对齐 Web calc.js pctToMonth 的 Math.round，截断会让双端拖拽落点差 1 个月）。 */
+private fun timeAtPct(pct: Float, startYear: Int, endYear: Int): Pair<Int, Int> {
+    val startIdx = TimeIndex.of(startYear, 1)
+    val endIdx = TimeIndex.of(endYear, 12)
+    val idx = kotlin.math.round(startIdx + pct * (endIdx - startIdx)).toInt().coerceIn(startIdx, endIdx)
+    return TimeIndex.yearOf(idx) to TimeIndex.monthOf(idx)
+}
+
 /**
  * 底部时间轴（设计比例，对齐 design-tokens.json / 原型）：
- * 第一行：播放按钮（56px 视觉 / 44dp 触摸）+ 当前年份（42px）+ 年份范围
+ * 第一行：播放按钮（56px 视觉 / 44dp 触摸）+ 当前「年·月」（42px）+ 年份范围
  * 第二行：轨道（44dp 触摸区 + 6px 视觉线 + 32px 滑块/3px 朱砂描边 + 事件刻度点）
  * 第三行：事件分类图例（5 类均布色点 + 分类文字，窄屏随宽度自动收缩）
- * 轨道点击/拖动定位年份；事件刻度点点击跳年（距 24dp 内吸附）。
+ * 轨道点击/拖动定位到「年·月」；事件刻度点点击跳时（距 24dp 内吸附）。
+ * 时间轴自 960 年「年粒度」升级为「月粒度」：逐月推进，刻度按年打，标签精确到「年·月」。
  */
 @Composable
 fun TimelineBar(
@@ -71,7 +81,7 @@ fun TimelineBar(
                 PlayButton(timeline)
                 Spacer(Modifier.width(designDp(16f)))
                 Text(
-                    text = "${timeline.year} 年",
+                    text = "${timeline.year}年${timeline.month}月",
                     fontFamily = MapFonts.Family,
                     fontWeight = FontWeight.Bold,
                     fontSize = designSp(MapTokens.Typography.TIMELINE_YEAR.size.toFloat()),
@@ -114,7 +124,7 @@ fun TimelineBar(
                                     }
                                     if (dragging) {
                                         val pct = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                        timeline.setYear((timeline.startYear + pct * (timeline.endYear - timeline.startYear)).toInt())
+                                        val (yy, mm) = timeAtPct(pct, timeline.startYear, timeline.endYear); timeline.setTime(yy, mm)
                                         change.consume()
                                     }
                                 }
@@ -125,7 +135,7 @@ fun TimelineBar(
                                         if (ev != null) onEventClick(ev)
                                         else {
                                             val pct = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            timeline.setYear((timeline.startYear + pct * (timeline.endYear - timeline.startYear)).toInt())
+                                            val (yy, mm) = timeAtPct(pct, timeline.startYear, timeline.endYear); timeline.setTime(yy, mm)
                                         }
                                     }
                                     break
@@ -139,7 +149,11 @@ fun TimelineBar(
                 val startYear = timeline.startYear
                 val endYear = timeline.endYear
                 val year = timeline.year
-                val progress = (year - startYear).toFloat() / (endYear - startYear).coerceAtLeast(1)
+                val month = timeline.month
+                // 月粒度进度：左端 = 起始年1月，右端 = 结束年12月
+                val startIdx = TimeIndex.of(startYear, 1)
+                val endIdx = TimeIndex.of(endYear, 12)
+                val progress = (TimeIndex.of(year, month) - startIdx).toFloat() / (endIdx - startIdx).coerceAtLeast(1)
                 val markerColor = CATEGORY_COLORS
                 val trackH = DesignMetrics.designToTextPx(MapTokens.Timeline.TRACK_PX.toFloat(), density, scale)
                 val thumbR = DesignMetrics.designToTextPx(MapTokens.Timeline.THUMB_PX.toFloat(), density, scale) / 2f
@@ -166,17 +180,17 @@ fun TimelineBar(
                     val thumbX = (progressW).coerceIn(thumbR, size.width - thumbR)
                     drawCircle(color = MapTokens.PAPER_CARD, radius = thumbR, center = Offset(thumbX, trackY))
                     drawCircle(color = MapTokens.VERMILION, radius = thumbR, center = Offset(thumbX, trackY), style = Stroke(width = thumbStroke))
-                    // 事件刻度点（同年去重 + 1dp 浅色外描边；当前年份实心朱砂）。
-                    // 相近年份/同年多事件合并为单点，避免连续小圆点连成粗线（评审 P2）。
-                    val dotsByYear = events
-                        .distinctBy { it.year }
+                    // 事件刻度点（同「年·月」去重 + 1dp 浅色外描边；当前「年·月」实心朱砂）。
+                    // 相近年月/多月多事件合并为单点，避免连续小圆点连成粗线（评审 P2）。
+                    val dotsByMonth = events
+                        .distinctBy { TimeIndex.of(it.year, it.month) }
                         .map { ev ->
-                            val x = size.width * (ev.year - startYear).toFloat() / (endYear - startYear).coerceAtLeast(1)
+                            val x = size.width * (TimeIndex.of(ev.year, ev.month) - startIdx).toFloat() / (endIdx - startIdx).coerceAtLeast(1)
                             Triple(ev, x, markerColor[ev.category] ?: markerColor["era"]!!)
                         }
-                    for ((ev, x, col) in dotsByYear) {
-                        val isCurrentYear = ev.year == year
-                        val fill = if (isCurrentYear) MapTokens.VERMILION else col.copy(alpha = 0.85f)
+                    for ((ev, x, col) in dotsByMonth) {
+                        val isCurrent = ev.year == year && ev.month == month
+                        val fill = if (isCurrent) MapTokens.VERMILION else col.copy(alpha = 0.85f)
                         // 刻度点画在轨道中心线上（对齐 Web .tl-marker top:50% 居中，
                         // 盖在 5px 轨道上；滑块在其后绘制，层级与 Web z-index 一致）
                         // 1dp 浅色外描边（米白），与轨道背景分离
@@ -268,10 +282,12 @@ private fun nearestEventAt(
 ): EventEntity? {
     if (events.isEmpty() || trackW <= 0f) return null
     val threshold = 24f * density
+    val startIdx = TimeIndex.of(timeline.startYear, 1)
+    val endIdx = TimeIndex.of(timeline.endYear, 12)
     var best: EventEntity? = null
     var bestDist = threshold
     for (ev in events) {
-        val px = trackW * (ev.year - timeline.startYear).toFloat() / (timeline.endYear - timeline.startYear).coerceAtLeast(1)
+        val px = trackW * (TimeIndex.of(ev.year, ev.month) - startIdx).toFloat() / (endIdx - startIdx).coerceAtLeast(1)
         val d = kotlin.math.abs(px - x)
         if (d < bestDist) {
             bestDist = d

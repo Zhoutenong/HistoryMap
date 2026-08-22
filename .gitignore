@@ -18,12 +18,17 @@ server/server/
 # 烘焙疆域水彩贴图（scripts/bake-overlay-textures.mjs + penpot-render-textures.mjs 产出；
 # Web/Android 共用同一份，manifest.json 引用这些文件——必须入库，否则 clone 后静默回退程序化渲染）
 !client/public/textures/overlay/*.png
+# 4096 桌面高倍档（penpot-render --width 4096 产出，~17MB 可再生）：不入库，
+# clone 后桌面端自动回退 2048；需要时重跑 node scripts/penpot-render-textures.mjs --width 4096
 # 验收基线截图（11 状态，scripts/capture-acceptance.mjs 生成）——进版本库形成稳定基线
 !artifacts/acceptance/*.png
 
 # 一次性调试截图/探针脚本（现场调试遗留；正式截图工具是 scripts/capture-acceptance.mjs）
 artifacts/audit/
 artifacts/tmp/
+
+# 月份化研究中间数据（scripts/gen-event-months.mjs 的数据源，考据子代理生成；产物已固化到 10-event-months.sql 入库）
+.data-months/
 
 # 可再生成的历史疆域原始全球文件（重跑脚本自动重新下载）
 server/data/geo/historical/source/

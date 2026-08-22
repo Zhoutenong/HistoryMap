@@ -1,5 +1,662 @@
 [
-  { "entity": "宋", "layer": "edge", "fill": "#9a4a3a", "fillOpacity": 0.25, "blur": 0, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 },
-  { "entity": "宋", "layer": "body", "fill": "#9a4a3a", "fillOpacity": 0.82, "blur": 4, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 },
-  { "entity": "宋", "layer": "bloom", "fill": "#9a4a3a", "fillOpacity": 0.38, "blur": 22, "stroke": null, "strokeOpacity": 0, "strokeWidth": 0 }
+  {
+    "entity": "宋",
+    "layer": "bloom",
+    "fill": "#b03a2e",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "宋",
+    "layer": "body",
+    "fill": "#b03a2e",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "宋",
+    "layer": "edge",
+    "fill": "#b03a2e",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "唐",
+    "layer": "bloom",
+    "fill": "#a8322a",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "唐",
+    "layer": "body",
+    "fill": "#a8322a",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "唐",
+    "layer": "edge",
+    "fill": "#a8322a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "辽",
+    "layer": "bloom",
+    "fill": "#33688f",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "辽",
+    "layer": "body",
+    "fill": "#33688f",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "辽",
+    "layer": "edge",
+    "fill": "#33688f",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "渤海",
+    "layer": "bloom",
+    "fill": "#5d83a6",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "渤海",
+    "layer": "body",
+    "fill": "#5d83a6",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "渤海",
+    "layer": "edge",
+    "fill": "#5d83a6",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "金",
+    "layer": "bloom",
+    "fill": "#a87a2c",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "金",
+    "layer": "body",
+    "fill": "#a87a2c",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "金",
+    "layer": "edge",
+    "fill": "#a87a2c",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西夏",
+    "layer": "bloom",
+    "fill": "#6f7a3d",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西夏",
+    "layer": "body",
+    "fill": "#6f7a3d",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西夏",
+    "layer": "edge",
+    "fill": "#6f7a3d",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "吐蕃",
+    "layer": "bloom",
+    "fill": "#7d5266",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "吐蕃",
+    "layer": "body",
+    "fill": "#7d5266",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "吐蕃",
+    "layer": "edge",
+    "fill": "#7d5266",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大理",
+    "layer": "bloom",
+    "fill": "#4e7d64",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大理",
+    "layer": "body",
+    "fill": "#4e7d64",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大理",
+    "layer": "edge",
+    "fill": "#4e7d64",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒙古",
+    "layer": "bloom",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒙古",
+    "layer": "body",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒙古",
+    "layer": "edge",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "元",
+    "layer": "bloom",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.32,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "元",
+    "layer": "body",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.8,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "元",
+    "layer": "edge",
+    "fill": "#8a6a44",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高丽",
+    "layer": "bloom",
+    "fill": "#5f87ab",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高丽",
+    "layer": "body",
+    "fill": "#5f87ab",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高丽",
+    "layer": "edge",
+    "fill": "#5f87ab",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "新罗",
+    "layer": "bloom",
+    "fill": "#86a0b8",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "新罗",
+    "layer": "body",
+    "fill": "#86a0b8",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "新罗",
+    "layer": "edge",
+    "fill": "#86a0b8",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "日本",
+    "layer": "bloom",
+    "fill": "#7a8a9a",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "日本",
+    "layer": "body",
+    "fill": "#7a8a9a",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "日本",
+    "layer": "edge",
+    "fill": "#7a8a9a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西辽",
+    "layer": "bloom",
+    "fill": "#7a6a8a",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西辽",
+    "layer": "body",
+    "fill": "#7a6a8a",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "西辽",
+    "layer": "edge",
+    "fill": "#7a6a8a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "回鹘",
+    "layer": "bloom",
+    "fill": "#9a8a6a",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "回鹘",
+    "layer": "body",
+    "fill": "#9a8a6a",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "回鹘",
+    "layer": "edge",
+    "fill": "#9a8a6a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "南诏",
+    "layer": "bloom",
+    "fill": "#8a5a7a",
+    "fillOpacity": 0.28,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "南诏",
+    "layer": "body",
+    "fill": "#8a5a7a",
+    "fillOpacity": 0.65,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "南诏",
+    "layer": "edge",
+    "fill": "#8a5a7a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大越",
+    "layer": "bloom",
+    "fill": "#708a8a",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大越",
+    "layer": "body",
+    "fill": "#708a8a",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "大越",
+    "layer": "edge",
+    "fill": "#708a8a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高棉",
+    "layer": "bloom",
+    "fill": "#8a6a5a",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高棉",
+    "layer": "body",
+    "fill": "#8a6a5a",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "高棉",
+    "layer": "edge",
+    "fill": "#8a6a5a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "占婆",
+    "layer": "bloom",
+    "fill": "#a84a5a",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "占婆",
+    "layer": "body",
+    "fill": "#a84a5a",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "占婆",
+    "layer": "edge",
+    "fill": "#a84a5a",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒲甘",
+    "layer": "bloom",
+    "fill": "#7a8a55",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒲甘",
+    "layer": "body",
+    "fill": "#7a8a55",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "蒲甘",
+    "layer": "edge",
+    "fill": "#7a8a55",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "真腊",
+    "layer": "bloom",
+    "fill": "#9a8a4e",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "真腊",
+    "layer": "body",
+    "fill": "#9a8a4e",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "真腊",
+    "layer": "edge",
+    "fill": "#9a8a4e",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "海南",
+    "layer": "bloom",
+    "fill": "#8f7a5e",
+    "fillOpacity": 0.24,
+    "blur": 22,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "海南",
+    "layer": "body",
+    "fill": "#8f7a5e",
+    "fillOpacity": 0.55,
+    "blur": 4,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  },
+  {
+    "entity": "海南",
+    "layer": "edge",
+    "fill": "#8f7a5e",
+    "fillOpacity": 0.25,
+    "blur": 0,
+    "stroke": null,
+    "strokeOpacity": 0,
+    "strokeWidth": 0
+  }
 ]

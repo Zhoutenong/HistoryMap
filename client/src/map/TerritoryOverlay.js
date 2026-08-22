@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { geoCentroid } from 'd3-geo';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { project } from './ChinaMap.js';
+import { buildRiverRibbonMesh } from './RiverRibbons.js';
 // 地点类要素 kind 白名单：都城/战场/书院等点位在 overlay 响应顶层 properties.places 中透传，
 // 也允许直接出现在 features 里（kind 命中白名单）。数值来自 contract/tokens.json（双端唯一事实来源，
 // 与 Android ContractTokens.PLACE_KINDS / server overlay-merge.js 同源）。
@@ -19,18 +20,18 @@ import { PLACE_KINDS } from '../contract-tokens.js';
  * 保留的外部契约（main.js 依赖）：
  *   - buildTerritoryOverlay(geojson) → { group, update }，group 内包含
  *     washMesh（z=7）+ 政权名标签（z=7.2）+ 城市标注（z=7.4）
- *   - fadeIn(group, duration)：对透明材质做 0 → base 淡入
  *   - 时期切换时 main.js 遍历 group.children dispose（washMesh 的
  *     geometry/material.map 均在此处置）
  */
 
-/** 把政权色降饱和、压暗，转成水彩颜料色（低饱和、偏灰）。 */
+/** 把政权色降饱和、压暗，转成水彩颜料色（与 Android WatercolorTexture.watercolorTint 同参数：
+ *  TINT_SAT=1.00 不降饱和、TINT_LUM=0.92、亮度钳制 [0.28, 0.55]——双端程序化回退观感一致）。 */
 function watercolorTint(hex) {
   const c = new THREE.Color(hex || '#888888');
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl);
-  const s = Math.max(0, hsl.s * 0.78);                 // 饱和度保留 78%（更浓）
-  const l = Math.min(0.46, Math.max(0.32, hsl.l * 0.82)); // 亮度压到 0.32–0.46
+  const s = hsl.s;                                        // 饱和度保留（M2：×0.78 是旧「偏棕」根因）
+  const l = Math.min(0.55, Math.max(0.28, hsl.l * 0.92)); // 亮度压低但不过暗
   const tint = new THREE.Color().setHSL(hsl.h, s, l);
   return {
     r: Math.round(tint.r * 255),
@@ -241,12 +242,8 @@ function buildWatercolorCanvas(geojson, renderConfig = {}) {
     });
   });
 
-  // 2e. 暖色罩：低透明暖褐罩层（soft-light），让色块与宣纸更融合
-  ctx.save();
-  ctx.globalCompositeOperation = 'soft-light';
-  ctx.fillStyle = 'rgba(224, 206, 168, 0.55)';
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
+  // 2e. 暖色罩已移除（对齐 Android WARM_WASH_ALPHA=0）：任何强度的 SRC/soft-light 暖罩
+  // 都会把政权色整体拉平米褐（M1/M2 实测「发闷」根因之一），宣纸感交给底层页面纹理。
 
   // 3. 纸张颗粒：soft-light 叠加细密噪点，增强水墨纸感
   const grain = ctx.createImageData(W, H);
@@ -291,7 +288,20 @@ function getBakedManifest() {
 /**
  * 资源贴图异步替换 wash 材质 map。时期切换后旧 mesh 已被 dispose，
  * 此时回调直接丢弃（替换旧纹理无害：新纹理随 mesh 一起被 GC 回收）。
+ * 分辨率变体（阶段⑤）：桌面高倍缩放档优先 4096 hires，加载失败逐级回退
+ * （hires → 2048 → 保持程序化纹理）。
  */
+function prefersHiresTexture() {
+  // 桌面档判定：非低端（核数>4）且 CSS 屏宽 ≥1100（手机/平板 <1000，内存红线不碰 hires）
+  try {
+    if ((navigator.hardwareConcurrency || 8) <= 4) return false;
+    if ((screen?.width || 0) < 1100) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function applyBakedWatercolor(washMesh, geojson) {
   if (!washMesh || !washMesh.material) return;
   const periodId = geojson?.properties?._periodId;
@@ -299,18 +309,27 @@ function applyBakedWatercolor(washMesh, geojson) {
   getBakedManifest().then((manifest) => {
     const file = manifest?.byPeriod?.[periodId];
     if (!file) return;
-    new THREE.TextureLoader().load(
-      `./textures/overlay/${file}`,
-      (texture) => {
-        if (!washMesh.material) return;
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        washMesh.material.map = texture;
-        washMesh.material.needsUpdate = true;
-      },
-      undefined,
-      () => { /* 加载失败：保持程序化纹理 */ },
-    );
+    const candidates = [];
+    const variants = manifest?.files?.[file]?.variants;
+    if (prefersHiresTexture() && variants?.['4096']) candidates.push(variants['4096']);
+    candidates.push(file);
+    const tryLoad = (list) => {
+      const next = list.shift();
+      if (!next) return; // 全部失败：保持程序化纹理
+      new THREE.TextureLoader().load(
+        `./textures/overlay/${next}`,
+        (texture) => {
+          if (!washMesh.material) return;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = 4;
+          washMesh.material.map = texture;
+          washMesh.material.needsUpdate = true;
+        },
+        undefined,
+        () => tryLoad(list),
+      );
+    };
+    tryLoad(candidates);
   });
 }
 
@@ -482,7 +501,7 @@ function isVisibleAt(item, year) {
   return true;
 }
 
-function buildAuxiliaryOverlay(geojson, kind, z, featureKinds = null) {
+function buildAuxiliaryOverlay(geojson, kind, z, featureKinds = null, worldBoxWidth = 1000) {
   const group = new THREE.Group();
   group.name = kind;
   group.position.z = z;
@@ -493,13 +512,17 @@ function buildAuxiliaryOverlay(geojson, kind, z, featureKinds = null) {
     if (kind === 'rivers' && (!path || path.length < 2)) return;
     if (kind !== 'rivers' && (!coord || coord.length < 2)) return;
     if (kind === 'rivers') {
-      const points = path.map((lngLat) => { const [x, y] = project(lngLat); return new THREE.Vector3(x, y, 0); });
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const material = new THREE.LineBasicMaterial({ color: 0x3a3428, transparent: true, opacity: 0.38 });
-      const line = new THREE.Line(geometry, material);
-      line.name = 'river';
-      line.userData.overlayItem = item;
-      group.add(line);
+      // 河道带（阶段④）：变宽三角带 + 三层河带着色器，对齐 Android RiverRibbons；
+      // LOD 档位 rank 淡化经 material.userData.lodAlpha → uAlpha（见 applyVisibility）
+      const worldPts = path.map((lngLat) => project(lngLat));
+      const ribbon = buildRiverRibbonMesh(worldPts, {
+        boxWidth: worldBoxWidth,
+        rank: Number(item.rank || 1),
+      });
+      if (!ribbon) return;
+      ribbon.name = 'river';
+      ribbon.userData.overlayItem = item;
+      group.add(ribbon);
       return;
     }
     const el = document.createElement('div');
@@ -646,7 +669,10 @@ function buildPrefectureSeats(geojson, onPick) {
 export function buildTerritoryOverlay(geojson, renderConfig = {}) {
   const root = new THREE.Group();
   root.name = 'TerritoryOverlay';
-  const rivers = buildAuxiliaryOverlay(geojson, 'rivers', 7.1);
+  // LOD s 判据分母（政权+河流+山脉 + 6% pad）提前算好：河道带宽度也按同一世界宽换算
+  const lodWorldBox = computeLodWorldBox(geojson);
+  const worldBoxWidth = lodWorldBox ? lodWorldBox.xmax - lodWorldBox.xmin : 1000;
+  const rivers = buildAuxiliaryOverlay(geojson, 'rivers', 7.1, null, worldBoxWidth);
   const mountains = buildAuxiliaryOverlay(geojson, 'mountains', 7.15);
   const cities = buildAuxiliaryOverlay(geojson, 'cities', 7.3);
   const places = buildAuxiliaryOverlay(geojson, 'places', 7.32, PLACE_KINDS);
@@ -731,13 +757,19 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
         const item = child.userData.overlayItem;
         if (group.name === 'rivers') {
           // 河流几何按 rank 分级淡化（§4.2 矩阵）：rank2 L0 ×0.4、rank3 L1 ×0.4
-          // （不整条隐藏，几何 alpha 渐变与 Android riverLodAlpha 一致）
+          // （不整条隐藏，几何 alpha 渐变与 Android riverLodAlpha 一致）。
+          // 河道带是 ShaderMaterial：LOD 淡化写 lodAlpha（onBeforeRender 合成进 uAlpha）；
+          // 其余（理论上已无）线材质回退 opacity 方案
           const rank = Number(item?.rank || 1);
           let alpha = 1;
           if (rank === 2 && currentTier === 0) alpha = 0.4;
           else if (rank >= 3) alpha = currentTier === 0 ? 0 : (currentTier === 1 ? 0.4 : 1);
           child.visible = layerOn && isVisibleAt(item, lastYear) && alpha > 0;
-          if (child.material?.transparent) child.material.opacity = 0.38 * alpha;
+          if (child.material?.isShaderMaterial) {
+            child.material.userData.lodAlpha = alpha;
+          } else if (child.material?.transparent) {
+            child.material.opacity = 0.38 * alpha;
+          }
           return;
         }
         child.visible = layerOn && isVisibleAt(item, lastYear) && tierAdmits(item, currentTier, false);
@@ -847,38 +879,7 @@ export function buildTerritoryOverlay(geojson, renderConfig = {}) {
     getCollisionObstacles,
     setLod,
     // LOD s 判据分母：全要素包围盒（政权+河流+山脉 + 6% pad，与 Android boundsOf 同源）
-    worldBox: computeLodWorldBox(geojson),
+    worldBox: lodWorldBox,
   };
 }
 
-/**
- * 淡入动画：遍历 group 内所有半透明材质，从 0 渐变回各自原始 opacity。
- * 用于时期切换时新 overlay 的柔和呈现（水彩 plane + 旧版填充材质都适用）。
- * @param {THREE.Group} group
- * @param {number} [duration=400] 毫秒
- */
-export function fadeIn(group, duration = 400) {
-  const targets = [];
-  group.traverse((n) => {
-    if (n.material && Array.isArray(n.material)) {
-      n.material.forEach((m) => {
-        if (m.transparent) targets.push({ mat: m, base: m.opacity });
-      });
-    } else if (n.material && n.material.transparent) {
-      targets.push({ mat: n.material, base: n.material.opacity });
-    }
-  });
-  if (targets.length === 0) return;
-
-  const t0 = performance.now();
-  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-  const step = () => {
-    const t = Math.min(1, (performance.now() - t0) / duration);
-    const k = easeOutCubic(t);
-    targets.forEach(({ mat, base }) => {
-      mat.opacity = base * k;
-    });
-    if (t < 1) requestAnimationFrame(step);
-  };
-  step();
-}

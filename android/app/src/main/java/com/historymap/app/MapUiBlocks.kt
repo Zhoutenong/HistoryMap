@@ -244,10 +244,11 @@ internal fun EventDetailContent(
 ) {
     val catLabel = ContractTokens.CATEGORY_LABELS[ev.category] ?: ev.category
     val context = LocalContext.current
-    // 相关事件：同分类、按年份远近取 3 条（增强历史浏览连续性）
+    // 相关事件：同分类、按时间（月粒度）远近取 3 条（增强历史浏览连续性）
+    val baseIdx = TimeIndex.of(ev.year, ev.month)
     val related = allEvents
         .filter { it.id != ev.id && it.category == ev.category }
-        .sortedBy { kotlin.math.abs(it.year - ev.year) }
+        .sortedBy { kotlin.math.abs(TimeIndex.of(it.year, it.month) - baseIdx) }
         .take(3)
     // 打开/切换详情时自动滚回顶部（相关事件点击会替换 ev → 重置滚动位置）
     val scrollState = rememberScrollState()
@@ -266,7 +267,7 @@ internal fun EventDetailContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            YearBadge("${ev.year} 年")
+            YearBadge("${ev.year}年${ev.month}月")
             CategoryBadge(catLabel)
         }
         // 分享按钮（右对齐；系统分享面板 ACTION_SEND，分享标题+年份+地点+详情）
@@ -397,12 +398,12 @@ internal fun EventDetailContent(
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        "${rel.year} 年",
+                        "${rel.year}年${rel.month}月",
                         fontFamily = MapFonts.Family,
                         fontSize = scaledSp(12f),
                         fontWeight = FontWeight.Bold,
                         color = MapTokens.VERMILION,
-                        modifier = Modifier.width(58.dp),
+                        modifier = Modifier.width(72.dp),
                     )
                     Text(
                         rel.short.ifEmpty { "未命名事件" },
@@ -452,7 +453,7 @@ internal fun shareEvent(context: Context, ev: EventEntity) {
     val title = ev.title.ifEmpty { ev.short }
     val text = buildString {
         append(title)
-        append("\n").append(ev.year).append(" 年")
+        append("\n").append(ev.year).append("年").append(ev.month).append("月")
         if (ev.place.isNotEmpty()) append(" · ").append(ev.place)
         if (ev.detail.isNotEmpty()) append("\n\n").append(ev.detail)
     }
@@ -722,6 +723,7 @@ internal fun EventLogSheetBlock(
                 seenEvents = seenEvents,
                 allEvents = allEvents,
                 currentYear = tl.year,
+                currentMonth = tl.month,
                 onPick = onPick,
                 onDismiss = { onOpenChange(false) },
             )

@@ -106,6 +106,23 @@ const MIGRATIONS = [
       seedFiles(db, ['09-song-provenance.sql'], seedDir);
     },
   },
+  {
+    // 月份化：events 补 month/month_end 两列（老库 ALTER）。时间轴/泡泡自此按
+    // [year·month, year_end·month_end] 月粒度窗口显示。month_end 兜底 12（无月级数据的
+    // 跨年事件窗口保持「整年可见」旧语义），真实值由 10 号 seed 覆写。
+    version: 9,
+    apply(db) {
+      migrateEventsColumn(db, 'month', "INTEGER NOT NULL DEFAULT 1");
+      migrateEventsColumn(db, 'month_end', "INTEGER NOT NULL DEFAULT 12");
+    },
+  },
+  {
+    // 月份化数据：按 (dynasty_id, year, short) 身份 UPDATE 全部事件的月级日期。
+    version: 10,
+    apply(db, seedDir) {
+      seedFiles(db, ['10-event-months.sql'], seedDir);
+    },
+  },
 ];
 
 function migrateData(db, seedDir) {

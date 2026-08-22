@@ -2,7 +2,7 @@
   "type": "FeatureCollection",
   "properties": {
     "name": "金",
-    "color": "#a8873a",
+    "color": "#a87a2c",
     "fillOpacity": 0.3
   },
   "features": [
@@ -10,7 +10,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -1003,7 +1003,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -1520,7 +1520,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -5077,7 +5077,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -6970,7 +6970,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -12105,7 +12105,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -14078,7 +14078,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -17071,7 +17071,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -19624,7 +19624,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -20429,7 +20429,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -21106,7 +21106,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -22035,7 +22035,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -23532,7 +23532,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -25261,7 +25261,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",
@@ -26762,7 +26762,7 @@
       "type": "Feature",
       "properties": {
         "entity": "金",
-        "color": "#a8873a",
+        "color": "#a87a2c",
         "fillOpacity": 0.3,
         "dynasty": "金",
         "period": "1200年",

@@ -44,7 +44,7 @@ function snapshot(db) {
 function assertCompleteAndIdempotent(db, label) {
   initializeDatabase(db);
   const first = snapshot(db);
-  assert.deepEqual(first.migrations, [{ version: 0 }, { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }], `${label}: markers`);
+  assert.deepEqual(first.migrations, [{ version: 0 }, { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 }, { version: 9 }, { version: 10 }], `${label}: markers`);
   assert.deepEqual(first.dynasties, [{ id: 'jin' }, { id: 'liao' }, { id: 'song' }, { id: 'tang' }, { id: 'yuan' }], `${label}: dynasties`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'song').length > 0, `${label}: Song events`);
   assert.ok(first.events.filter((event) => event.dynasty_id === 'jin').length > 0, `${label}: Jin events`);

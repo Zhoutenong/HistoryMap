@@ -25,7 +25,8 @@ const EXCLUDE_DIRS = new Set(['source', '_archive_v1_chinaclip']);
 const WEB_STATIC_FILES = new Set(['paper-texture.jpg', 'paper-grain.png', 'ink-landscape.png']);
 const keepWebStatic = (src) => {
   const name = src.split(/[\\/]/).pop();
-  if (statSync(src).isDirectory()) return true;
+  // hires/（4096 桌面高倍档）不进 APK：Android 维持 2048（4096×3300 ARGB ≈ 50MB，内存红线）
+  if (statSync(src).isDirectory()) return name !== 'hires';
   return WEB_STATIC_FILES.has(name) || name.endsWith('.png') || name.endsWith('.json');
 };
 

@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS events (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   dynasty_id  TEXT NOT NULL REFERENCES dynasties(id),
   year        INTEGER NOT NULL,        -- 事件起始年（公历整数）
+  month       INTEGER NOT NULL DEFAULT 1,  -- 事件起始月（1-12），时间轴/泡泡按 [year·month, year_end·month_end] 月粒度窗口显示
   year_end    INTEGER NOT NULL,        -- 事件结束年，泡泡在 [year, year_end] 窗口内显示
+  month_end   INTEGER NOT NULL DEFAULT 12, -- 事件结束月（1-12），与 year_end 组成窗口终点；兜底 12 保持无月级数据的跨年事件「整年可见」
   lng         REAL NOT NULL,           -- 经度（与 GeoJSON 一致，经度在前）
   lat         REAL NOT NULL,           -- 纬度
   short       TEXT NOT NULL,           -- 简称（显示在泡泡上）

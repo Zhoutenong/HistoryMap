@@ -22,8 +22,10 @@ test.describe('P1 人物视角', () => {
     expect(value).toBeTruthy();
     await personSelect.selectOption(value);
     await expect(personSelect).toHaveValue(value);
-    // 选中后筛选生效的可见信号：设置面板仍可见且选中项为岳飞
-    await expect(personSelect.locator('option[selected], option')).first().toBeVisible();
+    // 选中后筛选生效的可见信号：设置面板仍可见且下拉值保持岳飞
+    // （option 在收起的 select 内无布局盒，不能作 visible 断言）
+    await expect(page.locator('#settings-panel')).toBeVisible();
+    await expect(personSelect).toHaveValue(value);
   });
 
   test('事件详情显示相关人物徽章与资料来源（P1/P4）', async ({ page }) => {
@@ -98,7 +100,8 @@ test.describe('P3 分享卡片与深链接', () => {
     await expect(page.locator('#loading')).toBeHidden({ timeout: 20_000 });
     await expect(page.locator('#detail-panel')).toBeVisible();
     await expect(page.locator('#detail-title')).toContainText('澶渊之盟');
-    await expect(page.locator('#year-watermark')).toHaveText(String(target.year));
+    // 月份化：水印精确到「年·月」（深链接按事件月还原）
+    await expect(page.locator('#year-watermark')).toHaveText(`${target.year}年${target.month || 1}月`);
   });
 });
 

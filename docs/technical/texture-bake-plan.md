@@ -89,10 +89,16 @@ penpot-v1 版对齐：canvas 宽高比 1.220 == worldBox 宽高比，非空像�
 - [x] P0-4 Penpot 制作管线：SVG 生成（同投影同 worldBox）→ Penpot 三层水彩样式（bloom/body/edge，
       可视化可调）→ 参数提取 styles.json → 本地水彩渲染（斑驳/干边补齐）→ 8 张 PNG 全部渲染。
       对齐验证：宽高比 1.220 一致、覆盖率 91.6%（2026-08-17）
-- [ ] P0-5 人眼调参：对照效果图在 Penpot 里调 8 张图的 fill/blur/透明度 → 重提取重渲染 → 定稿 done
+- [~] P0-5 人眼调参：2026-08-22 已完成**全政权色相族表**一轮（scripts/apply-regime-palette.mjs
+      统一刷新 periods.json + 政权 geojson + styles.json 三处色源，22 政权全部入 styles；
+      宋域实测 HSL(6,58,43) vs 设计 (6,59,44) 达标）。剩余：对照效果图在 Penpot 里逐张微调
+      fill/blur 并定稿 done
 - [ ] P0-6 效果图导入 Penpot 作参考层（remote MCP 无本地文件通道，需手动拖入 prompt_*.png）
-- [ ] P1 河流层评估（候选：独立烘焙一张淡墨水痕贴图，或维持程序化）
-- [ ] P1 bake 脚本支持 --width 4096（桌面高分辨率档，manifest 标注分辨率）
+- [ ] P1 河流层评估（候选：独立烘焙一张淡墨水痕贴图，或维持程序化）——Web 端已改运行时
+      变宽河道带（client/src/map/RiverRibbons.js，对齐 Android），不再考虑烘焙
+- [x] P1 bake 脚本支持 --width 4096（桌面高分辨率档，manifest 标注分辨率）（2026-08-22：
+      penpot-render --width 4096 → hires/ 子目录 + manifest variants；hires 不入 git
+      （.gitignore），Android 不同步（prepare-android 排除），桌面端缺档自动回退 2048）
 - [ ] P1 验收截图 SOP：重渲染后截图对比效果图，更新本文档
 
 ## 六、已知风险
@@ -116,3 +122,7 @@ penpot-v1 版对齐：canvas 宽高比 1.220 == worldBox 宽高比，非空像�
 | 2026-08-17 | **修复 regimes-1100.png 风格不一致**：该图被一次占位 bake（1024 宽平涂）单独覆盖，与其余 7 张 penpot-v1 水彩版风格脱节（manifest 记录 2048×1679/893KB 与实际不符）。重跑 `node scripts/penpot-render-textures.mjs --styles artifacts/penpot/styles.json` 恢复水彩版（2048×1679 / 893KB，宽度比 1.220 与文档记录一致）；其余 7 张 PNG 逐字节哈希不变，回归通过。教训：bake 占位版是几何基准，**跑完 bake 必须立即重跑 penpot:render**，否则会以占位平涂覆盖水彩贴图 |
 | 2026-08-18 | **M2 宋域色实测裁决**：P20 实机截图 `artifacts/audit/song-check.png`，宋域中心 6 点取样稳定值 `#9e4b3d`（RGB 158,75,61），vs 设计色 `#b03a2e`（H=6° S=59% L=44%）→ 实测 H=9° S=44% L=43%。色相偏移仅 3°可忽略；饱和度降 15%是「偏棕」观感根源。根因：`WatercolorTexture.watercolorTint()` TINT_SAT=0.95（饱和度×0.95）+ 宣纸底 alpha 混合额外去饱和 ~12%。结论：偏棕确实存在但不构成严重失真；TINT_SAT 位于 MapVisualTokens.kt（M1 授权范围），本次不改代码。建议供 M1 参考：TINT_SAT 0.95→1.00 消除 tint 层去饱和，或 regime-specific tint 方案 |
 | 2026-08-18 | **M1/M2 修复落地（父级决断，子 agent 执行后合并）**：① MapVisualTokens.kt：Typography 字号全部回退 design-tokens 标称（消除与 FONT_SCALE=1.25 的双重放大 ≈35%）、TOP_TITLE weight 700→400、Bubble.HEIGHT 96→112、TIMELINE_BOTTOM_SAFE_AREA 18→24、河道 body/spine/支流回提（88→96 / 118→124 / 56→60）、VIGNETTE_STRENGTH 0.34→0.38；② 采纳 M2 方案 A：WATERCOLOR_TINT_SAT 0.95→1.00（作用于程序化回退路径）；③ styles.json 宋 body fillOpacity 0.72→0.82 并重跑 penpot-render —— 仅含宋政权的 regimes-1100/1200 两张变化，其余 6 张哈希逐字节不变；④ 重跑 build→prepare-android→assemble→装机。**教训：APK 贴图来自 client/dist，改贴图必须重跑 npm run build 再 prepare-android（首轮实测无变化即因此）**。实测：宋域主体色 #9e4b3d(s0.61)→#a34538(s0.66) 更红更饱和；顶栏/时间轴/分类页签无遮挡无回归；FPS 59 |
+| 2026-08-22 | **阶段② 全政权色彩调参（地图描画改进计划）**：新增 `scripts/apply-regime-palette.mjs`（幂等）统一刷新三处色源——periods.json entities、8 个政权 geojson 的 feature/顶层 color、styles.json（22 政权 × bloom/body/edge 全覆盖；主政权 body 0.80 / 中坚 0.65 / 次要 0.55）。色相族表：宋朱红 #b03a2e（保持）/ 辽石青 #33688f / 金赭金 #a87a2c / 西夏橄榄 #6f7a3d / 吐蕃紫褐 #7d5266 / 大理青绿 #4e7d64 / 蒙古·元赭褐 #8a6a44（提亮防 1279 死闷）；修复旧表重复色（大理=蒲甘=回鹘、辽=渤海、高丽=新罗、西辽=日本）。同步代码：Web 程序化回退 watercolorTint 对齐 Android（SAT 0.78→1.00、亮度钳制 [0.28,0.55]、移除暖褐罩）；Android REGIME_SHADOW_ALPHA 0.15→0.10。重跑 bake→penpot:render→build→prepare-android→assembleDebug 全链。定点取样审计（phase2-song1111.png）：宋 HSL(6,58,43) vs 设计 (6,59,44) 达标（M2 偏棕问题闭环）；五政权同屏色相/明度区分显著。8 张贴图全部重渲染（文件尺寸变化正常） |
+| 2026-08-22 | **阶段③ 海岸线重描 + 岸外水纹（penpot-render）**：全部政权 polygon-clipping union 取外轮廓（= 海岸线 + 国界外缘），绘制顺序「岸外水纹（两圈渐宽青灰墨 stroke，陆内半侧被填色覆盖）→ 政权三层填色 → union 轮廓重墨描边（#3a3428，2.6px，alpha 0.55）」，建立「海岸粗重、国界细淡」的古地图层级（此前海岸与内边界同粗同淡、轮廓发毛）。union 失败静默跳过（无海岸线层，回退旧观感）。Web 程序化回退路径**不加**简化海岸线（无 union 依赖会把内部边界也描粗，破坏层级；回退路径维持政权干边，贴图为主路径）。8 张贴图重渲染验证通过 |
+| 2026-08-22 | **阶段④ Web 河道带（对齐 Android）**：新增 `client/src/map/RiverRibbons.js`——变宽三角带（上游 TAPER_HEAD 0.55 → 入海口 TAPER_MOUTH 1.30，smoothstep 弧长渐变）+ 三层河带着色器（水痕/主体/脊线，逐行移植 MapShaders.FRAG_RIVER）+ uTime 顺流微动画（onBeforeRender 同步，不占主循环）；参数镜像 MapVisualTokens RIVER_*（视觉层 token 不入契约，注释互指）。TerritoryOverlay 河流分支 THREE.Line → ribbon mesh，LOD rank 淡化改写 material.userData.lodAlpha → uAlpha。**坑：position 属性必须 vec3（itemSize=2 会让 three 包围球读 z 越界出 NaN）**。vitest +8 用例（chaikin/宽度分档/taper 单调/退化路径） |
+| 2026-08-22 | **阶段⑤ 4096 桌面高倍档**：penpot-render 新增 `--width 4096` → 输出 `hires/` 子目录；manifest `files[file].variants = { "2048": …, "4096": "hires/…" }`（bake 整写 manifest 后由 render 按磁盘自愈补齐）。Web applyBakedWatercolor：桌面档（核数>4 且 CSS 屏宽 ≥1100）优先 hires，失败逐级回退（hires → 2048 → 程序化）。hires 不入 git（.gitignore，~17MB 可再生）；prepare-android 排除 hires/（Android 维持 2048，4096×3300 ARGB ≈ 50MB 内存红线）。端到端验证：干净上下文桌面加载 hires/regimes-1100.png 无回退。**注意：manifest 是 force-cache 抓取，改贴图档位后老访客命中旧缓存会回退 2048（可接受，优雅降级）** |

@@ -49,7 +49,7 @@ object ContractTokens {
     val CATEGORY_IDS: Set<String> = CATEGORIES.map { it.id }.toSet()
 
     /** 播放速度档位 → tickMs(ms) */
-    val SPEED_TICK_MS: Map<String, Long> = mapOf("slow" to 220L, "normal" to 110L, "fast" to 50L)
-    const val SPEED_TICK_NORMAL: Long = 110L
+    val SPEED_TICK_MS: Map<String, Long> = mapOf("slow" to 40L, "normal" to 20L, "fast" to 10L)
+    const val SPEED_TICK_NORMAL: Long = 20L
     val SPEED_IDS: Set<String> = SPEED_TICK_MS.keys
 }

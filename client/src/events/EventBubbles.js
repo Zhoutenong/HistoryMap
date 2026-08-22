@@ -2,6 +2,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { project } from '../map/ChinaMap.js';
 import { resolveCollisions } from './collisions.js';
 import { COLLISION } from '../contract-tokens.js';
+import { monthIndex, withinWindow } from '../timeline/calc.js';
 
 // 事件泡泡层。
 // 显示规则：泡泡只在 [year, yearEnd] 时间窗口内可见，过期自动消失。
@@ -27,7 +28,9 @@ export class EventBubbles {
    */
   constructor({ scene, events, categories = ['era'], onPick, onAppear = () => {}, toScreen = null, leadersHost = null, getCollisionObstacles = null }) {
     this.scene = scene;
-    this.events = events.slice().sort((a, b) => a.year - b.year);
+    this.events = events.slice().sort(
+      (a, b) => monthIndex(a.year, a.month || 1) - monthIndex(b.year, b.month || 1)
+    );
     this.activeCategories = categories.slice();
     /** 人物视角过滤（P1）：null = 不过滤；否则只显示 relatedPersons 含该 id 的事件 */
     this.personFilter = null;
@@ -38,6 +41,7 @@ export class EventBubbles {
     /** @type {{obj: CSS2DObject, el: HTMLElement, shift: HTMLElement, ev, dx:number, dy:number}[]} */
     this.items = [];
     this._lastYear = undefined; // 记录最近一次 update 的年份，供 setCategories 重算用
+    this._lastMonth = undefined; // 记录最近一次 update 的月份
     /** 折叠状态：同簇 ≥3 个且推挤不开时收成「+N」聚合泡泡 */
     this._folds = [];       // [{ members: items[], aggObj }]
     this._folded = new Set(); // 被折叠隐藏的 item
@@ -52,6 +56,7 @@ export class EventBubbles {
       const wrap = document.createElement('div');
       wrap.className = 'event-bubble';
       wrap.dataset.year = ev.year;
+      wrap.dataset.month = ev.month || 1;
 
       // 偏移层 .bubble-shift：碰撞避让的屏幕偏移写这里（left/top），
       // 与渲染器写入父级的 transform 互不冲突
@@ -64,7 +69,7 @@ export class EventBubbles {
       inner.className = `bubble-inner cat-${ev.category || 'era'}`;
       inner.setAttribute('role', 'button');
       inner.tabIndex = 0;
-      inner.setAttribute('aria-label', `${ev.year} 年，${ev.short || '未命名事件'}`);
+      inner.setAttribute('aria-label', `${ev.year}年${ev.month || 1}月，${ev.short || '未命名事件'}`);
       const seal = document.createElement('span');
       seal.className = 'bubble-seal';
       const short = document.createElement('span');
@@ -113,15 +118,19 @@ export class EventBubbles {
   }
 
   /**
-   * 按时间窗口 [year, yearEnd] 刷新可见性，并在「刚出现」时触发脉冲。
+   * 按时间窗口 [year·month, yearEnd·monthEnd] 刷新可见性，并在「刚出现」时触发脉冲。
    * 只有当前启用分类内的事件才可见；onAppear 也只对启用分类触发。
    * 可见性刷新后做屏幕空间碰撞避让。
-   * @param {number} year
-   * @param {number} [prevYear]
+   * @param {number} year 当前年
+   * @param {number} month 当前月（1-12）
+   * @param {number} [prevYear] 上一帧年
+   * @param {number} [prevMonth] 上一帧月
    */
-  update(year, prevYear) {
+  update(year, month, prevYear, prevMonth) {
     this._lastYear = year;
-    // 年份变化：清掉旧折叠（聚合对象移除、成员恢复），重新按窗口评估
+    this._lastMonth = month;
+    const cur = monthIndex(year, month);
+    // 时间变化：清掉旧折叠（聚合对象移除、成员恢复），重新按窗口评估
     this._clearFolds();
     const cats = this.activeCategories;
     const personId = this.personFilter;
@@ -129,10 +138,14 @@ export class EventBubbles {
       const inCat = cats.includes(ev.category);
       const inPerson = personId == null
         || (ev.relatedPersons || []).some((p) => p.id === personId);
-      const inWindow = inCat && inPerson && year >= ev.year && year <= ev.yearEnd;
+      const inWindow = inCat && inPerson
+        && withinWindow(year, month, ev.year, ev.month || 1, ev.yearEnd, ev.monthEnd || 1);
       obj.visible = inWindow;
 
-      if (inWindow && prevYear !== undefined && prevYear < ev.year) {
+      const appearsNow = prevYear !== undefined && prevMonth !== undefined
+        && monthIndex(prevYear, prevMonth) < monthIndex(ev.year, ev.month || 1)
+        && cur >= monthIndex(ev.year, ev.month || 1);
+      if (inWindow && appearsNow) {
         // 新进入窗口：脉冲（作用在 inner，不碰定位元素）
         const inner = el.querySelector('.bubble-inner');
         inner.classList.remove('pulse');
@@ -163,8 +176,8 @@ export class EventBubbles {
   setCategories(categories) {
     this.activeCategories = categories.slice();
     if (this._lastYear !== undefined) {
-      // 静默刷新：把 prevYear 设为当前年，避免触发「刚出现」逻辑
-      this.update(this._lastYear, this._lastYear);
+      // 静默刷新：把 prev 设为当前时间，避免触发「刚出现」逻辑
+      this.update(this._lastYear, this._lastMonth, this._lastYear, this._lastMonth);
     }
   }
 
@@ -175,7 +188,7 @@ export class EventBubbles {
   setPersonFilter(personId) {
     this.personFilter = personId == null || personId === '' ? null : Number(personId);
     if (this._lastYear !== undefined) {
-      this.update(this._lastYear, this._lastYear);
+      this.update(this._lastYear, this._lastMonth, this._lastYear, this._lastMonth);
     }
   }
 
@@ -197,7 +210,8 @@ export class EventBubbles {
       const r = it.el.getBoundingClientRect();
       return {
         it,
-        year: it.ev.year,
+        // 碰撞优先级用月粒度序号：同一年不同月的事件也能按时间先后正确排序
+        year: monthIndex(it.ev.year, it.ev.month || 1),
         rect: { x: r.left, y: r.top, w: r.width, h: r.height },
         dx: 0,
         dy: 0,

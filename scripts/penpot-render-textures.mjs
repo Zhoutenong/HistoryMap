@@ -8,15 +8,19 @@
  *     （Penpot 提取的样式参数），按 Web 端 WatercolorBuilder 的水彩管线本地渲染：
  *     羽化晕染 + 主体 + 斑驳（确定性随机）+ 边界 + 干边，输出 2048 宽透明 PNG。
  *
- * 用法：node scripts/penpot-render-textures.mjs [--styles artifacts/penpot/styles.json]
+ * 用法：node scripts/penpot-render-textures.mjs [--styles artifacts/penpot/styles.json] [--width 2048|4096]
  * 样式文件缺省时按 Web 端默认 token 渲染（等价 WatercolorBuilder）。
  * 幂等：可重跑，输出直接覆盖 client/public/textures/overlay/*.png。
+ * 分辨率变体（阶段⑤）：默认 2048 写主目录；--width 4096 写 hires/ 子目录（桌面高倍缩放
+ * 档，Android 不同步——内存红线）。两档都在 manifest.files[file].variants 登记，
+ * 运行时按设备能力选择（TerritoryOverlay.applyBakedWatercolor）。
  */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { geoMercator, geoPath } from 'd3-geo';
 import { createCanvas } from '@napi-rs/canvas';
+import polygonClipping from 'polygon-clipping';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -26,7 +30,13 @@ const STYLE_PATH = process.argv.indexOf('--styles') >= 0
   ? path.resolve(ROOT, process.argv[process.argv.indexOf('--styles') + 1])
   : null;
 
-const TEX_WIDTH = 2048;
+const widthArgIdx = process.argv.indexOf('--width');
+const TEX_WIDTH = widthArgIdx >= 0
+  ? Math.max(1024, Math.min(4096, Math.round(Number(process.argv[widthArgIdx + 1]) || 2048)))
+  : 2048;
+const HIRES = TEX_WIDTH > 2048;
+const OUT_SUBDIR = HIRES ? path.join(OUT_DIR, 'hires') : OUT_DIR;
+if (HIRES) fs.mkdirSync(OUT_SUBDIR, { recursive: true });
 const PAD_RATIO = 0.06;
 
 const periodsIndex = JSON.parse(fs.readFileSync(path.join(HISTORICAL_DIR, 'periods.json'), 'utf8'));
@@ -165,6 +175,53 @@ function mulberry32(seed) {
 
 const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
 
+// —— 海岸线 / 岸外水纹 pass（阶段③，2026-08-22）——
+// 古地图惯例：海岸线重墨、岸外数圈细水纹，内部政权边界细而淡。做法：全部政权
+// union 取外轮廓（= 海岸线 + 国界外缘），贴图绘制顺序为「水纹（底层）→ 政权填色
+// （覆盖水纹陆内半侧）→ union 轮廓重描」。水纹用逐级加宽描边模拟岸外偏移带
+// （陆内侧被填色盖住，视觉只剩岸外圈），避免引入真正的多边形偏移依赖。
+const COAST_INK = [58, 52, 40];    // #3a3428 淡墨（与政权边界干边同族）
+const WATER_INK = [86, 112, 127];  // 青灰墨（海面水纹，区别于陆上淡墨）
+// 描边宽以 2048 档为基准按 TEX_WIDTH 等比缩放，2048/4096 两档观感一致
+const PX = TEX_WIDTH / 2048;
+const COAST_STROKE = { width: 2.6 * PX, alpha: 0.55 };
+const WATER_RINGS = [              // [描边宽（贴图像素）, alpha]，宽度一半会被陆上填色覆盖
+  { width: 8 * PX, alpha: 0.1 },
+  { width: 16 * PX, alpha: 0.06 },
+];
+
+/** 全部政权 union → MultiPolygon（[poly][ring][pt]，lng/lat 坐标）；失败返回 null。 */
+function unionRegimeOutlines(geojson) {
+  try {
+    const polys = [];
+    for (const f of geojson.features) {
+      for (const rings of normalizePolygons(f.geometry)) polys.push(rings);
+    }
+    if (!polys.length) return null;
+    const u = polys.length === 1 ? polygonClipping.union(polys[0]) : polygonClipping.union(polys[0], ...polys.slice(1));
+    if (!u) return null;
+    // 0.15 返回 MultiPolygon；个别路径返回 Polygon（u[0][0][0] 是数字）则包一层
+    return typeof u[0][0][0] === 'number' ? [u] : u;
+  } catch (err) {
+    console.warn(`  union 失败（${err.message}），跳过海岸线层`);
+    return null;
+  }
+}
+
+/** 一次性 beginPath 描出 MultiPolygon 全部环（供单次 stroke 的水纹/海岸线）。 */
+function traceMultiPolygon(ctx, multipoly, toPx) {
+  ctx.beginPath();
+  for (const poly of multipoly) {
+    for (const ring of poly) {
+      const pts = ring.map(toPx);
+      if (!pts.length) continue;
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+    }
+  }
+}
+
 for (const [file, meta] of fileSet) {
   const raw = JSON.parse(fs.readFileSync(path.join(HISTORICAL_DIR, file), 'utf8'));
   const geojson = { type: 'FeatureCollection', features: (raw.features || []).map(normalizeFeature) };
@@ -182,6 +239,22 @@ for (const [file, meta] of fileSet) {
       ((worldBox.ymax - y) / (worldBox.ymax - worldBox.ymin)) * H,
     ];
   };
+
+  // 岸外水纹（底层）：union 外轮廓逐级加宽描边，陆内半侧随后被政权填色覆盖
+  const coastOutline = unionRegimeOutlines(geojson);
+  if (coastOutline) {
+    ctx.save();
+    ctx.filter = 'none';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const ring of WATER_RINGS) {
+      traceMultiPolygon(ctx, coastOutline, toPx);
+      ctx.strokeStyle = rgba(WATER_INK, ring.alpha);
+      ctx.lineWidth = ring.width;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   for (const feature of geojson.features) {
     const props = feature.properties || {};
@@ -249,18 +322,43 @@ for (const [file, meta] of fileSet) {
     }
   }
 
+  // 海岸线重描（顶层）：union 外轮廓重墨，比内部政权边界（干边 ~0.8px/0.28）重一档，
+  // 建立「海岸粗重、国界细淡」的古地图层级
+  if (coastOutline) {
+    ctx.save();
+    ctx.filter = 'none';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    traceMultiPolygon(ctx, coastOutline, toPx);
+    ctx.strokeStyle = rgba(COAST_INK, COAST_STROKE.alpha);
+    ctx.lineWidth = COAST_STROKE.width;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   const png = canvas.toBuffer('image/png');
   const outFile = file.replace(/\.json$/, '.png');
-  fs.writeFileSync(path.join(OUT_DIR, outFile), png);
+  fs.writeFileSync(path.join(OUT_SUBDIR, outFile), png);
 
-  manifest.files[outFile] = {
+  // manifest：主档条目 + 分辨率变体登记（bake 整写 manifest 会清掉 variants，此处按磁盘自愈补齐）
+  const entry = manifest.files[outFile] = {
     ...(manifest.files[outFile] || {}),
     status: 'penpot-v1',
     rendered: new Date().toISOString().slice(0, 10),
     styleSource: STYLE_PATH ? path.basename(STYLE_PATH) : 'web-default',
-    sizeKb: Math.round(png.length / 1024),
   };
-  console.log(`[penpot-render] ${outFile}  ${W}×${H}  ${(png.length / 1024).toFixed(0)}KB  ${meta.periodIds.join(', ')}`);
+  const variants = { ...(entry.variants || {}) };
+  if (HIRES) {
+    variants[String(TEX_WIDTH)] = `hires/${outFile}`;
+    if (!variants['2048'] && fs.existsSync(path.join(OUT_DIR, outFile))) variants['2048'] = outFile;
+  } else {
+    variants['2048'] = outFile;
+    if (fs.existsSync(path.join(OUT_DIR, 'hires', outFile))) variants['4096'] = `hires/${outFile}`;
+    else delete variants['4096'];
+  }
+  entry.variants = variants;
+  if (!HIRES) entry.sizeKb = Math.round(png.length / 1024);
+  console.log(`[penpot-render] ${outFile}  ${W}×${H}${HIRES ? ' (hires)' : ''}  ${(png.length / 1024).toFixed(0)}KB  ${meta.periodIds.join(', ')}`);
 }
 
 manifest.status = 'penpot';

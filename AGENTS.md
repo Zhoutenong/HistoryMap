@@ -29,7 +29,9 @@ HistoryMap/
 ├── stop-dev.bat  / stop-dev.ps1    # Windows 双击停止器
 ├── scripts/
 │   ├── prepare-android.mjs         # 同步 client/dist + 后端数据 → android assets
+│   ├── apply-regime-palette.mjs    # 政权配色统一刷新（periods.json + 政权 geojson + styles.json 三源对齐）
 │   ├── gen-android-icons.mjs       # 生成启动图标 fallback PNG（一次性）
+│   ├── gen-event-months.mjs        # 由 .data-months/*.json 生成 10-event-months.sql（月份化数据）
 │   └── …（check-build / contract / smoke 等）
 ├── android/                        # Android 原生版（Kotlin + Compose + GLES2，已弃用 WebView）
 │   ├── build.gradle.kts            # AGP 8.7.3 / Kotlin 2.0.21 / Compose BOM 2024.12.01 / KSP
@@ -52,6 +54,7 @@ HistoryMap/
 │       │   ├── OverlayParser.kt    # overlay JSON → 渲染模型（政权/河流/标签）
 │       │   ├── MapRepository.kt    # 数据仓储（Room + OverlayLoader，等价 api.js 职责）
 │       │   ├── TimelineController.kt # 「当前年份」唯一状态源（播放/暂停/拖动/完成）
+│       │   ├── TimeIndex.kt       # 月粒度时间序号（对齐 Web calc.js，双端口径一致）
 │       │   ├── TimelineBar.kt      # 时间轴组件（两行布局/手势/刻度吸附）
 │       │   ├── EventBubblesLayer.kt# 事件泡泡层（碰撞推挤/指向线/命中测试）
 │       │   ├── Collisions.kt       # 碰撞推挤纯函数（翻译 collisions.js）
@@ -74,12 +77,13 @@ HistoryMap/
 │   │   ├── meta.js                 # GET /api/meta         朝代起止年 + 时期边界
 │   │   └── dynasties.js            # GET /api/dynasties    朝代列表（顶栏下拉）
 │   ├── data/
-│   │   ├── schema.sql              # 建表语句（events 含 place/impact/category/source/confidence/license；persons/event_person）
+│   │   ├── schema.sql              # 建表语句（events 含 year/month/year_end/month_end 月粒度窗口 + place/impact/category/source/confidence/license；persons/event_person）
 │   │   ├── seed/
 │   │   │   ├── 01-song-events.sql  # 宋朝 seed 第一批（30 条，upsert 语义）
 │   │   │   ├── 06/07-song-*-events.sql  # P1 内容加深（北宋 40 + 南宋 39，song 共 109 条）
 │   │   │   ├── 08-song-persons.sql # P1 人物（60 人 + event_person 关联，按事件身份 SELECT 定位）
-│   │   │   └── 09-song-provenance.sql   # P4 考据（按分类 UPDATE source/confidence/license）
+│   │   │   ├── 09-song-provenance.sql   # P4 考据（按分类 UPDATE source/confidence/license）
+│   │   │   └── 10-event-months.sql      # 月份化数据（按 identity UPDATE month/month_end，脚本生成）
 │   │   └── geo/china.json          # 基础地图（静态托管）
 │   │   └── geo/historical/
 │   │       ├── overlay-merge.js    # overlay 合并纯函数（A2 契约入口，Android OverlayMerge 复刻）
@@ -96,7 +100,8 @@ HistoryMap/
         ├── styles.css              # 含移动端 @media (max-width:640px) 适配
         ├── map/
         │   ├── ChinaMap.js         # GeoJSON → three mesh + 导出 project()
-        │   ├── TerritoryOverlay.js # 历史疆域叠加层（时期切换 + 淡入）
+        │   ├── TerritoryOverlay.js # 历史疆域叠加层（时期切换 + 淡入 + 贴图变体 2048/4096）
+        │   ├── RiverRibbons.js     # 河道带（变宽三角带 + 三层河带着色器，对齐 Android RiverRibbons.kt）
         │   └── Legend.js           # 政权配色图例
         ├── timeline/
         │   ├── Timeline.js         # 时间轴：自动播放/暂停/拖动/事件刻度点
@@ -170,7 +175,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk   # 安装到真机
 ```json
 {
   "id": 1, "dynasty": "song",
-  "year": 960, "yearEnd": 975,
+  "year": 960, "month": 1,        // 事件发生月（1-12），时间轴/泡泡按月粒度窗口显示
+  "yearEnd": 975, "monthEnd": 12, // 事件结束月，与 yearEnd 组成窗口终点 [year·month, yearEnd·monthEnd]
   "coord": [114.35, 34.52],
   "short": "陈桥兵变",
   "title": "陈桥兵变 · 北宋建立",
@@ -185,7 +191,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk   # 安装到真机
 
 `/api/map/overlay` 响应顶层 `properties` 透传 `rivers`（河流示意）、`mountains`（山脉示意）、`cities`、`places`，供前端水彩辅助层叠加绘制；另透传 `prefectures`（州府面**完整 Feature 数组**，Polygon 保留 geometry）与 `prefectureSeats`（州府治所 legacy 点数组）——**州府级数据（元丰九域志基准）**，详见「州府级数据」章节。
 
-**约定**：`coord` 为 `[lng, lat]`（经度在前，与 GeoJSON 一致）。事件在 `[year, yearEnd]` 时间窗口内显示，过期消失。
+**约定**：`coord` 为 `[lng, lat]`（经度在前，与 GeoJSON 一致）。事件在 `[year·month, yearEnd·monthEnd]` 月粒度时间窗口内显示，过期消失。
 
 ## 州府级数据（元丰九域志基准，北宋 song-1111）
 
@@ -265,12 +271,13 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 - 投影用历史疆域（覆盖中国及周边）做 `fitProjection` 标定，保证现代底图即便隐藏，投影仍有效。
 - 事件/坐标字段 `[lng, lat]`（经度在前）。
 
-### 时间
+### 时间（月份化，2026-08）
 
-- 年份用整数公历年份（首期 960–1279，由后端 `/api/meta` 给出，前端不写死）。
-- 时期边界（如北宋/南宋切换点 1127）同样数据驱动，来自 `/api/meta` 的 `periods` 字段，跨过边界时自动重载疆域叠加层并弹出时期转场横幅。
-- 自动播放按「每 `tickMs` 推进一年」节奏。
-- 事件只在 `[year, yearEnd]` 窗口内显示，过期消失。
+- 时间轴自「年粒度」升级为「月粒度」：当前时间用 `(year, month)`（month 1-12）表示，连续月份序号 `monthIndex = year*12 + (month-1)`（见 `client/src/timeline/calc.js`）。时间轴逐月推进，标签精确到「年·月」（如 `960年1月`），年份刻度保留。
+- 起始/结束仍用整数公历年份（首期 960–1279，由后端 `/api/meta` 给出，前端不写死）；轨道左端=起始年 1 月、右端=结束年 12 月。
+- 时期边界（如北宋/南宋切换点 1127）同样数据驱动，来自 `/api/meta` 的 `periods` 字段，跨过边界时自动重载疆域叠加层（**双 group 交叉淡入 400ms**：旧 overlay 作底衬淡出、新 overlay 置顶淡入后释放旧组，材质 + CSS2D 标签分别补间；见 main.js `installOverlayWithCrossfade`）并弹出时期转场横幅。快速来回拖动由 `overlayRequestSeq` + `AbortController` 防过期响应落地。
+- 自动播放按「每 `tickMs` 推进一个月」节奏（`tickMs` 来自契约 `speeds`，慢/中/快 = 40/20/10 ms/月）。
+- 事件只在 `[year·month, yearEnd·monthEnd]` 月粒度窗口内显示，过期消失。
 
 ## 数据存储
 
@@ -327,7 +334,9 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
    seed 重放机制沿用早期壳版本（`HistoryDb.kt` 不变）；assets 数据由 `scripts/prepare-android.mjs` 同步。
 3. **UI 层**：Compose——时间轴（`TimelineController` 是「当前年份」唯一状态源，播放/暂停/拖动/播放完毕/重播）、
    事件泡泡（碰撞推挤翻译 collisions.js + 指向线 + 出屏回收）、详情/事件流/设置（ModalBottomSheet）、
-   图例、时期切换（跨年自动重载疆域，投影首次标定后不再变）。
+   图例、时期切换（跨年自动重载疆域，投影首次标定后不再变；`doEnsurePeriod`/`doEnsureAllPeriod` 以
+   `overlayGen` 代际守卫——快速来回拖动时在途的过期加载落地前被作废，拖回目标时期==当前时期时
+   主动作废在途加载，否则过期疆域/标签会覆盖当前状态且无自愈；标签层随 overlay 安装 250ms 淡入）。
 4. **交互**：单指平移/双指缩放/双击复位；返回键由 sheet 优先消费（详情→设置→事件流→退出）；
    设置持久化 SharedPreferences；沉浸式全屏（focus 后重新隐藏系统栏）。
 5. **性能**：P20 实测 55-59fps（自动播放全功能），渲染器每 5 秒输出 FPS 日志（`adb logcat -s HistoryMap`）。
@@ -362,8 +371,8 @@ npm run data:check        # 校验：GeoJSON 结构/数量/坐标范围/名称�
 ## 工程规范
 
 - **Lint**：`npm run lint`（ESLint flat config，扫描 `client/src` 与 `server`；`no-unused-vars` 为 warn，`_` 前缀变量/参数忽略）。测试文件目录（`__tests__/**`）被忽略。
-- **单测**：`npm run test`（vitest，client 内 61 用例 + contract-tokens 契约快照：collisions/calc/search/store/transfer/share/EventLog/EventCard/projection golden）。纯函数（`collisions.js` / `calc.js` / `EventCard.js`）已从业务模块抽出，便于复用与测试。改算法时同步更新对应测试。
-- **Android 单测**：`cd android && ./gradlew testDebugUnitTest`（37+ 用例：Collisions/DesignMetrics/EventSummary/OverlayParser/Projection + ProjectionGolden/OverlayMergeGolden 双端契约）。
+- **单测**：`npm run test`（vitest，client 内 76 用例 + contract-tokens 契约快照：collisions/calc/search/store/transfer/share/EventLog/EventCard/projection golden/river-ribbons）。纯函数（`collisions.js` / `calc.js` / `EventCard.js`）已从业务模块抽出，便于复用与测试。改算法时同步更新对应测试。
+- **Android 单测**：`cd android && ./gradlew testDebugUnitTest`（43 用例：Collisions/DesignMetrics/EventSummary/OverlayParser/Projection/SeedImporter + ProjectionGolden/OverlayMergeGolden 双端契约）。
 - **契约校验**：`npm run contract`（GeoJSON+API+双端契约产物 diff）、`npm run contract:golden`（双端数值）、`npm run contract:db-migration`（迁移升级/回滚/seed 修订）。
 - **e2e**：`npm run e2e`（Playwright：smoke + features（P1-P5）+ visual（视口矩阵与截图基线，基线更新 `--update-snapshots`））。
 

@@ -44,7 +44,10 @@ data class EventEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(name = "dynasty_id") val dynastyId: String,
     val year: Int,
+    @ColumnInfo(name = "month", defaultValue = "1") val month: Int = 1,
     @ColumnInfo(name = "year_end") val yearEnd: Int,
+    // month_end 兜底 12：无月级数据的跨年事件窗口保持「整年可见」旧语义（与 server schema.sql 同值）
+    @ColumnInfo(name = "month_end", defaultValue = "12") val monthEnd: Int = 12,
     val lng: Double,
     val lat: Double,
     val short: String,
@@ -150,7 +153,7 @@ interface HistoryDao {
 
 @Database(
     entities = [DynastyEntity::class, EventEntity::class, PersonEntity::class, EventPersonEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class HistoryDb : RoomDatabase() {
@@ -205,12 +208,25 @@ abstract class HistoryDb : RoomDatabase() {
             }
         }
 
+        private fun migration4To5(context: Context): Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 月份化：events 补 month/month_end 两列（month 兜底 1、month_end 兜底 12，
+                // 与全新建库 schema 一致：无月级数据的跨年事件窗口保持「整年可见」旧语义）。
+                db.execSQL("ALTER TABLE `events` ADD COLUMN `month` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `events` ADD COLUMN `month_end` INTEGER NOT NULL DEFAULT 12")
+                // 重放 seed（upsert 幂等）让既有安装补齐月级日期：10-event-months.sql 按
+                // (dynasty_id, year, short) 身份 UPDATE month/month_end（与 v2→v3 同款自愈语义；
+                // 01-09 重放不改动 month，只有 10 号 UPDATE 覆写）。老 SQLite 见 SeedImporter 降级。
+                SeedImporter.import(context, db)
+            }
+        }
+
         fun get(context: Context): HistoryDb {
             val appContext = context.applicationContext
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(appContext, HistoryDb::class.java, "historymap.db")
                     .addCallback(SeedCallback(appContext))
-                    .addMigrations(migration1To2(appContext), migration2To3(appContext), migration3To4())
+                    .addMigrations(migration1To2(appContext), migration2To3(appContext), migration3To4(), migration4To5(appContext))
                     .build()
                     .also { instance = it }
             }
@@ -258,13 +274,18 @@ object SeedImporter {
     }
 
     /**
-     * 把 `INSERT INTO t … ON CONFLICT(…) DO UPDATE SET …` 降级为 `INSERT OR IGNORE INTO t …`。
-     * 仅处理本仓库 seed 文件的固定形态（每条语句最多一个 ON CONFLICT 子句、置于语句尾部）。
+     * 把 `INSERT … ON CONFLICT(…) DO UPDATE SET …` 降级为 `INSERT OR IGNORE …`。
+     * 覆盖本仓库 seed 的两种形态：`VALUES(…) ` 后接子句、以及 `INSERT … SELECT …
+     * WHERE …` 尾接子句（08-song-persons.sql 按身份定位关联）。
+     *
+     * 2026-08-22 真机验收（P20/EMUI，API 29 框架 SQLite 仍为 3.22）发现旧实现
+     * `indexOf(" ON CONFLICT")` 只认空格前缀 → 降级静默失效 → migration2To3 重放
+     * seed 直接崩溃；改为 `\bON\s+CONFLICT\s*\(`（seed 中 144 处均为该子句形态，
+     * 已验证无字符串内误伤）。
      */
     fun downgradeUpsert(stmt: String): String {
-        val idx = stmt.indexOf(" ON CONFLICT")
-        if (idx < 0) return stmt
-        return stmt.substring(0, idx)
+        val m = Regex("""\bON\s+CONFLICT\s*\(""", RegexOption.IGNORE_CASE).find(stmt) ?: return stmt
+        return stmt.substring(0, m.range.first)
             .replaceFirst("INSERT INTO", "INSERT OR IGNORE INTO")
             .trimEnd()
     }

@@ -99,9 +99,16 @@ fun MapScreen() {
     var periodBanner by remember { mutableStateOf<String?>(null) }
     // 正在加载的时期 id：异步加载完成前阻止重复触发同一时期切换（竞态防护）
     var periodLoading by remember { mutableStateOf<String?>(null) }
+    // overlay 安装代际：每次发起时期/全时期加载 +1，落地前若代际已前进则作废。
+    // 2026-08-22 真机反馈：快速拖动跨过时期边界再拖回，仍在途的过期加载落地后
+    // 会把旧疆域/标签覆盖到当前状态（拖动时播放暂停、无后续年份变化自愈）。
+    var overlayGen by remember { mutableStateOf(0) }
+    // overlay 安装计数（时期/全时期切换成功 +1）：驱动标签层 250ms 淡入（对齐 LOD 切换）
+    var overlayRev by remember { mutableStateOf(0) }
     var seenEvents by remember { mutableStateOf(emptyList<EventEntity>()) }
     var logOpen by remember { mutableStateOf(false) }
     var prevYear by remember { mutableStateOf<Int?>(null) }
+    var prevMonth by remember { mutableStateOf<Int?>(null) }
     // 人物视角（P1）：当前朝代人物列表 + 选中过滤（会话级，不持久化；朝代切换重置）
     var persons by remember { mutableStateOf(emptyList<PersonWithCount>()) }
     var personFilterId by remember { mutableStateOf<Long?>(null) }
@@ -177,6 +184,8 @@ fun MapScreen() {
             personFilterId = null
             dynastyStart = dynasty.startYear
             dynastyEnd = dynasty.endYear
+            prevYear = null
+            prevMonth = null
             periods = data.periods
             currentPeriodId = data.initialPeriod
             periodLoading = null
@@ -185,6 +194,7 @@ fun MapScreen() {
             layoutRevision++
             seenEvents = emptyList()
             prevYear = null
+            prevMonth = null
             // P3：水彩/山水纹理 CPU 生成放 IO 线程，不阻塞主线程
             val density = context.resources.displayMetrics.density
             val (wc, terr) = withContext(Dispatchers.IO) {
@@ -226,7 +236,7 @@ fun MapScreen() {
             // 全新冷启动（restoreYear==-1）自动播放
             autoplay = (restoreYear < 0),
             // 跨时期边界时重载疆域（投影保持首次标定，与 Web 版一致）
-            onYearChange = { y -> ensurePeriod(y) },
+            onTimeChange = { y, _ -> ensurePeriod(y) },
             onComplete = { },
         ).also { timelineRef = it }
     }
@@ -273,45 +283,52 @@ fun MapScreen() {
         val gen = dynastyGen
         val loadingKey = "all-$y"
         if (periodLoading == loadingKey) return
+        // 代际守卫与 doEnsurePeriod 同源：年份快速跳变出区间会产生多个 "all-y" 加载，
+        // 只允许最新一次落地（防乱序覆盖）
+        val ogen = ++overlayGen
         periodLoading = loadingKey
         scope.launch {
-            // overlay 读盘 + 解析 + _range 提取放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
-            val data = withContext(Dispatchers.IO) {
-                val json = repo.getAllOverlayJson(y)
-                val rangeArr = JSONObject(json).optJSONObject("properties")?.optJSONArray("_range")
-                val range = if (rangeArr != null && rangeArr.length() == 2) {
-                    rangeArr.optInt(0) to rangeArr.optInt(1)
-                } else null
-                PeriodSwitchResult(
-                    model = OverlayParser.parse(JSONObject(json)),
-                    json = json,
-                    range = range,
-                )
-            }
-            // 模式已退出或朝代已切换：本次结果作废（清空自己的 loading 标记，
-            // 避免退出全时期模式后残留 "all-y" 挂起，挡住后续时期切换）
-            if (!allPeriodMode || gen != dynastyGen) {
+            try {
+                // overlay 读盘 + 解析 + _range 提取放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
+                val data = withContext(Dispatchers.IO) {
+                    val json = repo.getAllOverlayJson(y)
+                    val rangeArr = JSONObject(json).optJSONObject("properties")?.optJSONArray("_range")
+                    val range = if (rangeArr != null && rangeArr.length() == 2) {
+                        rangeArr.optInt(0) to rangeArr.optInt(1)
+                    } else null
+                    PeriodSwitchResult(
+                        model = OverlayParser.parse(JSONObject(json)),
+                        json = json,
+                        range = range,
+                    )
+                }
+                // 模式已退出、朝代已切换或有更新请求：本次结果作废
+                if (!allPeriodMode || gen != dynastyGen || ogen != overlayGen) return@launch
+                renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
+                currentPeriodId = "all"
+                periodLoading = null
+                regimeColors = renderer.regimeColors
+                layoutRevision++
+                overlayRev++
+                val density = context.resources.displayMetrics.density
+                val (wc, terr) = withContext(Dispatchers.IO) {
+                    renderer.buildTextures(data.model, data.json, density)
+                }
+                if (!allPeriodMode || gen != dynastyGen || ogen != overlayGen) return@launch
+                renderer.setTextures(wc, terr)
+                if (data.range != null) allOverlayRange = data.range
+                Log.d("HistoryMap", "all-period overlay year=$y regimes=${data.model.regimes.size}")
+            } finally {
                 if (periodLoading == loadingKey) periodLoading = null
-                return@launch
             }
-            renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
-            currentPeriodId = "all"
-            periodLoading = null
-            regimeColors = renderer.regimeColors
-            layoutRevision++
-            val density = context.resources.displayMetrics.density
-            val (wc, terr) = withContext(Dispatchers.IO) {
-                renderer.buildTextures(data.model, data.json, density)
-            }
-            if (!allPeriodMode || gen != dynastyGen) return@launch
-            renderer.setTextures(wc, terr)
-            if (data.range != null) allOverlayRange = data.range
-            Log.d("HistoryMap", "all-period overlay year=$y regimes=${data.model.regimes.size}")
         }
     }
 
     // 时期切换：异步加载 overlay 期间用 periodLoading 去重（年份逐年推进会
     // 反复触发 onYearChange），加载完成后若年份已跨入下一时期则重新评估收敛。
+    // 竞态防护（overlayGen）：发起时 +1、落地前校验，只有「最新一次请求」允许安装；
+    // 拖回目标时期 == 当前时期时，若仍有别的时期在途则作废之（否则过期疆域/标签
+    // 覆盖当前状态且无自愈，2026-08-22 真机反馈「宋标跑到南方、辽标留在北边」）。
     // 全时期模式（P2）：改走 doEnsureAllPeriod（按年取全部政权，_range 区间内节流）。
     fun doEnsurePeriod(y: Int) {
         if (allPeriodMode) {
@@ -319,49 +336,59 @@ fun MapScreen() {
             return
         }
         val newPeriod = periods.firstOrNull { y in it.start..it.end } ?: return
-        if (newPeriod.id == currentPeriodId || newPeriod.id == periodLoading) return
+        if (newPeriod.id == currentPeriodId) {
+            // 已在目标时期：仅作废仍在途的其它时期加载（被作废协程的 finally 会清 loading）
+            if (periodLoading != null && periodLoading != newPeriod.id) overlayGen++
+            return
+        }
+        if (newPeriod.id == periodLoading) return
         val prevId = currentPeriodId
         val gen = dynastyGen
+        val ogen = ++overlayGen
         periodLoading = newPeriod.id
         scope.launch {
-            val t0 = System.nanoTime()
-            // overlay 读盘 + 解析放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
-            val data = withContext(Dispatchers.IO) {
-                val json = repo.getOverlayJson(currentDynasty, newPeriod.id)
-                PeriodSwitchResult(model = OverlayParser.parse(JSONObject(json)), json = json)
-            }
-            // 加载期间朝代已切换：本次结果作废（防止旧朝代时期覆盖新朝代状态）
-            if (gen != dynastyGen) return@launch
-            // 加载期间全时期模式已开启：本次单朝代结果作废（防止旧朝代 overlay 覆盖全时期状态）
-            if (allPeriodMode) {
+            try {
+                val t0 = System.nanoTime()
+                // overlay 读盘 + 解析放 IO 线程，不阻塞主线程（与 loadDynasty 同款写法）
+                val data = withContext(Dispatchers.IO) {
+                    val json = repo.getOverlayJson(currentDynasty, newPeriod.id)
+                    PeriodSwitchResult(model = OverlayParser.parse(JSONObject(json)), json = json)
+                }
+                // 加载期间朝代已切换 / 已有更新一次 overlay 请求 / 全时期模式已开启：
+                // 本次结果作废（防止旧朝代时期或过期时期覆盖新状态）
+                if (gen != dynastyGen || ogen != overlayGen) return@launch
+                if (allPeriodMode) return@launch
+                renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
+                currentPeriodId = newPeriod.id
+                periodLoading = null
+                regimeColors = renderer.regimeColors
+                layoutRevision++
+                overlayRev++
+                // P3：纹理 CPU 生成放 IO 线程
+                val density = context.resources.displayMetrics.density
+                val (wc, terr) = withContext(Dispatchers.IO) {
+                    renderer.buildTextures(data.model, data.json, density)
+                }
+                // 朝代已切换 / 有更新请求 / 全时期模式已开启：旧时期纹理不再挂接，避免覆盖新状态
+                if (gen != dynastyGen || ogen != overlayGen || allPeriodMode) return@launch
+                renderer.setTextures(wc, terr)
+                val ms = (System.nanoTime() - t0) / 1_000_000
+                Log.d("HistoryMap", "period switch: $prevId -> ${newPeriod.id} (${newPeriod.label}), 耗时=${ms}ms")
+                // 时期转场横幅（约 2.6s）
+                periodBanner = newPeriod.label
+                kotlinx.coroutines.delay(2600)
+                // 显示期间朝代已切换：不清 banner（由新朝代装配流程接管）
+                if (gen != dynastyGen) return@launch
+                // 显示期间 banner 已被更新的时期覆盖（快速跨时期）：不再清除
+                if (periodBanner == newPeriod.label) periodBanner = null
+                // 加载期间年份可能已推进到下一时期：重新评估，保证最终收敛到当前年份
+                val nowY = timeline?.year ?: return@launch
+                ensurePeriod(nowY)
+            } finally {
+                // 被作废的加载也要清 loading 标记（仅当仍属于自己的 key），
+                // 否则后续切回该时期会被 periodLoading 永久卡住
                 if (periodLoading == newPeriod.id) periodLoading = null
-                return@launch
             }
-            renderer.setOverlay(data.model, calibrate = false, cacheKey = data.json)
-            currentPeriodId = newPeriod.id
-            periodLoading = null
-            regimeColors = renderer.regimeColors
-            layoutRevision++
-            // P3：纹理 CPU 生成放 IO 线程
-            val density = context.resources.displayMetrics.density
-            val (wc, terr) = withContext(Dispatchers.IO) {
-                renderer.buildTextures(data.model, data.json, density)
-            }
-            // 朝代已切换或全时期模式已开启：旧时期纹理不再挂接，避免覆盖新状态
-            if (gen != dynastyGen || allPeriodMode) return@launch
-            renderer.setTextures(wc, terr)
-            val ms = (System.nanoTime() - t0) / 1_000_000
-            Log.d("HistoryMap", "period switch: $prevId -> ${newPeriod.id} (${newPeriod.label}), 耗时=${ms}ms")
-            // 时期转场横幅（约 2.6s）
-            periodBanner = newPeriod.label
-            kotlinx.coroutines.delay(2600)
-            // 显示期间朝代已切换：不清 banner（由新朝代装配流程接管）
-            if (gen != dynastyGen) return@launch
-            // 显示期间 banner 已被更新的时期覆盖（快速跨时期）：不再清除
-            if (periodBanner == newPeriod.label) periodBanner = null
-            // 加载期间年份可能已推进到下一时期：重新评估，保证最终收敛到当前年份
-            val nowY = timeline?.year ?: return@launch
-            ensurePeriod(nowY)
         }
     }
 
@@ -384,22 +411,29 @@ fun MapScreen() {
         }
     }
 
-    // —— 已出现事件追踪：年份推进时，首次进入时间窗口的事件加入列表 ——
-    LaunchedEffect(timeline?.year) {
+    // —— 已出现事件追踪：时间（年·月）推进时，首次进入月窗口的事件加入列表 ——
+    LaunchedEffect(timeline?.year, timeline?.month) {
         val y = timeline?.year ?: return@LaunchedEffect
-        val prev = prevYear
-        if (prev == null || y < prev) {
-            // 首次（或重播/回退：年份倒退）：清空旧记录，按当前年份重新累积
-            seenEvents = events.filter { y >= it.year && y <= it.yearEnd }.sortedBy { it.year }
+        val m = timeline?.month ?: 1
+        val prevY = prevYear
+        val prevM = prevMonth
+        fun eventIdx(ev: EventEntity) = TimeIndex.of(ev.year, ev.month)
+        val curIdx = TimeIndex.of(y, m)
+        if (prevY == null || prevM == null || curIdx < TimeIndex.of(prevY, prevM)) {
+            // 首次（或重播/回退：时间倒退）：清空旧记录，按当前月窗口重新累积
+            seenEvents = events
+                .filter { curIdx in eventIdx(it)..TimeIndex.of(it.yearEnd, it.monthEnd) }
+                .sortedBy { eventIdx(it) }
         } else {
             val appeared = events.filter { ev ->
-                y >= ev.year && y <= ev.yearEnd && prev < ev.year
+                curIdx in eventIdx(ev)..TimeIndex.of(ev.yearEnd, ev.monthEnd) && TimeIndex.of(prevY, prevM) < eventIdx(ev)
             }
             if (appeared.isNotEmpty()) {
-                seenEvents = (seenEvents + appeared).distinctBy { it.id }.sortedBy { it.year }
+                seenEvents = (seenEvents + appeared).distinctBy { it.id }.sortedBy { eventIdx(it) }
             }
         }
         prevYear = y
+        prevMonth = m
     }
 
     // 泡泡点击命中参数（组合期持续更新的快照；GL touch listener 单例闭包读取，
@@ -504,16 +538,20 @@ fun MapScreen() {
         renderer.lodTier = next.level
     }
     val lodTier = LodTier.fromLevel(lodTierLevel)
-    // 标签层档位切换过渡（250ms 淡入；首帧 L0 不淡入，
-    // 之后任意档位变化含「降回 L0」都过渡，与升档对称）
+    // 标签层过渡（250ms 淡入；首帧不淡入）：LOD 档位切换 与 overlay 安装（时期/全时期
+    // 切换，overlayRev）都触发——时期切换时水彩贴图有交叉淡入，标签层同步淡入避免文字瞬跳
     val labelAlpha = remember { androidx.compose.animation.core.Animatable(1f) }
     var prevLodLevel by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(lodTierLevel) {
-        if (prevLodLevel >= 0 && lodTierLevel != prevLodLevel) {
+    var prevOverlayRev by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(lodTierLevel, overlayRev) {
+        val lodChanged = prevLodLevel >= 0 && lodTierLevel != prevLodLevel
+        val overlayChanged = prevOverlayRev >= 0 && overlayRev != prevOverlayRev
+        if (lodChanged || overlayChanged) {
             labelAlpha.snapTo(0f)
             labelAlpha.animateTo(1f, tween(250))
         }
         prevLodLevel = lodTierLevel
+        prevOverlayRev = overlayRev
     }
 
     val placedLabels = remember(
@@ -557,8 +595,8 @@ fun MapScreen() {
                     ScreenZone(Rect(0f, safeTop, 130f * densityPx, safeTop + 140f * densityPx)),
                     // 时间轴（实测顶边）
                     ScreenZone(Rect(0f, viewH - safeBottom, 10000f, viewH)),
-                    // 年份水印区域（右缘 4vw、垂直 42% 居中线、字号≈28% 屏宽，避让大字号水印）
-                    ScreenZone(Rect(0.55f * viewW, 0.42f * viewH - 0.30f * viewW, viewW, 0.42f * viewH + 0.20f * viewW)),
+                    // 年份水印区域（右缘 4vw、顶栏底 + 6vh 起、字号 20% 屏宽，避让大字号水印）
+                    ScreenZone(Rect(0.55f * viewW, safeTop + 0.06f * viewH, viewW, safeTop + 0.06f * viewH + 0.26f * viewW)),
                 ),
                 // 移动端紧凑：辅助/城市/地点标签收紧（政权不限），避免中下部文字堆叠。
                 // 横屏纵向地图区更窄，进一步收紧标签上限，防止地名堆叠压住事件泡泡。
@@ -585,18 +623,19 @@ fun MapScreen() {
         )
 
         // 大年份水印（地图背景层：位于标签/泡泡之下，不遮挡叙事）。
-        // 对齐 Web 版 #year-watermark：右缘 4vw、垂直 42% 居中线、字号≈28% 屏宽
-        // （Web clamp(160px,28vw,380px) 的窄屏下限会溢出，取 28vw 上限语义）、淡墨 10%。
-        // 旧实现 top=105px 固定值落在顶栏（~75dp+）之下被纸面顶栏盖住。
-        val wmFontPx = 0.28f * viewW
+        // 对齐 Web 移动端 #year-watermark：右缘 4vw、顶栏底 + 6vh 起、字号 20% 屏宽
+        // （Web clamp(96px,20vw,220px)）、淡墨 10%。旧实现 42% 屏高居中 + 28vw
+        // 大字会与顶栏朝代按钮视觉相撞。
+        val wmSafeTop = if (topBarBottomPx > 0f) topBarBottomPx else 88f * densityPx
+        val wmFontPx = 0.20f * viewW
         Text(
-            text = "${timeline?.year ?: dynastyStart} 年",
+            text = "${timeline?.year ?: dynastyStart}年${timeline?.month ?: 1}月",
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .offset {
                     IntOffset(
                         -(0.04f * viewW).roundToInt(),
-                        (0.42f * viewH - wmFontPx * 0.5f).roundToInt(),
+                        (wmSafeTop + 0.06f * viewH).roundToInt(),
                     )
                 },
             fontFamily = MapFonts.Family,
@@ -694,9 +733,9 @@ fun MapScreen() {
                 events = events.filter { activeCategories.contains(it.category) },
                 onEventClick = { ev ->
                     tl.pause()
-                    // P0-修复：事件刻度点点击需跳转到事件年份（原代码漏掉 setYear，
+                    // P0-修复：事件刻度点点击需跳转到事件所在年月（原代码漏掉 setYear，
                     // 只暂停+打开详情，水印/泡泡仍停留在旧年份）
-                    tl.setYear(ev.year)
+                    tl.setTime(ev.year, ev.month)
                     selectedEvent = ev
                 },
                 modifier = Modifier
@@ -736,7 +775,7 @@ fun MapScreen() {
                     // 触发时期切换/年份水印/泡泡同步，再切换详情内容
                     timeline?.let { tl ->
                         tl.pause()
-                        tl.setYear(related.year)
+                        tl.setTime(related.year, related.month)
                     }
                     selectedEvent = related
                 }, onPickPerson = { p ->
@@ -757,7 +796,7 @@ fun MapScreen() {
             onPick = { ev ->
                 logOpen = false
                 timeline?.pause()
-                timeline?.setYear(ev.year)
+                timeline?.setTime(ev.year, ev.month)
                 selectedEvent = ev
             },
         )

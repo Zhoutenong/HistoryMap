@@ -15,7 +15,7 @@ const CATEGORIES = Object.freeze([
   Object.freeze({ id: "economy", label: "经济变革", labelShort: "经济" }),
   Object.freeze({ id: "invention", label: "重要发明", labelShort: "文化" }),
 ]);
-const SPEEDS = Object.freeze({ slow: 220, normal: 110, fast: 50 });
+const SPEEDS = Object.freeze({ slow: 40, normal: 20, fast: 10 });
 const CONTRACT = Object.freeze({
   version: 1,
   projection: PROJECTION,

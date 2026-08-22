@@ -50,6 +50,7 @@ fun EventLogSheet(
     seenEvents: List<EventEntity>,
     allEvents: List<EventEntity>,
     currentYear: Int,
+    currentMonth: Int,
     onPick: (EventEntity) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -75,11 +76,12 @@ fun EventLogSheet(
         // 只在「非程序触发的滚动」时判定为用户手动滚动 → 关闭自动定位
         if (isScrolling && autoScroll && !programmaticScroll) autoScroll = false
     }
-    // 当前年份事件在列表中的下标（自动定位目标）
-    val currentIndex = filtered.indexOfFirst { currentYear in it.year..it.yearEnd }
-    // 年份推进：自动滚动到当前事件（仅当自动定位开启）。滚动期间置 programmaticScroll，
+    // 当前「年·月」在列表中的下标（自动定位目标）；用月粒度窗口判定
+    val curIdx = TimeIndex.of(currentYear, currentMonth)
+    val currentIndex = filtered.indexOfFirst { curIdx in TimeIndex.of(it.year, it.month)..TimeIndex.of(it.yearEnd, it.monthEnd) }
+    // 时间推进：自动滚动到当前事件（仅当自动定位开启）。滚动期间置 programmaticScroll，
     // 使上面的 isScrolling effect 不会把这次自动定位误判为用户滚动。
-    LaunchedEffect(currentIndex, currentYear) {
+    LaunchedEffect(currentIndex, currentYear, currentMonth) {
         if (autoScroll && currentIndex >= 0) {
             programmaticScroll = true
             listState.animateScrollToItem(currentIndex)
@@ -118,7 +120,7 @@ fun EventLogSheet(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             ) {
                 Text(
-                    "当前 $currentYear 年 · 已出现 ${seenEvents.size} / ${allEvents.size} 个",
+                    "当前 ${currentYear}年${currentMonth}月 · 已出现 ${seenEvents.size} / ${allEvents.size} 个",
                     fontFamily = MapFonts.Family,
                     fontSize = scaledSp(12f),
                     color = MapTokens.INK_SOFT,
@@ -180,8 +182,8 @@ fun EventLogSheet(
                     .weight(1f),
             ) {
                 items(filtered, key = { it.id }) { ev ->
-                    val isCurrent = currentYear in ev.year..ev.yearEnd
-                    val isFuture = ev.year > currentYear
+                    val isCurrent = curIdx in TimeIndex.of(ev.year, ev.month)..TimeIndex.of(ev.yearEnd, ev.monthEnd)
+                    val isFuture = TimeIndex.of(ev.year, ev.month) > curIdx
                     EventLogEntry(ev, isCurrent, isFuture, onClick = { onPick(ev) })
                 }
             }
@@ -216,12 +218,12 @@ private fun EventLogEntry(ev: EventEntity, isCurrent: Boolean, isFuture: Boolean
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            "${ev.year} 年",
+            "${ev.year}年${ev.month}月",
             fontFamily = MapFonts.Family,
             fontSize = scaledSp(12f),
             fontWeight = FontWeight.Bold,
             color = if (isFuture) MapTokens.VERMILION.copy(alpha = 0.4f) else MapTokens.VERMILION,
-            modifier = Modifier.width(58.dp),
+            modifier = Modifier.width(72.dp),
         )
         Text(
             ev.short.ifEmpty { "未命名事件" },

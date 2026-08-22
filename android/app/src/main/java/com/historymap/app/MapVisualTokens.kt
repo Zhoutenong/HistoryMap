@@ -324,8 +324,10 @@ object MapTokens {
         const val RIVER_FLOW_AMP = 0.07f
 
         // —— 政权贴图接触阴影（统一光向：左上 45° 来光 → 右下投影）——
-        /** 阴影 alpha（0..1；水彩贴图整体 alpha × 该值，软影不压政权色） */
-        const val REGIME_SHADOW_ALPHA = 0.15f
+        /** 阴影 alpha（0..1；水彩贴图整体 alpha × 该值，软影不压政权色）。
+         *  2026-08-22 由 0.15 → 0.10：1279 等大政权时期大片深棕「发闷」，实测减重后
+         *  轮廓仍清晰、画面通透（阶段② 色彩调参）。 */
+        const val REGIME_SHADOW_ALPHA = 0.10f
         /** 阴影偏移（世界宽比例；与 RIVER_TAPER 同源的世界单位，跟随地图缩放） */
         const val REGIME_SHADOW_OFFSET = 0.0075f
         /** 山脉 alpha 分数 */
